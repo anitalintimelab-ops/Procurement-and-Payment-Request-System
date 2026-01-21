@@ -36,7 +36,7 @@ def load_staff():
     return pd.DataFrame(d)
 
 def save_staff(df):
-    df.to_csv(S_FILE, index=False)
+    df.reset_index(drop=True).to_csv(S_FILE, index=False)
 
 def get_b64_logo():
     try:
@@ -52,6 +52,7 @@ def get_b64_logo():
 def clean_for_js(h_str):
     return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
+# 初始化狀態
 if 'db' not in st.session_state: st.session_state.db = load_data()
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 if 'user_id' not in st.session_state: st.session_state.user_id = None
@@ -94,7 +95,7 @@ if is_admin:
                 st.sidebar.success("該員新增完成")
                 st.rerun()
         st.divider()
-        st.write("2. 人員權限管理")
+        st.write("2. 人員狀態管理 (停權)")
         for i, r in st.session_state.staff_df.reset_index(drop=True).iterrows():
             if r["name"] == "Anita": continue
             c1, c2 = st.columns([2, 1])
@@ -111,90 +112,45 @@ else:
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None; st.session_state.last_id = None; st.rerun()
 
-# --- 4. HTML 排版 (極短行拼接防止斷行) ---
+# --- 4. HTML 排版 (極短行拼接防止報錯) ---
 def render_html(row):
     amt = float(row['總金額']); fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0; act = amt - fee
     b64 = get_b64_logo(); lg = '<h3>Time Lab</h3>'
     if b64: lg = '<img src="data:image/jpeg;base64,' + b64 + '" style="height:60px;">'
     h = '<div style="font-family:sans-serif;padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;">'
-    h += '<div>' + lg + '</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;"><div>' + lg + '</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
     h += '<hr style="border:1px solid #000;margin:10px 0;"><h2 style="text-align:center;letter-spacing:10px;">' + str(row["類型"]) + '</h2>'
     h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
-    
-    # 徹底解決第 128 行報錯：拆成極短行
-    h += '<tr><td bgcolor="'
-    h += '#f2f2f2" width="18%" '
-    h += 'height="35">單號</td>'
-    h += '<td>&nbsp;' + str(row["單號"]) + '</td>'
-    h += '<td bgcolor="#f2f2f2" '
-    h += 'width="18%">專案負責人</td>'
-    h += '<td>&nbsp;蔡松霖</td></tr>'
-    
-    h += '<tr><td bgcolor="#f2f2f2" '
-    h += 'height="35">專案名稱</td>'
-    h += '<td>&nbsp;' + str(row["專案名稱"]) + '</td>'
-    h += '<td bgcolor="#f2f2f2">專案編號'
-    h += '</td><td>&nbsp;' + str(row["專案編號"]) + '</td></tr>'
-    
-    h += '<tr><td bgcolor="#f2f2f2" '
-    h += 'height="35">承辦人</td>'
-    h += '<td colspan="3">&nbsp;' + str(row["申請人"]) + '</td></tr>'
-    
-    h += '<tr><td bgcolor="#f2f2f2" '
-    h += 'height="35">廠商</td>'
-    h += '<td>&nbsp;' + str(row["請款廠商"]) + '</td>'
-    h += '<td bgcolor="#f2f2f2">付款方式'
-    h += '</td><td>&nbsp;' + str(row["付款方式"]) + '</td></tr>'
-    
-    h += '<tr><td bgcolor="#f2f2f2" '
-    h += 'height="35">幣別</td>'
-    h += '<td>&nbsp;' + str(row["幣別"]) + '</td>'
-    h += '<td bgcolor="#f2f2f2">匯款帳戶'
-    h += '</td><td>&nbsp;' + str(row["匯款帳戶"]) + '</td></tr>'
-    
-    h += '<tr><td bgcolor="#f2f2f2" '
-    h += 'height="80" valign="top">說明</td>'
-    h += '<td colspan="3" valign="top" '
-    h += 'style="padding:10px;">' + str(row["請款說明"]) + '</td></tr>'
-    
-    h += '<tr><td colspan="3" align="right">'
-    h += '請款金額&nbsp;</td><td align="right">'
-    h += f"{amt:,.0f}" + '&nbsp;</td></tr>'
-    
-    h += '<tr><td colspan="3" align="right">'
-    h += '提列手續費&nbsp;</td><td align="right">'
-    h += str(fee) + '&nbsp;</td></tr>'
-    
-    h += '<tr style="font-weight:bold;">'
-    h += '<td colspan="3" align="right" '
-    h += 'height="40" bgcolor="#eee">實際請款&nbsp;</td>'
-    h += '<td align="right" bgcolor="#eee">'
-    h += f"{act:,.0f}" + '&nbsp;</td></tr></table>'
-    
+    h += '<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td><td>&nbsp;' + str(row["單號"]) + '</td>'
+    h += '<td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;蔡松霖</td></tr>'
+    h += '<tr><td bgcolor="#f2f2f2" height="35">專案名稱</td><td>&nbsp;' + str(row["專案名稱"]) + '</td>'
+    h += '<td bgcolor="#f2f2f2">專案編號</td><td>&nbsp;' + str(row["專案編號"]) + '</td></tr>'
+    h += '<tr><td bgcolor="#f2f2f2" height="35">承辦人</td><td colspan="3">&nbsp;' + str(row["申請人"]) + '</td></tr>'
+    h += '<tr><td bgcolor="#f2f2f2" height="35">廠商</td><td>&nbsp;' + str(row["請款廠商"]) + '</td>'
+    h += '<td bgcolor="#f2f2f2">付款方式</td><td>&nbsp;' + str(row["付款方式"]) + '</td></tr>'
+    h += '<tr><td bgcolor="#f2f2f2" height="35">幣別</td><td>&nbsp;' + str(row["幣別"]) + '</td>'
+    h += '<td bgcolor="#f2f2f2">匯款帳戶</td><td>&nbsp;' + str(row["匯款帳戶"]) + '</td></tr>'
+    h += '<tr><td bgcolor="#f2f2f2" height="80" valign="top">說明</td>'
+    h += '<td colspan="3" valign="top" style="padding:10px;">' + str(row["請款說明"]) + '</td></tr>'
+    h += '<tr><td colspan="3" align="right">請款金額&nbsp;</td><td align="right">' + f"{amt:,.0f}" + '&nbsp;</td></tr>'
+    h += '<tr><td colspan="3" align="right">提列手續費&nbsp;</td><td align="right">' + str(fee) + '&nbsp;</td></tr>'
+    h += '<tr style="font-weight:bold;"><td colspan="3" align="right" height="40" bgcolor="#eee">實際請款&nbsp;</td>'
+    h += '<td align="right" bgcolor="#eee">' + f"{act:,.0f}" + '&nbsp;</td></tr></table>'
     if str(row['帳戶影像Base64']) != "":
-        h += '<div style="margin-top:10px;border:1px dashed #ccc;padding:10px;">'
-        h += '<b>存摺影本：</b><br>'
-        h += '<img src="data:image/jpeg;base64,' + str(row["帳戶影像Base64"])
-        h += '" style="max-width:100%;max-height:220px;"></div>'
-        
+        h += '<div style="margin-top:10px;border:1px dashed #ccc;padding:10px;"><b>存摺影本：</b><br>'
+        h += '<img src="data:image/jpeg;base64,' + str(row["帳戶影像Base64"]) + '" style="max-width:100%;max-height:220px;"></div>'
     h += '<div style="display:flex;flex-direction:column;gap:15px;margin-top:40px;font-size:11px;">'
-    h += '<div style="display:flex;justify-content:space-between;">'
-    h += '<span>承辦人簽核：' + str(row["申請人"]) 
+    h += '<div style="display:flex;justify-content:space-between;"><span>承辦人簽核：' + str(row["申請人"]) 
     if str(row["提交時間"]) != "": h += ' (' + str(row["提交時間"]) + ')'
     h += '</span><span>專案合夥人簽核：_________</span></div>'
-    h += '<div style="display:flex;justify-content:space-between;">'
-    h += '<span>財務執行長簽核：_________</span><span>財務簽核：_________</span>'
-    h += '</div></div></div>'
-    
+    h += '<div style="display:flex;justify-content:space-between;"><span>財務執行長簽核：_________</span><span>財務簽核：_________</span></div></div></div>'
     v = ""
     if str(row['影像Base64']) != "":
         imgs = str(row['影像Base64']).split('|')
         for i, img in enumerate(imgs):
             if i % 2 == 0: v += '<div style="width:700px;margin:auto;page-break-before:always;padding:20px;">'
             if i == 0: v += '<b style="font-size:16px;">憑證：</b><br><br>'
-            v += '<div style="height:480px;border-bottom:1px solid #ccc;margin-bottom:10px;">'
-            v += '<img src="data:image/jpeg;base64,' + img + '" style="max-width:100%;max-height:100%;"></div>'
+            v += '<div style="height:480px;border-bottom:1px solid #ccc;margin-bottom:10px;"><img src="data:image/jpeg;base64,' + img + '" style="max-width:100%;max-height:100%;"></div>'
             if i % 2 == 1 or i == len(imgs)-1: v += '</div>'
     return h + v
 
@@ -229,7 +185,7 @@ if menu == "1. 填寫申請單":
         del_b, del_v = False, []
         if ed_data is not None:
             if str(ed_data["帳戶影像Base64"]) != "":
-                st.image("data:image/jpeg;base64," + str(ed_data['帳戶影像Base64']), width=150); del_b = st.checkbox("🗑️ 刪除存摺影本")
+                st.image("data:image/jpeg;base64," + str(ed_data['帳戶影像Base64']), width=150); del_b = st.checkbox("🗑️ 刪除目前存摺")
             if str(ed_data["影像Base64"]) != "":
                 v_ims = str(ed_data["影像Base64"]).split('|'); v_cs = st.columns(4)
                 for idx, v_im in enumerate(v_ims):
@@ -258,32 +214,34 @@ if menu == "1. 填寫申請單":
                     new_db = pd.concat([new_db, pd.DataFrame([nr])], ignore_index=True)
                 st.session_state.db = new_db; save_data(new_db); st.session_state.last_id = tid; st.rerun()
 
-    # --- 重要：存檔後顯示功能按鈕 ---
+    # --- 關鍵修正：儲存後立即跳出的「流程引導區」 ---
     if st.session_state.last_id:
-        row_c = st.session_state.db[st.session_state.db["單號"]==st.session_state.last_id].iloc[0]
-        if row_c["狀態"] in ["草稿", "已駁回"]:
-            st.info("📍 目前編輯案件：" + str(st.session_state.last_id))
+        st.divider()
+        st.subheader("🏁 存檔成功！後續作業引導")
+        curr_rec = st.session_state.db[st.session_state.db["單號"]==st.session_state.last_id].iloc[0]
+        if curr_rec["狀態"] in ["草稿", "已駁回"]:
+            st.info("📍 目前選定案件：" + str(st.session_state.last_id))
             px, py, pz, pw = st.columns([2, 2, 2, 3])
-            if px.button("🔍 預覽單據", key="v_btn"): st.session_state.view_id = st.session_state.last_id
-            if py.button("🚀 送交審核", key="s_btn"):
+            if px.button("🔍 線上預覽", key="v_gui"): st.session_state.view_id = st.session_state.last_id
+            if py.button("🚀 提交送審", key="s_gui"):
                 idx_s = st.session_state.db[st.session_state.db["單號"]==st.session_state.last_id].index[0]
                 st.session_state.db.at[idx_s, "狀態"] = "待簽核"
                 st.session_state.db.at[idx_s, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                save_data(st.session_state.db); st.success("✅ 已正式提交審核！"); st.session_state.last_id = None; st.rerun()
-            if pz.button("🖨️ 線上列印", key="i_btn"):
-                js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(row_c)) + "');w.print();w.close();"
+                save_data(st.session_state.db); st.success("✅ 已送審！請見清單狀態。"); st.session_state.last_id = None; st.rerun()
+            if pz.button("🖨️ 線上列印", key="i_gui"):
+                js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(curr_rec)) + "');w.print();w.close();"
                 st.components.v1.html('<script>' + js_p + '</script>', height=0)
-            if pw.button("🆕 填寫下一筆", key="n_btn"): st.session_state.last_id = None; st.rerun()
+            if pw.button("🆕 填寫下一筆", key="n_gui"): st.session_state.last_id = None; st.rerun()
 
     if st.session_state.view_id:
         st.markdown(render_html(st.session_state.db[st.session_state.db["單號"]==st.session_state.view_id].iloc[0]), unsafe_allow_html=True)
-        if st.button("❌ 關閉預覽畫面"): st.session_state.view_id = None; st.rerun()
+        if st.button("❌ 關閉預覽視窗"): st.session_state.view_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
     disp_db = st.session_state.db if is_admin else st.session_state.db[st.session_state.db["申請人信箱"] == curr_name]
     if disp_db.empty: st.info("目前尚無紀錄")
     else:
-        # 表格加入「申請人」欄位
+        # 顯示申請人欄位
         cols_h = st.columns([1.5, 2, 1.2, 1.2, 1.2, 0.8, 0.8, 0.8, 0.8])
         cols_h[0].write("**單號**"); cols_h[1].write("**專案名稱**"); cols_h[2].write("**申請人**")
         cols_h[3].write("**金額**"); cols_h[4].write("**狀態**")
@@ -293,8 +251,7 @@ if menu == "1. 填寫申請單":
             cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(r["申請人"])
             cols[3].write(f"${r['總金額']:,.0f}"); cols[4].markdown(":" + ('green' if r['狀態']=='已核准' else 'red' if r['狀態']=='已駁回' else 'blue' if r['狀態']=='草稿' else 'orange') + "[" + r['狀態'] + "]")
             if cols[5].button("修改", key="e_"+rid, disabled=lock): st.session_state.edit_id = rid; st.rerun()
-            if cols[6].button("刪除", key="d_"+rid, disabled=lock): 
-                st.session_state.db = st.session_state.db[st.session_state.db["單號"]!=rid]; save_data(st.session_state.db); st.rerun()
+            if cols[6].button("刪除", key="d_"+rid, disabled=lock): st.session_state.db = st.session_state.db[st.session_state.db["單號"]!=rid]; save_data(st.session_state.db); st.rerun()
             if cols[7].button("預覽", key="v_"+rid): st.session_state.view_id = rid; st.rerun()
             if cols[8].button("列印", key="p_"+rid):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
