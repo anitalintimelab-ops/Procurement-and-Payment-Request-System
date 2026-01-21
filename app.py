@@ -4,14 +4,27 @@ import datetime
 import os
 import base64
 
-# --- 1. 系統環境設定 ---
+# --- 1. 系統環境與權限定義 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide")
 
-# 🔴 暫時繞過登入：預設測試帳號
-curr_email = "test@timelab.com"
-curr_name = "測試管理員"
-ADMIN_EMAILS = [curr_email] # 將測試帳號設為管理員
-is_admin = True
+# 🔴 管理員清單：請填入會被視為管理員的名字或信箱
+ADMIN_NAMES = ["Anita", "test@timelab.com"] 
+STAFF_LIST = ["Andy 陳俊嘉", "Charles 張兆佑", "Eason 何益賢", "Sunglin 蔡松霖", "Anita"]
+
+# 簡易登入邏輯：如果沒有 Google 登入，就用選單登入
+if 'user_id' not in st.session_state:
+    st.header("🏢 時研國際 - 請購請款系統")
+    st.info("請先選取您的身分以進入系統")
+    selected_user = st.selectbox("我是：", ["--- 請選擇 ---"] + STAFF_LIST)
+    if st.button("確認進入"):
+        if selected_user != "--- 請選擇 ---":
+            st.session_state.user_id = selected_user
+            st.rerun()
+    st.stop()
+
+curr_name = st.session_state.user_id
+# 為了相容資料庫，如果是 Anita 就給管理員權限
+is_admin = curr_name in ADMIN_NAMES
 
 B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
@@ -57,9 +70,11 @@ def render_html(row):
     b64 = get_b64_logo(); lg = '<h3>Time Lab</h3>'
     if b64: lg = '<img src="data:image/jpeg;base64,' + b64 + '" style="height:60px;">'
     h = '<div style="font-family:sans-serif;padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;"><div>' + lg + '</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;">'
+    h += '<div>' + lg + '</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
     h += '<hr style="border:1px solid #000;margin:10px 0;"><h2 style="text-align:center;letter-spacing:10px;">' + str(row["類型"]) + '</h2>'
-    h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1"><tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td><td>&nbsp;' + str(row["單號"]) + '</td><td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;蔡松霖</td></tr>'
+    h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
+    h += '<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td><td>&nbsp;' + str(row["單號"]) + '</td><td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;蔡松霖</td></tr>'
     h += '<tr><td bgcolor="#f2f2f2" height="35">專案名稱</td><td>&nbsp;' + str(row["專案名稱"]) + '</td><td bgcolor="#f2f2f2">專案編號</td><td>&nbsp;' + str(row["專案編號"]) + '</td></tr>'
     h += '<tr><td bgcolor="#f2f2f2" height="35">承辦人</td><td colspan="3">&nbsp;' + str(row["申請人"]) + '</td></tr>'
     h += '<tr><td bgcolor="#f2f2f2" height="35">廠商</td><td>&nbsp;' + str(row["請款廠商"]) + '</td><td bgcolor="#f2f2f2">付款方式</td><td>&nbsp;' + str(row["付款方式"]) + '</td></tr>'
@@ -82,7 +97,11 @@ def render_html(row):
     return h + v
 
 # --- 3. 介面控制 ---
-st.sidebar.write(f"當前使用者：{curr_name}")
+st.sidebar.write(f"👤 當前使用者：{curr_name}")
+if st.sidebar.button("🚪 登出系統"):
+    del st.session_state.user_id
+    st.rerun()
+
 menu = st.sidebar.radio("導覽", ["1. 填寫申請單", "2. 簽核中心"])
 
 if menu == "1. 填寫申請單":
@@ -92,17 +111,14 @@ if menu == "1. 填寫申請單":
         r_f = st.session_state.db[st.session_state.db["單號"]==st.session_state.edit_id]
         if not r_f.empty:
             ed_data = r_f.iloc[0]
-            if ed_data["狀態"] not in ["草稿", "已駁回"]:
-                st.error("❌ 此單據已鎖定。"); st.session_state.edit_id = None; st.rerun()
             st.warning("📝 正在修改單號：" + str(st.session_state.edit_id))
 
-    E_OPTS = ["Andy 陳俊嘉", "Charles 張兆佑", "Eason 何益賢", "Sunglin 蔡松霖"]
     with st.form("apply_form"):
         c1, c2 = st.columns(2)
         with c1:
             app = st.text_input("承辦人 *", value=curr_name if ed_data is None else ed_data["申請人"]) 
             pn = st.text_input("專案名稱 *", value=ed_data["專案名稱"] if ed_data is not None else "")
-            exe = st.selectbox("專案執行人 *", E_OPTS, index=E_OPTS.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in E_OPTS) else 0)
+            exe = st.selectbox("專案執行人 *", STAFF_LIST, index=STAFF_LIST.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in STAFF_LIST) else 0)
         with c2:
             pi = st.text_input("專案編號 *", value=ed_data["專案編號"] if ed_data is not None else "")
             amt = st.number_input("總金額 *", min_value=0, value=int(ed_data["總金額"]) if ed_data is not None else 0)
@@ -122,7 +138,7 @@ if menu == "1. 填寫申請單":
                         st.image("data:image/jpeg;base64," + str(v_im), use_container_width=True)
                         if st.checkbox("刪除影像 " + str(idx+1), key="dv_"+str(idx)): del_v.append(idx)
         acc_f = st.file_uploader("上傳新存摺影本", type=["jpg","png"])
-        ims_f = st.file_uploader("上傳新憑證影像", type=["jpg","png"], accept_multiple_files=True)
+        imgs_f = st.file_uploader("上傳新憑證影像", type=["jpg","png"], accept_multiple_files=True)
         if st.form_submit_button("💾 儲存草稿內容"):
             if not (app and pn and pi and amt > 0 and desc): st.error("❌ 必填未填齊！")
             else:
@@ -138,11 +154,12 @@ if menu == "1. 填寫申請單":
                     tid = st.session_state.edit_id; st.session_state.edit_id = None
                 else:
                     tid = datetime.date.today().strftime('%Y%m%d') + "-" + f"{len(new_db)+1:02d}"
-                    a_b, i_b = base64.b64encode(acc_f.getvalue()).decode() if acc_f else "", "|".join([base64.b64encode(f.getvalue()).decode() for f in ims_f]) if ims_f else ""
-                    nr = {"單號":tid,"日期":str(datetime.date.today()),"類型":tp,"申請人":app,"專案執行人":exe,"專案名稱":pn,"專案編號":pi,"請款說明":desc,"總金額":amt,"幣別":"TWD","付款方式":pay,"請款廠商":vdr,"匯款帳戶":acc,"帳戶影像Base64":a_b,"狀態":"草稿","影像Base64":i_b,"提交時間":"","申請人信箱":curr_email}
+                    a_b, i_b = base64.b64encode(acc_f.getvalue()).decode() if acc_f else "", "|".join([base64.b64encode(f.getvalue()).decode() for f in ims_f]) if imgs_f else ""
+                    nr = {"單號":tid,"日期":str(datetime.date.today()),"類型":tp,"申請人":app,"專案執行人":exe,"專案名稱":pn,"專案編號":pi,"請款說明":desc,"總金額":amt,"幣別":"TWD","付款方式":pay,"請款廠商":vdr,"匯款帳戶":acc,"帳戶影像Base64":a_b,"狀態":"草稿","影像Base64":i_b,"提交時間":"","申請人信箱":curr_name}
                     new_db = pd.concat([new_db, pd.DataFrame([nr])])
                 st.session_state.db = new_db; save_data(new_db); st.session_state.last_id = tid; st.rerun()
 
+    # --- 流程區 ---
     if st.session_state.last_id:
         curr = st.session_state.db[st.session_state.db["單號"]==st.session_state.last_id].iloc[0]
         if curr["狀態"] in ["草稿", "已駁回"]:
@@ -162,9 +179,11 @@ if menu == "1. 填寫申請單":
         if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
-    if st.session_state.db.empty: st.info("目前尚無紀錄。")
+    # --- 關鍵修正：隔離邏輯 ---
+    disp_db = st.session_state.db if is_admin else st.session_state.db[st.session_state.db["申請人信箱"] == curr_name]
+    if disp_db.empty: st.info("目前尚無紀錄。")
     else:
-        for i, r in st.session_state.db.reset_index(drop=True).iterrows():
+        for i, r in disp_db.reset_index(drop=True).iterrows():
             rid = r["單號"]; is_locked = r["狀態"] in ["待簽核", "已核准"]
             cols = st.columns([2, 3, 2, 2, 1, 1, 1, 1])
             cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(f"${r['總金額']:,.0f}")
