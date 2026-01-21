@@ -4,11 +4,14 @@ import datetime
 import os
 import base64
 
-# --- 1. 系統環境設定 ---
+# --- 1. 系統環境與權限定義 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide")
 B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
+
+# 定義具備「簽核權限」的人員名單
+MANAGERS = ["Anita", "Andy 陳俊嘉", "Charles 張兆佑", "Eason 何益賢", "Sunglin 蔡松霖"]
 
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "專案執行人", "專案名稱", "專案編號", 
@@ -52,7 +55,6 @@ def get_b64_logo():
 def clean_for_js(h_str):
     return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
-# 初始化狀態
 if 'db' not in st.session_state: st.session_state.db = load_data()
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 if 'user_id' not in st.session_state: st.session_state.user_id = None
@@ -60,7 +62,7 @@ if 'edit_id' not in st.session_state: st.session_state.edit_id = None
 if 'last_id' not in st.session_state: st.session_state.last_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
 
-# --- 2. 登入識別 ---
+# --- 2. 登入識別畫面 ---
 if st.session_state.user_id is None:
     st.header("🏢 時研國際 - 內部管理系統")
     st.info("請選取您的身分以進入系統")
@@ -75,13 +77,14 @@ if st.session_state.user_id is None:
 
 curr_name = st.session_state.user_id
 is_admin = (curr_name == "Anita")
+is_manager = (curr_name in MANAGERS)
 
-# --- 3. 側邊欄工具 ---
+# --- 3. 側邊欄工具與選單過濾 ---
 st.sidebar.markdown("### 👤 目前登入")
 st.sidebar.markdown(curr_name)
 
 if is_admin:
-    st.sidebar.success("身分等級：管理員")
+    st.sidebar.success("身分：管理員")
     with st.sidebar.expander("⚙️ 管理員工具"):
         new_p = st.text_input("1. 新增同事姓名")
         if st.button("➕ 確認新增"):
@@ -95,7 +98,7 @@ if is_admin:
                 st.sidebar.success("該員新增完成")
                 st.rerun()
         st.divider()
-        st.write("2. 人員狀態管理 (停權)")
+        st.write("2. 人員狀態管理")
         for i, r in st.session_state.staff_df.reset_index(drop=True).iterrows():
             if r["name"] == "Anita": continue
             c1, c2 = st.columns([2, 1])
@@ -106,13 +109,15 @@ if is_admin:
             else:
                 if c2.button("復職", key="act_"+str(i)):
                     st.session_state.staff_df.at[i,"status"]="在職"; save_staff(st.session_state.staff_df); st.rerun()
+elif is_manager:
+    st.sidebar.info("身分：審核主管")
 else:
-    st.sidebar.info("身分等級：申請人")
+    st.sidebar.info("身分：申請人")
 
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None; st.session_state.last_id = None; st.rerun()
 
-# --- 4. HTML 排版 (極短行拼接防止報錯) ---
+# --- 4. HTML 排版 (極短行) ---
 def render_html(row):
     amt = float(row['總金額']); fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0; act = amt - fee
     b64 = get_b64_logo(); lg = '<h3>Time Lab</h3>'
@@ -121,7 +126,8 @@ def render_html(row):
     h += '<div style="display:flex;justify-content:space-between;align-items:center;"><div>' + lg + '</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
     h += '<hr style="border:1px solid #000;margin:10px 0;"><h2 style="text-align:center;letter-spacing:10px;">' + str(row["類型"]) + '</h2>'
     h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
-    h += '<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td><td>&nbsp;' + str(row["單號"]) + '</td>'
+    h += '<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td>'
+    h += '<td>&nbsp;' + str(row["單號"]) + '</td>'
     h += '<td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;蔡松霖</td></tr>'
     h += '<tr><td bgcolor="#f2f2f2" height="35">專案名稱</td><td>&nbsp;' + str(row["專案名稱"]) + '</td>'
     h += '<td bgcolor="#f2f2f2">專案編號</td><td>&nbsp;' + str(row["專案編號"]) + '</td></tr>'
@@ -155,7 +161,11 @@ def render_html(row):
     return h + v
 
 # --- 5. 主功能流程 ---
-menu = st.sidebar.radio("系統導覽", ["1. 填寫申請單", "2. 簽核中心"])
+# 只有在 MANAGERS 名單內的人才看得到簽核中心
+m_opts = ["1. 填寫申請單"]
+if is_manager:
+    m_opts.append("2. 簽核中心")
+menu = st.sidebar.radio("系統導覽", m_opts)
 
 if menu == "1. 填寫申請單":
     st.header("時研國際設計股份有限公司 請購/請款系統")
@@ -165,14 +175,14 @@ if menu == "1. 填寫申請單":
         if not r_f.empty:
             ed_data = r_f.iloc[0]; st.warning("📝 正在修改單號：" + str(st.session_state.edit_id))
 
-    staff_opts = st.session_state.staff_df[st.session_state.staff_df["status"]=="在職"]["name"].tolist()
+    current_staff = st.session_state.staff_df[st.session_state.staff_df["status"]=="在職"]["name"].tolist()
 
     with st.form("apply_form"):
         c1, c2 = st.columns(2)
         with c1:
             app = st.text_input("承辦人 *", value=curr_name if ed_data is None else ed_data["申請人"]) 
             pn = st.text_input("專案名稱 *", value=ed_data["專案名稱"] if ed_data is not None else "")
-            exe = st.selectbox("專案執行人 *", staff_opts, index=staff_opts.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in staff_opts) else 0)
+            exe = st.selectbox("專案執行人 *", current_staff, index=current_staff.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in current_staff) else 0)
         with c2:
             pi = st.text_input("專案編號 *", value=ed_data["專案編號"] if ed_data is not None else "")
             amt = st.number_input("總金額 *", min_value=0, value=int(ed_data["總金額"]) if ed_data is not None else 0)
@@ -195,7 +205,7 @@ if menu == "1. 填寫申請單":
         acc_f = st.file_uploader("上傳新存摺", type=["jpg","png"])
         ims_f = st.file_uploader("上傳新憑證", type=["jpg","png"], accept_multiple_files=True)
         if st.form_submit_button("💾 儲存草稿內容"):
-            if not (app and pn and pi and amt > 0 and desc): st.error("❌ 必填未填齊")
+            if not (app and pn and pi and amt > 0 and desc): st.error("❌ 必填未填齊！")
             else:
                 new_db = st.session_state.db.copy()
                 if st.session_state.edit_id:
@@ -214,20 +224,18 @@ if menu == "1. 填寫申請單":
                     new_db = pd.concat([new_db, pd.DataFrame([nr])], ignore_index=True)
                 st.session_state.db = new_db; save_data(new_db); st.session_state.last_id = tid; st.rerun()
 
-    # --- 關鍵修正：儲存後立即跳出的「流程引導區」 ---
     if st.session_state.last_id:
-        st.divider()
-        st.subheader("🏁 存檔成功！後續作業引導")
+        st.divider(); st.subheader("🏁 存檔成功！後續作業引導")
         curr_rec = st.session_state.db[st.session_state.db["單號"]==st.session_state.last_id].iloc[0]
         if curr_rec["狀態"] in ["草稿", "已駁回"]:
-            st.info("📍 目前選定案件：" + str(st.session_state.last_id))
+            st.info("📍 目前編輯案件：" + str(st.session_state.last_id))
             px, py, pz, pw = st.columns([2, 2, 2, 3])
             if px.button("🔍 線上預覽", key="v_gui"): st.session_state.view_id = st.session_state.last_id
             if py.button("🚀 提交送審", key="s_gui"):
                 idx_s = st.session_state.db[st.session_state.db["單號"]==st.session_state.last_id].index[0]
                 st.session_state.db.at[idx_s, "狀態"] = "待簽核"
                 st.session_state.db.at[idx_s, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                save_data(st.session_state.db); st.success("✅ 已送審！請見清單狀態。"); st.session_state.last_id = None; st.rerun()
+                save_data(st.session_state.db); st.success("✅ 已送交簽核中心！"); st.session_state.last_id = None; st.rerun()
             if pz.button("🖨️ 線上列印", key="i_gui"):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(curr_rec)) + "');w.print();w.close();"
                 st.components.v1.html('<script>' + js_p + '</script>', height=0)
@@ -235,13 +243,12 @@ if menu == "1. 填寫申請單":
 
     if st.session_state.view_id:
         st.markdown(render_html(st.session_state.db[st.session_state.db["單號"]==st.session_state.view_id].iloc[0]), unsafe_allow_html=True)
-        if st.button("❌ 關閉預覽視窗"): st.session_state.view_id = None; st.rerun()
+        if st.button("❌ 關閉預覽畫面"): st.session_state.view_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
     disp_db = st.session_state.db if is_admin else st.session_state.db[st.session_state.db["申請人信箱"] == curr_name]
     if disp_db.empty: st.info("目前尚無紀錄")
     else:
-        # 顯示申請人欄位
         cols_h = st.columns([1.5, 2, 1.2, 1.2, 1.2, 0.8, 0.8, 0.8, 0.8])
         cols_h[0].write("**單號**"); cols_h[1].write("**專案名稱**"); cols_h[2].write("**申請人**")
         cols_h[3].write("**金額**"); cols_h[4].write("**狀態**")
@@ -251,7 +258,8 @@ if menu == "1. 填寫申請單":
             cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(r["申請人"])
             cols[3].write(f"${r['總金額']:,.0f}"); cols[4].markdown(":" + ('green' if r['狀態']=='已核准' else 'red' if r['狀態']=='已駁回' else 'blue' if r['狀態']=='草稿' else 'orange') + "[" + r['狀態'] + "]")
             if cols[5].button("修改", key="e_"+rid, disabled=lock): st.session_state.edit_id = rid; st.rerun()
-            if cols[6].button("刪除", key="d_"+rid, disabled=lock): st.session_state.db = st.session_state.db[st.session_state.db["單號"]!=rid]; save_data(st.session_state.db); st.rerun()
+            if cols[6].button("刪除", key="d_"+rid, disabled=lock): 
+                st.session_state.db = st.session_state.db[st.session_state.db["單號"]!=rid]; save_data(st.session_state.db); st.rerun()
             if cols[7].button("預覽", key="v_"+rid): st.session_state.view_id = rid; st.rerun()
             if cols[8].button("列印", key="p_"+rid):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
@@ -265,10 +273,11 @@ elif menu == "2. 簽核中心":
         rid = r["單號"]
         with st.expander("待審：" + rid + " - " + r['專案名稱']):
             st.markdown(render_html(r), unsafe_allow_html=True)
+            # --- 確保所有經理(包含Anita)都能點擊按鈕 ---
             c1, c2 = st.columns(2)
             if c1.button("✅ 核准", key="ok_"+rid):
-                idx_row = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
-                st.session_state.db.at[idx_row, "狀態"] = "已核准"; save_data(st.session_state.db); st.rerun()
+                idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
+                st.session_state.db.at[idx, "狀態"] = "已核准"; save_data(st.session_state.db); st.rerun()
             if c2.button("❌ 駁回", key="no_"+rid):
-                idx_row = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
-                st.session_state.db.at[idx_row, "狀態"] = "已駁回"; save_data(st.session_state.db); st.rerun()
+                idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
+                st.session_state.db.at[idx, "狀態"] = "已駁回"; save_data(st.session_state.db); st.rerun()
