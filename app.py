@@ -72,11 +72,13 @@ if st.session_state.user_id is None:
 curr_name = st.session_state.user_id
 is_admin = (curr_name == "Anita")
 
-# --- 3. 側邊欄：顯示身分與管理工具 ---
-st.sidebar.markdown("### 👤 目前登入：" + curr_name)
+# --- 3. 側邊欄：身份顯示與管理 (修復第 87 行) ---
+st.sidebar.markdown("### 👤 目前登入")
+st.sidebar.markdown(curr_name)
+
 if is_admin:
-    st.sidebar.success("系統權限：管理員")
-    with st.sidebar.expander("⚙️ 管理工具：新增同事"):
+    st.sidebar.success("身分：管理員")
+    with st.sidebar.expander("⚙️ 新增同事身分"):
         new_p = st.text_input("輸入新同事姓名")
         if st.button("➕ 確認新增"):
             if new_p and new_p not in st.session_state.staff:
@@ -84,4 +86,43 @@ if is_admin:
                 save_staff(st.session_state.staff)
                 st.rerun()
 else:
-    st.sidebar.info("
+    # 這裡就是原本報錯的第 87 行，改為極短行確保安全
+    st.sidebar.info("身分：申請人")
+
+if st.sidebar.button("🚪 登出系統"):
+    st.session_state.user_id = None
+    st.rerun()
+
+# --- 4. HTML 排版 (極短行拼接) ---
+def render_html(row):
+    amt = float(row['總金額']); fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0; act = amt - fee
+    b64 = get_b64_logo(); lg = '<h3>Time Lab</h3>'
+    if b64: lg = '<img src="data:image/jpeg;base64,' + b64 + '" style="height:60px;">'
+    
+    h = '<div style="font-family:sans-serif;padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;">'
+    h += '<div>' + lg + '</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
+    h += '<hr style="border:1px solid #000;margin:10px 0;"><h2 style="text-align:center;letter-spacing:10px;">' + str(row["類型"]) + '</h2>'
+    h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
+    
+    # 分段拼接預防斷行錯誤
+    h += '<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td>'
+    h += '<td>&nbsp;' + str(row["單號"]) + '</td>'
+    h += '<td bgcolor="#f2f2f2" width="18%">專案負責人</td>'
+    h += '<td>&nbsp;蔡松霖</td></tr>'
+    
+    h += '<tr><td bgcolor="#f2f2f2" height="35">專案名稱</td>'
+    h += '<td>&nbsp;' + str(row["專案名稱"]) + '</td>'
+    h += '<td bgcolor="#f2f2f2">專案編號</td>'
+    h += '<td>&nbsp;' + str(row["專案編號"]) + '</td></tr>'
+    
+    h += '<tr><td bgcolor="#f2f2f2" height="35">承辦人</td>'
+    h += '<td colspan="3">&nbsp;' + str(row["申請人"]) + '</td></tr>'
+    
+    h += '<tr><td bgcolor="#f2f2f2" height="35">廠商</td>'
+    h += '<td>&nbsp;' + str(row["請款廠商"]) + '</td>'
+    h += '<td bgcolor="#f2f2f2">付款方式</td>'
+    h += '<td>&nbsp;' + str(row["付款方式"]) + '</td></tr>'
+    
+    h += '<tr><td bgcolor="#f2f2f2" height="35">幣別</td>'
+    h += '<td>&nbsp;' + str(row["幣別"]) + '
