@@ -4,7 +4,7 @@ import datetime
 import os
 import base64
 
-# --- 1. 系統環境設定 ---
+# --- 1. 系統環境與資料庫設定 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide")
 B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
@@ -57,7 +57,7 @@ if 'user_id' not in st.session_state: st.session_state.user_id = None
 if 'edit_id' not in st.session_state: st.session_state.edit_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
 
-# --- 2. 登入識別邏輯 ---
+# --- 2. 登入識別畫面 ---
 if st.session_state.user_id is None:
     st.header("🏢 時研國際 - 內部管理系統")
     st.info("請選取您的身分以進入系統")
@@ -72,7 +72,7 @@ if st.session_state.user_id is None:
 curr_name = st.session_state.user_id
 is_admin = (curr_name == "Anita")
 
-# --- 3. 側邊欄：身份顯示與管理工具 ---
+# --- 3. 側邊欄：新增同事提示視窗功能 ---
 st.sidebar.markdown("### 👤 目前登入")
 st.sidebar.markdown(curr_name)
 
@@ -81,9 +81,16 @@ if is_admin:
     with st.sidebar.expander("⚙️ 新增同事身分"):
         new_p = st.text_input("輸入新同事姓名")
         if st.button("➕ 確認新增"):
-            if new_p and new_p not in st.session_state.staff:
+            if not new_p:
+                st.sidebar.warning("請輸入姓名")
+            elif new_p in st.session_state.staff:
+                # 重複時跳出錯誤提示視窗
+                st.sidebar.error("該員已重複新增")
+            else:
+                # 成功時跳出完成提示視窗
                 st.session_state.staff.append(new_p)
                 save_staff(st.session_state.staff)
+                st.sidebar.success("該員新增完成")
                 st.rerun()
 else:
     st.sidebar.info("身分等級：申請人")
@@ -92,73 +99,46 @@ if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None
     st.rerun()
 
-# --- 4. HTML 排版 (極短行拼接防止 Notepad 斷行) ---
+# --- 4. HTML 排版 (防斷行短行模式) ---
 def render_html(row):
     amt = float(row['總金額']); fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0; act = amt - fee
     b64 = get_b64_logo(); lg = '<h3>Time Lab</h3>'
     if b64: lg = '<img src="data:image/jpeg;base64,' + b64 + '" style="height:60px;">'
-    
     h = '<div style="font-family:sans-serif;padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
     h += '<div style="display:flex;justify-content:space-between;align-items:center;"><div>' + lg + '</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
     h += '<hr style="border:1px solid #000;margin:10px 0;"><h2 style="text-align:center;letter-spacing:10px;">' + str(row["類型"]) + '</h2>'
     h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
-    
-    # 逐段拼接預防斷行報錯
     h += '<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td>'
     h += '<td>&nbsp;' + str(row["單號"]) + '</td>'
-    h += '<td bgcolor="#f2f2f2" width="18%">專案負責人</td>'
-    h += '<td>&nbsp;蔡松霖</td></tr>'
-    
+    h += '<td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;蔡松霖</td></tr>'
     h += '<tr><td bgcolor="#f2f2f2" height="35">專案名稱</td>'
     h += '<td>&nbsp;' + str(row["專案名稱"]) + '</td>'
-    h += '<td bgcolor="#f2f2f2">專案編號</td>'
-    h += '<td>&nbsp;' + str(row["專案編號"]) + '</td></tr>'
-    
-    h += '<tr><td bgcolor="#f2f2f2" height="35">承辦人</td>'
-    h += '<td colspan="3">&nbsp;' + str(row["申請人"]) + '</td></tr>'
-    
-    h += '<tr><td bgcolor="#f2f2f2" height="35">廠商</td>'
-    h += '<td>&nbsp;' + str(row["請款廠商"]) + '</td>'
-    h += '<td bgcolor="#f2f2f2">付款方式</td>'
-    h += '<td>&nbsp;' + str(row["付款方式"]) + '</td></tr>'
-    
-    # 修復第 128 行報錯處
-    h += '<tr><td bgcolor="#f2f2f2" height="35">幣別</td>'
-    h += '<td>&nbsp;' + str(row["幣別"]) + '</td>'
-    h += '<td bgcolor="#f2f2f2">匯款帳戶</td>'
-    h += '<td>&nbsp;' + str(row["匯款帳戶"]) + '</td></tr>'
-    
+    h += '<td bgcolor="#f2f2f2">專案編號</td><td>&nbsp;' + str(row["專案編號"]) + '</td></tr>'
+    h += '<tr><td bgcolor="#f2f2f2" height="35">承辦人</td><td colspan="3">&nbsp;' + str(row["申請人"]) + '</td></tr>'
+    h += '<tr><td bgcolor="#f2f2f2" height="35">廠商</td><td>&nbsp;' + str(row["請款廠商"]) + '</td>'
+    h += '<td bgcolor="#f2f2f2">付款方式</td><td>&nbsp;' + str(row["付款方式"]) + '</td></tr>'
+    h += '<tr><td bgcolor="#f2f2f2" height="35">幣別</td><td>&nbsp;' + str(row["幣別"]) + '</td>'
+    h += '<td bgcolor="#f2f2f2">匯款帳戶</td><td>&nbsp;' + str(row["匯款帳戶"]) + '</td></tr>'
     h += '<tr><td bgcolor="#f2f2f2" height="80" valign="top">說明</td>'
     h += '<td colspan="3" valign="top" style="padding:10px;">' + str(row["請款說明"]) + '</td></tr>'
-    
-    h += '<tr><td colspan="3" align="right">請款金額&nbsp;</td>'
-    h += '<td align="right">' + f"{amt:,.0f}" + '&nbsp;</td></tr>'
-    h += '<tr><td colspan="3" align="right">提列手續費&nbsp;</td>'
-    h += '<td align="right">' + str(fee) + '&nbsp;</td></tr>'
-    
+    h += '<tr><td colspan="3" align="right">請款金額&nbsp;</td><td align="right">' + f"{amt:,.0f}" + '&nbsp;</td></tr>'
+    h += '<tr><td colspan="3" align="right">提列手續費&nbsp;</td><td align="right">' + str(fee) + '&nbsp;</td></tr>'
     h += '<tr style="font-weight:bold;"><td colspan="3" align="right" height="40" bgcolor="#eee">實際請款&nbsp;</td>'
     h += '<td align="right" bgcolor="#eee">' + f"{act:,.0f}" + '&nbsp;</td></tr></table>'
-    
     if str(row['帳戶影像Base64']) != "":
         h += '<div style="margin-top:10px;border:1px dashed #ccc;padding:10px;">'
         h += '<b>存摺影本：</b><br><img src="data:image/jpeg;base64,' + str(row["帳戶影像Base64"]) + '" style="max-width:100%;max-height:220px;"></div>'
-    
     h += '<div style="display:flex;flex-direction:column;gap:15px;margin-top:40px;font-size:11px;">'
-    h += '<div style="display:flex;justify-content:space-between;">'
-    h += '<span>承辦人簽核：' + str(row["申請人"]) 
+    h += '<div style="display:flex;justify-content:space-between;"><span>承辦人簽核：' + str(row["申請人"]) 
     if str(row["提交時間"]) != "": h += ' (' + str(row["提交時間"]) + ')'
     h += '</span><span>專案合夥人簽核：_________</span></div>'
-    h += '<div style="display:flex;justify-content:space-between;">'
-    h += '<span>財務執行長簽核：_________</span><span>財務簽核：_________</span></div></div></div>'
-    
+    h += '<div style="display:flex;justify-content:space-between;"><span>財務執行長簽核：_________</span><span>財務簽核：_________</span></div></div></div>'
     v = ""
     if str(row['影像Base64']) != "":
         imgs = str(row['影像Base64']).split('|')
         for i, img in enumerate(imgs):
             if i % 2 == 0: v += '<div style="width:700px;margin:auto;page-break-before:always;padding:20px;">'
-            if i == 0:
-                v += '<b style="font-size:16px;">'
-                v += '憑證：</b><br><br>'
+            if i == 0: v += '<b style="font-size:16px;">憑證：</b><br><br>'
             v += '<div style="height:480px;border-bottom:1px solid #ccc;margin-bottom:10px;"><img src="data:image/jpeg;base64,' + img + '" style="max-width:100%;max-height:100%;"></div>'
             if i % 2 == 1 or i == len(imgs)-1: v += '</div>'
     return h + v
@@ -172,8 +152,7 @@ if menu == "1. 填寫申請單":
     if st.session_state.edit_id:
         r_f = st.session_state.db[st.session_state.db["單號"]==st.session_state.edit_id]
         if not r_f.empty:
-            ed_data = r_f.iloc[0]
-            st.warning("📝 正在修改單號：" + str(st.session_state.edit_id))
+            ed_data = r_f.iloc[0]; st.warning("📝 正在修改單號：" + str(st.session_state.edit_id))
 
     with st.form("apply_form"):
         c1, c2 = st.columns(2)
@@ -199,10 +178,10 @@ if menu == "1. 填寫申請單":
                     with v_cs[idx % 4]:
                         st.image("data:image/jpeg;base64," + str(v_im), use_container_width=True)
                         if st.checkbox("刪除影像 " + str(idx+1), key="dv_"+str(idx)): del_v.append(idx)
-        acc_f = st.file_uploader("上傳新存摺", type=["jpg","png"])
-        ims_f = st.file_uploader("上傳新憑證", type=["jpg","png"], accept_multiple_files=True)
+        acc_f = st.file_uploader("上傳新存摺影本", type=["jpg","png"])
+        ims_f = st.file_uploader("上傳新憑證影像", type=["jpg","png"], accept_multiple_files=True)
         if st.form_submit_button("💾 儲存草稿內容"):
-            if not (app and pn and pi and amt > 0 and desc): st.error("❌ 必填未填齊")
+            if not (app and pn and pi and amt > 0 and desc): st.error("❌ 必填未填齊！")
             else:
                 new_db = st.session_state.db.copy()
                 if st.session_state.edit_id:
@@ -222,9 +201,8 @@ if menu == "1. 填寫申請單":
                 st.session_state.db = new_db; save_data(new_db); st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
-    # Anita 看全部，其餘看自己
     disp_db = st.session_state.db if is_admin else st.session_state.db[st.session_state.db["申請人信箱"] == curr_name]
-    if disp_db.empty: st.info("目前尚無紀錄")
+    if disp_db.empty: st.info("目前尚無紀錄。")
     else:
         for i, r in disp_db.reset_index(drop=True).iterrows():
             rid = r["單號"]; lock = r["狀態"] in ["待簽核", "已核准"]
