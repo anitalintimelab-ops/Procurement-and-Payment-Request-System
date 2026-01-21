@@ -4,11 +4,11 @@ import datetime
 import os
 import base64
 
-# --- 1. 系統環境與資料庫設定 ---
+# --- 1. 系統環境設定 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide")
 B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
-S_FILE = os.path.join(B_DIR, "staff.csv")
+S_FILE = os.path.join(B_DIR, "staff_v2.csv") # 升級版人員名單
 
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "專案執行人", "專案名稱", "專案編號", 
@@ -26,16 +26,18 @@ def load_data():
 def save_data(df):
     df.reset_index(drop=True).to_csv(D_FILE, index=False)
 
+# 人員權限與在職狀態管理
 def load_staff():
-    df_s = ["Andy 陳俊嘉", "Charles 張兆佑", "Eason 何益賢", "Sunglin 蔡松霖", "Anita"]
     if os.path.exists(S_FILE):
         try:
-            return pd.read_csv(S_FILE)["name"].tolist()
+            return pd.read_csv(S_FILE).fillna("在職")
         except: pass
-    return df_s
+    d = {"name": ["Andy 陳俊嘉", "Charles 張兆佑", "Eason 何益賢", "Sunglin 蔡松霖", "Anita"],
+         "status": ["在職", "在職", "在職", "在職", "在職"]}
+    return pd.DataFrame(d)
 
-def save_staff(s_list):
-    pd.DataFrame({"name": s_list}).to_csv(S_FILE, index=False)
+def save_staff(df):
+    df.to_csv(S_FILE, index=False)
 
 def get_b64_logo():
     try:
@@ -52,7 +54,7 @@ def clean_for_js(h_str):
     return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
 if 'db' not in st.session_state: st.session_state.db = load_data()
-if 'staff' not in st.session_state: st.session_state.staff = load_staff()
+if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 if 'user_id' not in st.session_state: st.session_state.user_id = None
 if 'edit_id' not in st.session_state: st.session_state.edit_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
@@ -61,7 +63,9 @@ if 'view_id' not in st.session_state: st.session_state.view_id = None
 if st.session_state.user_id is None:
     st.header("🏢 時研國際 - 內部管理系統")
     st.info("請選取您的身分以進入系統")
-    u_list = ["--- 請選擇 ---"] + st.session_state.staff
+    # 僅顯示「在職」員工供選取
+    active_s = st.session_state.staff_df[st.session_state.staff_df["status"]=="在職"]
+    u_list = ["--- 請選擇 ---"] + active_s["name"].tolist()
     sel_u = st.selectbox("我的身分：", u_list)
     if st.button("確認進入"):
         if sel_u != "--- 請選擇 ---":
@@ -72,26 +76,43 @@ if st.session_state.user_id is None:
 curr_name = st.session_state.user_id
 is_admin = (curr_name == "Anita")
 
-# --- 3. 側邊欄：新增同事提示視窗功能 ---
+# --- 3. 側邊欄：身份顯示與權限管理 ---
 st.sidebar.markdown("### 👤 目前登入")
 st.sidebar.markdown(curr_name)
 
 if is_admin:
     st.sidebar.success("身分等級：管理員")
-    with st.sidebar.expander("⚙️ 新增同事身分"):
-        new_p = st.text_input("輸入新同事姓名")
+    with st.sidebar.expander("⚙️ 管理員工具"):
+        # A. 新增同事
+        new_p = st.text_input("1. 輸入新同事姓名")
         if st.button("➕ 確認新增"):
-            if not new_p:
-                st.sidebar.warning("請輸入姓名")
-            elif new_p in st.session_state.staff:
-                # 重複時跳出錯誤提示視窗
-                st.sidebar.error("該員已重複新增")
+            if not new_p: st.sidebar.warning("請輸入姓名")
+            elif new_p in st.session_state.staff_df["name"].tolist():
+                st.sidebar.error("該員已重複新增") # 修復提示視窗
             else:
-                # 成功時跳出完成提示視窗
-                st.session_state.staff.append(new_p)
-                save_staff(st.session_state.staff)
-                st.sidebar.success("該員新增完成")
+                new_row = pd.DataFrame({"name": [new_p], "status": ["在職"]})
+                st.session_state.staff_df = pd.concat([st.session_state.staff_df, new_row])
+                save_staff(st.session_state.staff_df)
+                st.sidebar.success("該員新增完成") # 修復提示視窗
                 st.rerun()
+        
+        st.divider()
+        # B. 離職權限管理 (權限關閉)
+        st.write("2. 人員狀態管理")
+        for i, r in st.session_state.staff_df.iterrows():
+            if r["name"] == "Anita": continue
+            c1, c2 = st.columns([2, 1])
+            c1.write(r["name"])
+            if r["status"] == "在職":
+                if c2.button("離職", key=f"res_{i}"):
+                    st.session_state.staff_df.at[i, "status"] = "離職"
+                    save_staff(st.session_state.staff_df)
+                    st.rerun()
+            else:
+                if c2.button("復職", key=f"act_{i}"):
+                    st.session_state.staff_df.at[i, "status"] = "在職"
+                    save_staff(st.session_state.staff_df)
+                    st.rerun()
 else:
     st.sidebar.info("身分等級：申請人")
 
@@ -99,7 +120,7 @@ if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None
     st.rerun()
 
-# --- 4. HTML 排版 (防斷行短行模式) ---
+# --- 4. HTML 排版 (極短行拼接) ---
 def render_html(row):
     amt = float(row['總金額']); fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0; act = amt - fee
     b64 = get_b64_logo(); lg = '<h3>Time Lab</h3>'
@@ -143,7 +164,7 @@ def render_html(row):
             if i % 2 == 1 or i == len(imgs)-1: v += '</div>'
     return h + v
 
-# --- 5. 主程式流程 ---
+# --- 5. 主功能流程 ---
 menu = st.sidebar.radio("功能導覽", ["1. 填寫申請單", "2. 簽核中心"])
 
 if menu == "1. 填寫申請單":
@@ -154,12 +175,15 @@ if menu == "1. 填寫申請單":
         if not r_f.empty:
             ed_data = r_f.iloc[0]; st.warning("📝 正在修改單號：" + str(st.session_state.edit_id))
 
+    # 目前在職的所有同事 (用於下拉選單)
+    current_staff = st.session_state.staff_df[st.session_state.staff_df["status"]=="在職"]["name"].tolist()
+
     with st.form("apply_form"):
         c1, c2 = st.columns(2)
         with c1:
             app = st.text_input("承辦人 *", value=curr_name if ed_data is None else ed_data["申請人"]) 
             pn = st.text_input("專案名稱 *", value=ed_data["專案名稱"] if ed_data is not None else "")
-            exe = st.selectbox("專案執行人 *", st.session_state.staff, index=st.session_state.staff.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in st.session_state.staff) else 0)
+            exe = st.selectbox("專案執行人 *", current_staff, index=current_staff.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in current_staff) else 0)
         with c2:
             pi = st.text_input("專案編號 *", value=ed_data["專案編號"] if ed_data is not None else "")
             amt = st.number_input("總金額 *", min_value=0, value=int(ed_data["總金額"]) if ed_data is not None else 0)
@@ -201,6 +225,7 @@ if menu == "1. 填寫申請單":
                 st.session_state.db = new_db; save_data(new_db); st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
+    # 管理員 Anita 看全公司紀錄 (包含離職人員歷史紀錄)
     disp_db = st.session_state.db if is_admin else st.session_state.db[st.session_state.db["申請人信箱"] == curr_name]
     if disp_db.empty: st.info("目前尚無紀錄。")
     else:
@@ -231,8 +256,6 @@ elif menu == "2. 簽核中心":
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             if c1.button("✅ 核准", key="ok_"+rid):
-                idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
-                st.session_state.db.at[idx,"狀態"]="已核准"; save_data(st.session_state.db); st.rerun()
+                st.session_state.db.at[st.session_state.db[st.session_state.db["單號"]==rid].index[0], "狀態"]="已核准"; save_data(st.session_state.db); st.rerun()
             if c2.button("❌ 駁回", key="no_"+rid):
-                idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
-                st.session_state.db.at[idx,"狀態"]="已駁回"; save_data(st.session_state.db); st.rerun()
+                st.session_state.db.at[st.session_state.db[st.session_state.db["單號"]==rid].index[0], "狀態"]="已駁回"; save_data(st.session_state.db); st.rerun()
