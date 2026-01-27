@@ -118,7 +118,6 @@ if is_admin:
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None; st.rerun()
 
-# 所有人都能看到完整選單
 m_opts = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核"]
 menu = st.sidebar.radio("系統導覽", m_opts)
 
@@ -144,7 +143,6 @@ def render_html(row):
     h += f'<tr><td colspan="3" align="right">提列手續費&nbsp;</td><td align="right">{fee}&nbsp;</td></tr>'
     h += f'<tr style="font-weight:bold;"><td colspan="3" align="right" height="40" bgcolor="#eee">實際請款&nbsp;</td><td align="right" bgcolor="#eee">{act:,.0f}&nbsp;</td></tr></table>'
     
-    # --- 修正：補回存摺影像預覽區塊 ---
     if str(row['帳戶影像Base64']) != "":
         h += '<div style="margin-top:10px;border:1px dashed #ccc;padding:10px;"><b>存摺影本：</b><br>'
         h += f'<img src="data:image/jpeg;base64,{str(row["帳戶影像Base64"])}" style="max-width:100%;max-height:220px;"></div>'
@@ -215,19 +213,35 @@ if menu == "1. 填寫申請單":
     if disp_db.empty: st.info("目前尚無紀錄")
     else:
         for i, r in disp_db.iterrows():
+            rid = r["單號"]
             cols = st.columns([1.5, 2, 1.2, 1.2, 1.2, 0.8, 0.8, 0.8, 0.8])
-            cols[0].write(r["單號"]); cols[1].write(r["專案名稱"]); cols[2].write(r["申請人"]); cols[3].write(f"${r['總金額']:,.0f}")
+            cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(r["申請人"]); cols[3].write(f"${r['總金額']:,.0f}")
             stt = r["狀態"]; color = "green" if stt == "已核准" else "blue" if stt == "待複審" else "orange" if stt == "待初審" else "red"
             cols[4].markdown(f":{color}[{stt}]")
-            if cols[5].button("修改", key=f"e_{r['單號']}", disabled=(stt not in ["草稿", "已駁回"])): st.session_state.edit_id = r["單號"]; st.rerun()
-            if cols[7].button("預覽", key=f"v_{r['單號']}"): st.session_state.view_id = r["單號"]; st.rerun()
-            if r["狀態"] == "草稿":
-                if cols[6].button("提交", key=f"s_{r['單號']}"):
-                    idx = st.session_state.db[st.session_state.db["單號"]==r['單號']].index[0]
+            
+            # --- 權限邏輯控管 ---
+            can_edit = (stt in ["草稿", "已駁回"])
+            # 只有未提交前(草稿狀態)才可以刪除
+            can_delete = (stt == "草稿") 
+            
+            if cols[5].button("修改", key=f"e_{rid}", disabled=not can_edit):
+                st.session_state.edit_id = rid; st.rerun()
+            
+            # 新增刪除按鈕，非草稿狀態反灰
+            if cols[6].button("刪除", key=f"d_{rid}", disabled=not can_delete):
+                st.session_state.db = st.session_state.db[st.session_state.db["單號"]!=rid]
+                save_data(st.session_state.db); st.rerun()
+                
+            if cols[7].button("預覽", key=f"v_{rid}"): st.session_state.view_id = rid; st.rerun()
+            
+            if stt == "草稿":
+                if cols[8].button("提交", key=f"s_{rid}"):
+                    idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
                     st.session_state.db.at[idx, "狀態"] = "待初審"; st.session_state.db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); save_data(st.session_state.db); st.rerun()
-            if cols[8].button("列印", key=f"p_{r['單號']}"):
-                js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
-                st.components.v1.html('<script>' + js_p + '</script>', height=0)
+            else:
+                if cols[8].button("列印", key=f"p_{rid}"):
+                    js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
+                    st.components.v1.html('<script>' + js_p + '</script>', height=0)
 
     if st.session_state.view_id:
         st.markdown(render_html(st.session_state.db[st.session_state.db["單號"]==st.session_state.view_id].iloc[0]), unsafe_allow_html=True)
