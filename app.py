@@ -17,6 +17,7 @@ CFO_NAME = "Charles 張兆佑"
 
 # --- 2. 核心功能函式 ---
 def validate_password(pw):
+    """密碼規則：至少一個英文，且數字需為 4-6 位"""
     has_letter = bool(re.search(r'[a-zA-Z]', pw))
     digit_count = len(re.findall(r'\d', pw))
     return has_letter and 4 <= digit_count <= 6
@@ -143,6 +144,7 @@ def render_html(row):
     h += f'<tr><td colspan="3" align="right">提列手續費&nbsp;</td><td align="right">{fee}&nbsp;</td></tr>'
     h += f'<tr style="font-weight:bold;"><td colspan="3" align="right" height="40" bgcolor="#eee">實際請款&nbsp;</td><td align="right" bgcolor="#eee">{act:,.0f}&nbsp;</td></tr></table>'
     
+    # 存摺影像預覽
     if str(row['帳戶影像Base64']) != "":
         h += '<div style="margin-top:10px;border:1px dashed #ccc;padding:10px;"><b>存摺影本：</b><br>'
         h += f'<img src="data:image/jpeg;base64,{str(row["帳戶影像Base64"])}" style="max-width:100%;max-height:220px;"></div>'
@@ -209,7 +211,12 @@ if menu == "1. 填寫申請單":
                 st.session_state.db = new_db; save_data(new_db); st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
-    disp_db = st.session_state.db if is_admin else st.session_state.db[st.session_state.db["申請人信箱"] == curr_name]
+    # --- 恢復邏輯：同時比對「申請人信箱」或「申請人姓名」，確保舊資料出現 ---
+    if is_admin: 
+        disp_db = st.session_state.db
+    else: 
+        disp_db = st.session_state.db[(st.session_state.db["申請人信箱"] == curr_name) | (st.session_state.db["申請人"] == curr_name)]
+    
     if disp_db.empty: st.info("目前尚無紀錄")
     else:
         for i, r in disp_db.iterrows():
@@ -219,15 +226,15 @@ if menu == "1. 填寫申請單":
             stt = r["狀態"]; color = "green" if stt == "已核准" else "blue" if stt == "待複審" else "orange" if stt == "待初審" else "red"
             cols[4].markdown(f":{color}[{stt}]")
             
-            # --- 權限邏輯控管 ---
+            # 權限控管
             can_edit = (stt in ["草稿", "已駁回"])
-            # 只有未提交前(草稿狀態)才可以刪除
+            # 只有未提交送審前（草稿狀態）才可以刪除，其餘反灰
             can_delete = (stt == "草稿") 
             
             if cols[5].button("修改", key=f"e_{rid}", disabled=not can_edit):
                 st.session_state.edit_id = rid; st.rerun()
             
-            # 新增刪除按鈕，非草稿狀態反灰
+            # 刪除按鈕
             if cols[6].button("刪除", key=f"d_{rid}", disabled=not can_delete):
                 st.session_state.db = st.session_state.db[st.session_state.db["單號"]!=rid]
                 save_data(st.session_state.db); st.rerun()
