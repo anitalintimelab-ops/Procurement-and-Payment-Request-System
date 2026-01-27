@@ -92,7 +92,7 @@ if st.session_state.user_id is None:
 curr_name = st.session_state.user_id
 is_admin = (curr_name in ADMINS)
 
-# --- 4. 側邊欄與功能列表 ---
+# --- 4. 側邊欄 ---
 st.sidebar.markdown(f"### 👤 目前登入：{curr_name}")
 
 with st.sidebar.expander("🔐 修改我的密碼"):
@@ -118,7 +118,7 @@ if is_admin:
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None; st.rerun()
 
-# --- 強制所有人都有側邊完整選單 ---
+# 所有人都可見完整選單
 m_opts = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核"]
 menu = st.sidebar.radio("系統導覽", m_opts)
 
@@ -162,11 +162,14 @@ if menu == "1. 填寫申請單":
         r_f = st.session_state.db[st.session_state.db["單號"]==st.session_state.edit_id]
         if not r_f.empty:
             ed_data = r_f.iloc[0]; st.warning(f"📝 正在修改單號：{st.session_state.edit_id}")
+    
     current_staff = st.session_state.staff_df[st.session_state.staff_df["status"]=="在職"]["name"].tolist()
+    
     with st.form("apply_form"):
         c1, c2 = st.columns(2)
         with c1:
-            app = st.text_input("承辦人 *", value=curr_name if ed_data is None else ed_data["申請人"]) 
+            # --- 承辦人改為自動帶入當前登入者且禁用修改 ---
+            app = st.text_input("承辦人 *", value=curr_name, disabled=True) 
             pn = st.text_input("專案名稱 *", value=ed_data["專案名稱"] if ed_data is not None else "")
             exe = st.selectbox("專案執行人 *", current_staff, index=current_staff.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in current_staff) else 0)
         with c2:
@@ -178,7 +181,7 @@ if menu == "1. 填寫申請單":
         pay = st.radio("付款方式 *", p_list, index=p_idx, horizontal=True)
         vdr, acc = st.text_input("廠商", value=ed_data["請款廠商"] if ed_data is not None else ""), st.text_input("帳戶", value=ed_data["匯款帳戶"] if ed_data is not None else "")
         desc = st.text_area("說明 *", value=ed_data["請款說明"] if ed_data is not None else "")
-        acc_f = st.file_uploader("上傳新存摺", type=["jpg","png"]); ims_f = st.file_uploader("上傳新憑證", type=["jpg","png"], accept_multiple_files=True)
+        acc_f = st.file_uploader("上傳存摺", type=["jpg","png"]); ims_f = st.file_uploader("上傳憑證", type=["jpg","png"], accept_multiple_files=True)
         if st.form_submit_button("💾 儲存內容"):
             if not (app and pn and pi and amt > 0 and desc): st.error("❌ 必填未填齊！")
             else:
@@ -221,19 +224,14 @@ if menu == "1. 填寫申請單":
 
 elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核中心")
-    # 邏輯：Anita 看所有待初審；一般執行長只能看到「自己被指派為專案執行人」的待初審單
-    if is_admin:
-        p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
-    else:
-        p_df = st.session_state.db[(st.session_state.db["狀態"]=="待初審") & (st.session_state.db["專案執行人"]==curr_name)]
-    
+    if is_admin: p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
+    else: p_df = st.session_state.db[(st.session_state.db["狀態"]=="待初審") & (st.session_state.db["專案執行人"]==curr_name)]
     if p_df.empty: st.info("目前無待初審單據")
     for i, r in p_df.iterrows():
         rid = r["單號"]
         with st.expander(f"待初審：{rid} - {r['專案名稱']} (執行人：{r['專案執行人']})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # 只有指定的專案執行人可以簽核，Anita 只能看
             can_sign = (curr_name == r["專案執行人"])
             if c1.button("✅ 執行長核准", key=f"ok_ceo_{rid}", disabled=not can_sign):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
@@ -246,7 +244,6 @@ elif menu == "2. 專案執行長簽核":
 
 elif menu == "3. 財務長簽核":
     st.header("🏁 財務長簽核中心")
-    # 邏輯：Anita 與 張兆佑 都能看到待複審項目
     p_df = st.session_state.db[st.session_state.db["狀態"]=="待複審"]
     if p_df.empty: st.info("目前無待複審單據")
     for i, r in p_df.iterrows():
@@ -254,7 +251,6 @@ elif menu == "3. 財務長簽核":
         with st.expander(f"待複審：{rid} - {r['專案名稱']}"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # 只有張兆佑可以點擊簽核，Anita 只能看
             is_cfo = (curr_name == CFO_NAME)
             if c1.button("👑 財務長核准", key=f"ok_cfo_{rid}", disabled=not is_cfo):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
