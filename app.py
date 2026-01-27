@@ -118,7 +118,7 @@ if is_admin:
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None; st.rerun()
 
-# 所有人都可見完整選單
+# 所有人都能看到完整選單
 m_opts = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核"]
 menu = st.sidebar.radio("系統導覽", m_opts)
 
@@ -129,6 +129,7 @@ def render_html(row):
     if b64: lg = f'<img src="data:image/jpeg;base64,{b64}" style="height:60px;">'
     rev_info = f"{row['初審人']} ({row['初審時間']})" if row['初審時間'] else "_________"
     cfo_info = f"{row['複審人']} ({row['複審時間']})" if row['複審時間'] else "_________"
+    
     h = f'<div style="font-family:sans-serif;padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
     h += f'<div style="display:flex;justify-content:space-between;align-items:center;"><div>{lg}</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
     h += f'<hr style="border:1px solid #000;margin:10px 0;"><h2 style="text-align:center;letter-spacing:10px;">{row["類型"]}</h2>'
@@ -142,14 +143,22 @@ def render_html(row):
     h += f'<tr><td colspan="3" align="right">請款金額&nbsp;</td><td align="right">{amt:,.0f}&nbsp;</td></tr>'
     h += f'<tr><td colspan="3" align="right">提列手續費&nbsp;</td><td align="right">{fee}&nbsp;</td></tr>'
     h += f'<tr style="font-weight:bold;"><td colspan="3" align="right" height="40" bgcolor="#eee">實際請款&nbsp;</td><td align="right" bgcolor="#eee">{act:,.0f}&nbsp;</td></tr></table>'
+    
+    # --- 修正：補回存摺影像預覽區塊 ---
+    if str(row['帳戶影像Base64']) != "":
+        h += '<div style="margin-top:10px;border:1px dashed #ccc;padding:10px;"><b>存摺影本：</b><br>'
+        h += f'<img src="data:image/jpeg;base64,{str(row["帳戶影像Base64"])}" style="max-width:100%;max-height:220px;"></div>'
+    
     h += f'<div style="display:flex;flex-direction:column;gap:15px;margin-top:40px;font-size:11px;">'
     h += f'<div style="display:flex;justify-content:space-between;"><span>承辦人：{row["申請人"]} ({row["提交時間"]})</span><span>專案執行長簽核：{rev_info}</span></div>'
     h += f'<div style="display:flex;justify-content:space-between;"><span>財務長簽核：{cfo_info}</span><span>財務簽核：_________</span></div></div></div>'
+    
     v = ""
     if str(row['影像Base64']) != "":
         imgs = str(row['影像Base64']).split('|')
         for i, img in enumerate(imgs):
             if i % 2 == 0: v += '<div style="width:700px;margin:auto;page-break-before:always;padding:20px;">'
+            if i == 0: v += '<b style="font-size:16px;">報帳憑證：</b><br><br>'
             v += f'<div style="height:480px;border-bottom:1px solid #ccc;margin-bottom:10px;"><img src="data:image/jpeg;base64,{img}" style="max-width:100%;max-height:100%;"></div>'
             if i % 2 == 1 or i == len(imgs)-1: v += '</div>'
     return h + v
@@ -168,7 +177,6 @@ if menu == "1. 填寫申請單":
     with st.form("apply_form"):
         c1, c2 = st.columns(2)
         with c1:
-            # --- 承辦人改為自動帶入當前登入者且禁用修改 ---
             app = st.text_input("承辦人 *", value=curr_name, disabled=True) 
             pn = st.text_input("專案名稱 *", value=ed_data["專案名稱"] if ed_data is not None else "")
             exe = st.selectbox("專案執行人 *", current_staff, index=current_staff.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in current_staff) else 0)
@@ -181,7 +189,7 @@ if menu == "1. 填寫申請單":
         pay = st.radio("付款方式 *", p_list, index=p_idx, horizontal=True)
         vdr, acc = st.text_input("廠商", value=ed_data["請款廠商"] if ed_data is not None else ""), st.text_input("帳戶", value=ed_data["匯款帳戶"] if ed_data is not None else "")
         desc = st.text_area("說明 *", value=ed_data["請款說明"] if ed_data is not None else "")
-        acc_f = st.file_uploader("上傳存摺", type=["jpg","png"]); ims_f = st.file_uploader("上傳憑證", type=["jpg","png"], accept_multiple_files=True)
+        acc_f = st.file_uploader("上傳存摺影本", type=["jpg","png"]); ims_f = st.file_uploader("上傳報帳憑證", type=["jpg","png"], accept_multiple_files=True)
         if st.form_submit_button("💾 儲存內容"):
             if not (app and pn and pi and amt > 0 and desc): st.error("❌ 必填未填齊！")
             else:
@@ -217,10 +225,13 @@ if menu == "1. 填寫申請單":
                 if cols[6].button("提交", key=f"s_{r['單號']}"):
                     idx = st.session_state.db[st.session_state.db["單號"]==r['單號']].index[0]
                     st.session_state.db.at[idx, "狀態"] = "待初審"; st.session_state.db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); save_data(st.session_state.db); st.rerun()
+            if cols[8].button("列印", key=f"p_{r['單號']}"):
+                js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
+                st.components.v1.html('<script>' + js_p + '</script>', height=0)
 
     if st.session_state.view_id:
         st.markdown(render_html(st.session_state.db[st.session_state.db["單號"]==st.session_state.view_id].iloc[0]), unsafe_allow_html=True)
-        if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()
+        if st.button("❌ 關閉預覽畫面"): st.session_state.view_id = None; st.rerun()
 
 elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核中心")
