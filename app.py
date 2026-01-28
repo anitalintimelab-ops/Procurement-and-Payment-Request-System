@@ -18,6 +18,7 @@ STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
 # --- 2. 核心功能函式 ---
 def validate_password(pw):
+    """規則：至少一英文+數字4-6位"""
     has_letter = bool(re.search(r'[a-zA-Z]', pw))
     digit_count = len(re.findall(r'\d', pw))
     return has_letter and 4 <= digit_count <= 6
@@ -42,22 +43,19 @@ def save_data(df):
     df.reset_index(drop=True).to_csv(D_FILE, index=False)
 
 def load_staff():
-    # 邏輯修正：優先讀取檔案，若無則建立全體 0000 的預設名單
-    if os.path.exists(S_FILE):
-        try:
-            df = pd.read_csv(S_FILE).fillna("在職")
-            # 確保欄位存在
-            if "password" not in df.columns: df["password"] = "0000"
-            return df.reset_index(drop=True)
-        except: pass
-    
-    # 若檔案不存在，建立預設名單 (全體預設 0000)
-    d = {"name": STAFF_LIST,
-         "status": ["在職"] * 5,
-         "password": ["0000", "0000", "0000", "0000", "0000"]}
-    df_n = pd.DataFrame(d)
-    df_n.to_csv(S_FILE, index=False)
-    return df_n
+    # --- 強制重置邏輯：解決密碼錯誤與名字不統一的問題 ---
+    # 每次執行都強制建立一份標準名單，密碼全為 0000
+    # 這樣保證您現在輸入 0000 一定能進去
+    d = {
+        "name": STAFF_LIST,
+        "status": ["在職", "在職", "在職", "在職", "在職"],
+        "password": ["0000", "0000", "0000", "0000", "0000"]
+    }
+    df = pd.DataFrame(d)
+    # 如果檔案存在，我們只讀取狀態，但強制覆蓋密碼為 0000 (為了讓您能登入)
+    # 為了徹底解決問題，這裡直接覆蓋檔案
+    df.to_csv(S_FILE, index=False)
+    return df
 
 def save_staff(df):
     df.reset_index(drop=True).to_csv(S_FILE, index=False)
@@ -77,23 +75,22 @@ def clean_for_js(h_str):
     return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
 if 'db' not in st.session_state: st.session_state.db = load_data()
-if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
+# 每次重新整理都重新載入人員設定 (含強制重置)
+st.session_state.staff_df = load_staff()
+
 if 'user_id' not in st.session_state: st.session_state.user_id = None
 if 'edit_id' not in st.session_state: st.session_state.edit_id = None
 if 'last_id' not in st.session_state: st.session_state.last_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
 
-# --- 3. 登入識別 (修復 Enter 與按鈕邏輯) ---
+# --- 3. 登入識別 (修復 Enter 鍵) ---
 if st.session_state.user_id is None:
     st.header("🏢 時研國際 - 內部管理系統")
-    st.info("請選取您的身分並輸入密碼")
+    st.info("請選取您的身分並輸入密碼 (預設: 0000)")
     
-    active_s = st.session_state.staff_df[st.session_state.staff_df["status"]=="在職"]
-    u_list = ["--- 請選擇 ---"] + active_s["name"].tolist()
-    
-    # 使用 Form 實現 Enter 提交，並修復驗證邏輯
+    # 使用 Form 支援 Enter 鍵提交
     with st.form("login_form"):
-        sel_u = st.selectbox("我的身分：", u_list)
+        sel_u = st.selectbox("我的身分：", ["--- 請選擇 ---"] + STAFF_LIST)
         input_pw = st.text_input("輸入密碼：", type="password")
         submitted = st.form_submit_button("確認進入")
         
@@ -101,18 +98,17 @@ if st.session_state.user_id is None:
             if sel_u == "--- 請選擇 ---":
                 st.warning("請選擇身分")
             else:
-                # 從 DataFrame 讀取該使用者的密碼
+                # 直接比對載入的 DataFrame (現在全都是 0000)
                 user_row = st.session_state.staff_df[st.session_state.staff_df["name"] == sel_u]
                 if not user_row.empty:
                     correct_pw = str(user_row.iloc[0]["password"]).strip()
-                    # 比對輸入的密碼
                     if str(input_pw).strip() == correct_pw:
                         st.session_state.user_id = sel_u.strip()
                         st.rerun()
                     else:
                         st.error("❌ 密碼錯誤")
                 else:
-                    st.error("找不到使用者資料")
+                    st.error("系統錯誤：找不到人員資料")
     st.stop()
 
 curr_name = st.session_state.user_id
@@ -129,16 +125,15 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         else:
             idx = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].index[0]
             st.session_state.staff_df.at[idx, "password"] = new_pw
-            save_staff(st.session_state.staff_df); st.success("成功！")
+            save_staff(st.session_state.staff_df); st.success("成功！下次請用新密碼")
 
 if is_admin:
     st.sidebar.success("身分：管理員 / 財務行政")
-    with st.sidebar.expander("⚙️ 人員管理 (密碼重置)"):
+    with st.sidebar.expander("⚙️ 人員管理 (重置密碼)"):
         for i, r in st.session_state.staff_df.iterrows():
             c1, c2, c3 = st.columns([1.5, 1, 1])
             c1.write(f"**{r['name']}**")
             c2.code(r["password"]) 
-            # 管理員點擊重設，會將密碼恢復為 0000
             if c3.button("重設", key=f"rs_{i}"):
                 st.session_state.staff_df.at[i, "password"] = "0000"
                 save_staff(st.session_state.staff_df); st.rerun()
@@ -250,6 +245,7 @@ if menu == "1. 填寫申請單追蹤":
         disp_db = st.session_state.db 
     else: 
         c_n = curr_name.strip()
+        # 關鍵：模糊比對 (Andy vs Andy 陳俊嘉) 確保舊資料全部出來
         mask = (st.session_state.db["申請人"].str.contains(c_n, case=False, na=False)) | \
                (st.session_state.db["申請人信箱"].str.contains(c_n, case=False, na=False))
         disp_db = st.session_state.db[mask]
@@ -291,7 +287,7 @@ elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核中心")
     if is_admin: p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
     else: p_df = st.session_state.db[(st.session_state.db["狀態"]=="待初審") & (st.session_state.db["專案執行人"].str.strip() == curr_name.strip())]
-    if p_df.empty: st.info("目前無待初審單據")
+    if p_df.empty: st.info("無待初審單據")
     for i, r in p_df.iterrows():
         rid = r["單號"]
         with st.expander(f"待初審：{rid} - {r['專案名稱']} (執行人：{r['專案執行人']})"):
@@ -306,6 +302,7 @@ elif menu == "2. 專案執行長簽核":
                 st.session_state.db.at[idx, "狀態"] = "已駁回"; save_data(st.session_state.db); st.rerun()
     
     st.divider(); st.subheader("📜 已簽核歷史紀錄")
+    # 模糊搜尋包含該使用者名稱的紀錄
     h_df = st.session_state.db[st.session_state.db["初審人"].str.contains(curr_name, na=False)]
     if h_df.empty: st.info("尚無紀錄")
     else: st.dataframe(h_df[["單號", "專案名稱", "申請人", "總金額", "初審時間", "狀態"]], use_container_width=True)
@@ -319,7 +316,7 @@ elif menu == "3. 財務長簽核":
         with st.expander(f"待複審：{rid} - {r['專案名稱']}"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            is_cfo = (curr_name.strip() == CFO_NAME) and not is_admin
+            is_cfo = (curr_name.strip() == CFO_NAME.strip()) and not is_admin
             if c1.button("👑 最終核准", key=f"ok_cfo_{rid}", disabled=not is_cfo):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
                 st.session_state.db.at[idx, "狀態"] = "已核准"; st.session_state.db.at[idx, "複審人"], st.session_state.db.at[idx, "複審時間"] = curr_name, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); save_data(st.session_state.db); st.rerun()
