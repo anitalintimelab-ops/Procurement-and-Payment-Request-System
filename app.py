@@ -5,18 +5,19 @@ import os
 import base64
 import re
 
-# --- 1. 系統環境與權限定義 ---
+# --- 1. 系統環境與全英文權限定義 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide")
 B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 
+# 角色權限群組 (全英文)
 ADMINS = ["Anita"]
-CFO_NAME = "Charles 張兆佑"
+CFO_NAME = "Charles"
+STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
 # --- 2. 核心功能函式 ---
 def validate_password(pw):
-    """規則：至少一英文+數字4-6位"""
     has_letter = bool(re.search(r'[a-zA-Z]', pw))
     digit_count = len(re.findall(r'\d', pw))
     return has_letter and 4 <= digit_count <= 6
@@ -31,7 +32,7 @@ def load_data():
             df = pd.read_csv(D_FILE).fillna("")
             for c in cols:
                 if c not in df.columns: df[c] = ""
-            # 強力清理空格，確保搜尋得到 Andy 的紀錄
+            # 強力救援：去除所有文字欄位的首尾空白
             df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
             return df[cols]
         except: pass
@@ -47,9 +48,9 @@ def load_staff():
             if "password" not in df.columns: df["password"] = "0000"
             return df.reset_index(drop=True)
         except: pass
-    # 預設名單，Andy 密碼為 a0000
-    d = {"name": ["Andy 陳俊嘉", "Charles 張兆佑", "Eason 何益賢", "Sunglin 蔡松霖", "Anita"],
-         "status": ["在職", "在職", "在職", "在職", "在職"],
+    # 預設名單 (Andy 密碼為 a0000)
+    d = {"name": STAFF_LIST,
+         "status": ["在職"] * 5,
          "password": ["a0000", "0000", "0000", "0000", "0000"]}
     df_n = pd.DataFrame(d)
     df_n.to_csv(S_FILE, index=False)
@@ -114,14 +115,13 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 
 if is_admin:
     st.sidebar.success("身分：管理員 / 財務行政")
-    with st.sidebar.expander("⚙️ 人員管理"):
+    with st.sidebar.expander("⚙️ 人員與密碼管理"):
         for i, r in st.session_state.staff_df.iterrows():
             c1, c2, c3 = st.columns([1.5, 1, 1])
             c1.write(f"**{r['name']}**")
             c2.code(r["password"]) 
             if c3.button("重設", key=f"rs_{i}"):
-                st.session_state.staff_df.at[i, "password"] = "0000"
-                save_staff(st.session_state.staff_df); st.rerun()
+                st.session_state.staff_df.at[i, "password"] = "0000"; save_staff(st.session_state.staff_df); st.rerun()
 
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None; st.rerun()
@@ -139,7 +139,7 @@ def render_html(row):
     h += f'<div style="display:flex;justify-content:space-between;align-items:center;"><div>{lg}</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
     h += f'<hr style="border:1px solid #000;margin:10px 0;"><h2 style="text-align:center;letter-spacing:10px;">{row["類型"]}</h2>'
     h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
-    h += f'<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td><td>&nbsp;{row["單號"]}</td><td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;蔡松霖</td></tr>'
+    h += f'<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td><td>&nbsp;{row["單號"]}</td><td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;{row["專案執行人"]}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="35">專案名稱</td><td>&nbsp;{row["專案名稱"]}</td><td bgcolor="#f2f2f2">專案編號</td><td>&nbsp;{row["專案編號"]}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="35">承辦人</td><td colspan="3">&nbsp;{row["申請人"]}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="35">廠商</td><td>&nbsp;{row["請款廠商"]}</td><td bgcolor="#f2f2f2">付款方式</td><td>&nbsp;{row["付款方式"]}</td></tr>'
@@ -171,15 +171,14 @@ if menu == "1. 填寫申請單追蹤":
     ed_data = None
     if st.session_state.edit_id:
         r_f = st.session_state.db[st.session_state.db["單號"]==st.session_state.edit_id]
-        if not r_f.empty: ed_data = r_f.iloc[0]; st.warning(f"📝 正在修改單號：{st.session_state.edit_id}")
+        if not r_f.empty: ed_data = r_f.iloc[0]; st.warning(f"📝 正在修改：{st.session_state.edit_id}")
     
-    current_staff = st.session_state.staff_df[st.session_state.staff_df["status"]=="在職"]["name"].tolist()
     with st.form("apply_form"):
         c1, c2 = st.columns(2)
         with c1:
             app = st.text_input("承辦人 *", value=curr_name, disabled=True) 
             pn = st.text_input("專案名稱 *", value=ed_data["專案名稱"] if ed_data is not None else "")
-            exe = st.selectbox("專案執行人 *", current_staff, index=current_staff.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in current_staff) else 0)
+            exe = st.selectbox("專案執行人 *", STAFF_LIST, index=STAFF_LIST.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in STAFF_LIST) else 0)
         with c2:
             pi = st.text_input("專案編號 *", value=ed_data["專案編號"] if ed_data is not None else "")
             amt = st.number_input("總金額 *", min_value=0, value=int(ed_data["總金額"]) if ed_data is not None else 0)
@@ -187,15 +186,14 @@ if menu == "1. 填寫申請單追蹤":
         pay = st.radio("付款方式 *", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], horizontal=True)
         vdr, acc = st.text_input("廠商", value=ed_data["請款廠商"] if ed_data is not None else ""), st.text_input("帳戶", value=ed_data["匯款帳戶"] if ed_data is not None else "")
         desc = st.text_area("說明 *", value=ed_data["請款說明"] if ed_data is not None else "")
-        acc_f = st.file_uploader("上傳存摺", type=["jpg","png"]); ims_f = st.file_uploader("上傳憑證", type=["jpg","png"], accept_multiple_files=True)
+        acc_f = st.file_uploader("存摺影本", type=["jpg","png"]); ims_f = st.file_uploader("報帳憑證", type=["jpg","png"], accept_multiple_files=True)
         
-        # --- 按鈕列優化：新增 線上預覽, 提交送審, 線上列印 ---
-        save_col, pre_col, sub_col, prt_col = st.columns([1, 1, 1, 1])
-        with save_col:
-            saved = st.form_submit_button("💾 儲存內容")
+        # 存檔後即時動作按鈕列
+        c_save, c_pre, c_sub, c_prt = st.columns(4)
+        do_save = c_save.form_submit_button("💾 儲存內容")
         
-        if saved:
-            if not (app and pn and pi and amt > 0 and desc): st.error("❌ 必填未填齊！")
+        if do_save:
+            if not (app and pn and pi and amt > 0 and desc): st.error("❌ 必填未齊！")
             else:
                 new_db = st.session_state.db.copy()
                 if st.session_state.edit_id:
@@ -205,8 +203,7 @@ if menu == "1. 填寫申請單追蹤":
                     new_db.at[idx,"申請人信箱"] = curr_name 
                     if acc_f: new_db.at[idx,"帳戶影像Base64"] = base64.b64encode(acc_f.getvalue()).decode()
                     if ims_f: new_db.at[idx,"影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in ims_f])
-                    st.session_state.last_id = st.session_state.edit_id
-                    st.session_state.edit_id = None
+                    st.session_state.last_id = st.session_state.edit_id; st.session_state.edit_id = None
                 else:
                     tid = datetime.date.today().strftime('%Y%m%d') + "-" + f"{len(new_db)+1:02d}"
                     a_b = base64.b64encode(acc_f.getvalue()).decode() if acc_f else ""
@@ -216,73 +213,56 @@ if menu == "1. 填寫申請單追蹤":
                     st.session_state.last_id = tid
                 st.session_state.db = new_db; save_data(new_db); st.rerun()
 
-    # 在表單外顯示最近儲存後的即時功能按鈕
     if st.session_state.last_id:
-        st.info(f"📍 目前編輯/儲存案件：{st.session_state.last_id}")
+        st.info(f"📍 目前處理案件：{st.session_state.last_id}")
         l_rec = st.session_state.db[st.session_state.db["單號"]==st.session_state.last_id].iloc[0]
-        c_p, c_s, c_i, c_n = st.columns(4)
-        if c_p.button("🔍 線上預覽", key="btn_pre"): st.session_state.view_id = st.session_state.last_id; st.rerun()
-        if c_s.button("🚀 提交送審", key="btn_sub"):
-            idx_s = st.session_state.db[st.session_state.db["單號"]==st.session_state.last_id].index[0]
-            st.session_state.db.at[idx_s, "狀態"] = "待初審"
-            st.session_state.db.at[idx_s, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-            save_data(st.session_state.db); st.success("已提交送審！"); st.session_state.last_id = None; st.rerun()
-        if c_i.button("🖨️ 線上列印", key="btn_prt"):
+        c1, c2, c3, c4 = st.columns(4)
+        if c1.button("🔍 線上預覽", key="v_fast"): st.session_state.view_id = st.session_state.last_id; st.rerun()
+        if c2.button("🚀 提交送審", key="s_fast"):
+            idx = st.session_state.db[st.session_state.db["單號"]==st.session_state.last_id].index[0]
+            st.session_state.db.at[idx, "狀態"] = "待初審"; st.session_state.db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); save_data(st.session_state.db); st.success("已提交！"); st.session_state.last_id = None; st.rerun()
+        if c3.button("🖨️ 線上列印", key="p_fast"):
             js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(l_rec)) + "');w.print();w.close();"
             st.components.v1.html('<script>' + js_p + '</script>', height=0)
-        if c_n.button("🆕 填寫下一筆", key="btn_next"): st.session_state.last_id = None; st.rerun()
+        if c4.button("🆕 填下一筆", key="n_fast"): st.session_state.last_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
-    # --- 關鍵：強力搜尋邏輯，確保紀錄不消失 ---
+    # --- 關鍵紀錄找回過濾 ---
     if is_admin: 
         disp_db = st.session_state.db 
     else: 
         c_n = curr_name.strip()
-        # 強力搜尋：姓名或信箱符合就顯示，並修剪空格
-        mask = (st.session_state.db["申請人"].str.strip() == c_n) | (st.session_state.db["申請人信箱"].str.strip() == c_n)
+        # 同時比對英文名、舊中文名(Andy 陳俊嘉)、或信箱，只要符合就顯示
+        mask = (st.session_state.db["申請人"].str.contains(c_n, case=False, na=False)) | \
+               (st.session_state.db["申請人信箱"].str.contains(c_n, case=False, na=False))
         disp_db = st.session_state.db[mask]
     
     if disp_db.empty: st.info("目前尚無紀錄")
     else:
-        # 表頭
-        h_cols = st.columns([1.2, 1.8, 1, 1.5, 1.2, 0.6, 0.6, 0.6, 0.6, 0.6])
-        h_cols[0].write("**單號**"); h_cols[1].write("**專案名稱**"); h_cols[2].write("**申請人**"); h_cols[3].write("**申請金額**"); h_cols[4].write("**狀態**")
-        
+        h_cols = st.columns([1.2, 1.8, 1, 1.5, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
+        h_cols[0].write("**單號**"); h_cols[1].write("**專案名稱**"); h_cols[2].write("**申請人**"); h_cols[3].write("**金額**"); h_cols[4].write("**狀態**")
         for i, r in disp_db.iterrows():
-            rid = r["單號"]; stt = r["狀態"]; color = "green" if stt == "已核准" else "blue" if stt == "待複審" else "orange" if stt == "待初審" else "red" if stt == "已駁回" else "gray" if stt == "已刪除" else "black"
-            cols = st.columns([1.2, 1.8, 1, 1.5, 1.2, 0.6, 0.6, 0.6, 0.6, 0.6])
+            rid, stt = r["單號"], r["狀態"]; color = "green" if stt == "已核准" else "blue" if stt == "待複審" else "orange" if stt == "待初審" else "red" if stt == "已駁回" else "gray" if stt == "已刪除" else "black"
+            cols = st.columns([1.2, 1.8, 1, 1.5, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
             cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(r["申請人"])
-            
             fee_tag = " :red[(已扣30)]" if r["付款方式"] == "匯款(扣30手續費)" else ""
-            cols[3].markdown(f"${float(r['總金額']):,.0f}{fee_tag}")
-            cols[4].markdown(f":{color}[{stt}]")
+            cols[3].markdown(f"${float(r['總金額']):,.0f}{fee_tag}"); cols[4].markdown(f":{color}[{stt}]")
             
-            # --- 權限鎖定邏輯 ---
+            # 按鈕權限與順序：修改, 提交, 預覽, 列印, 刪除
             is_locked = (stt not in ["已儲存", "已駁回"])
-            
-            # 1. 修改
             if cols[5].button("修改", key=f"e_{rid}", disabled=is_locked): st.session_state.edit_id = rid; st.rerun()
-            
-            # 2. 提交
             if cols[6].button("提交", key=f"s_{rid}", disabled=is_locked):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
                 st.session_state.db.at[idx, "狀態"] = "待初審"; st.session_state.db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); save_data(st.session_state.db); st.rerun()
-            
-            # 3. 預覽
             if cols[7].button("預覽", key=f"v_{rid}"): st.session_state.view_id = rid; st.rerun()
-            
-            # 4. 列印
             if cols[8].button("列印", key=f"p_{rid}"):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
                 st.components.v1.html('<script>' + js_p + '</script>', height=0)
-
-            # 5. 刪除 (帶原因)
-            with cols[9]:
+            with cols[9]: # 刪除 (彈出視窗填原因)
                 with st.popover("刪除", disabled=is_locked):
                     reason = st.text_input("刪除原因", key=f"re_{rid}")
-                    if st.button("確認刪除", key=f"conf_{rid}"):
-                        if not reason: st.error("原因必填")
-                        else:
+                    if st.button("確認", key=f"conf_{rid}"):
+                        if reason:
                             idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
                             st.session_state.db.at[idx, "狀態"] = "已刪除"; st.session_state.db.at[idx, "刪除人"] = curr_name; st.session_state.db.at[idx, "刪除時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); st.session_state.db.at[idx, "刪除原因"] = reason; save_data(st.session_state.db); st.rerun()
 
@@ -294,31 +274,31 @@ elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核中心")
     if is_admin: p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
     else: p_df = st.session_state.db[(st.session_state.db["狀態"]=="待初審") & (st.session_state.db["專案執行人"].str.strip() == curr_name.strip())]
-    if p_df.empty: st.info("無待初審單據")
+    if p_df.empty: st.info("無待處理單據")
     for i, r in p_df.iterrows():
         rid = r["單號"]
         with st.expander(f"待初審：{rid} - {r['專案名稱']} (執行人：{r['專案執行人']})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             can_sign = (curr_name.strip() == r["專案執行人"].strip()) and not is_admin
-            if c1.button("✅ 核准", key=f"ok_ceo_{rid}", disabled=not can_sign):
+            if c1.button("✅ 執行長核准", key=f"ok_ceo_{rid}", disabled=not can_sign):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
                 st.session_state.db.at[idx, "狀態"] = "待複審"; st.session_state.db.at[idx, "初審人"], st.session_state.db.at[idx, "初審時間"] = curr_name, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); save_data(st.session_state.db); st.rerun()
-            if c2.button("❌ 駁回", key=f"no_ceo_{rid}", disabled=not can_sign):
+            if c2.button("❌ 執行長駁回", key=f"no_ceo_{rid}", disabled=not can_sign):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
                 st.session_state.db.at[idx, "狀態"] = "已駁回"; save_data(st.session_state.db); st.rerun()
 
 elif menu == "3. 財務長簽核":
     st.header("🏁 財務長簽核中心")
     p_df = st.session_state.db[st.session_state.db["狀態"]=="待複審"]
-    if p_df.empty: st.info("目前無待複審單據")
+    if p_df.empty: st.info("無待複審單據")
     for i, r in p_df.iterrows():
         rid = r["單號"]
         with st.expander(f"待複審：{rid} - {r['專案名稱']}"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            is_cfo = (curr_name.strip() == CFO_NAME.strip())
-            if c1.button("👑 最終核准", key=f"ok_cfo_{rid}", disabled=not is_cfo):
+            is_cfo = (curr_name.strip() == CFO_NAME.strip()) and not is_admin
+            if c1.button("👑 財務長最終核准", key=f"ok_cfo_{rid}", disabled=not is_cfo):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
                 st.session_state.db.at[idx, "狀態"] = "已核准"; st.session_state.db.at[idx, "複審人"], st.session_state.db.at[idx, "複審時間"] = curr_name, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); save_data(st.session_state.db); st.rerun()
             if c2.button("❌ 財務長駁回", key=f"no_cfo_{rid}", disabled=not is_cfo):
