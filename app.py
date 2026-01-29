@@ -22,19 +22,19 @@ def validate_password(pw):
     digit_count = len(re.findall(r'\d', pw))
     return has_letter and 4 <= digit_count <= 6
 
-# [關鍵修正] 萬用讀取函式：解決 Excel 存檔造成的亂碼或讀取錯誤
+# [關鍵修正] 萬用讀取：解決 Excel 存檔後資料消失或亂碼問題
 def read_csv_robust(filepath):
     if not os.path.exists(filepath): return None
     # 嘗試多種編碼，確保資料一定讀得出來
     encodings = ['utf-8-sig', 'utf-8', 'cp950', 'big5'] 
     for enc in encodings:
         try:
-            # 強制讀取為字串，避免 0000 變 0
+            # dtype=str 強制讀取為文字，避免 0000 變成 0
             df = pd.read_csv(filepath, encoding=enc, dtype=str).fillna("")
             return df
         except:
             continue
-    return pd.DataFrame() # 真的讀不出來回傳空表
+    return pd.DataFrame()
 
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "專案執行人", "專案名稱", "專案編號", 
@@ -49,17 +49,16 @@ def load_data():
     # 補齊欄位
     for c in cols:
         if c not in df.columns: df[c] = ""
-    
+            
     # 清理資料空格
     df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
     return df[cols]
 
 def save_data(df):
-    # 存檔強制 utf-8-sig (Excel 友善格式)
+    # 存檔強制 utf-8-sig，避免 Excel 開啟亂碼
     df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
 
 def load_staff():
-    # 預設名單
     default_df = pd.DataFrame({
         "name": STAFF_LIST,
         "status": ["在職"] * 5,
@@ -68,10 +67,12 @@ def load_staff():
 
     df = read_csv_robust(S_FILE)
     if df is None or df.empty or "password" not in df.columns:
-        # 若檔案損壞或遺失，重建預設檔
         default_df.to_csv(S_FILE, index=False, encoding='utf-8-sig')
         return default_df
     
+    # 確保資料乾淨
+    df["name"] = df["name"].str.strip()
+    df["password"] = df["password"].str.strip()
     return df
 
 def save_staff(df):
@@ -105,15 +106,9 @@ if st.session_state.user_id is None:
     st.header("🏢 時研國際 - 內部管理系統")
     st.info("請選取您的身分並輸入密碼")
     
-    # 重新讀取確保最新
+    # 重新載入確保最新
     staff_df = load_staff()
-    # 過濾出在職人員
-    active_staff = staff_df[staff_df["status"] == "在職"]["name"].tolist()
-    # 確保 STAFF_LIST 裡的人一定在選單中 (即使 CSV 被改壞)
-    for s in STAFF_LIST:
-        if s not in active_staff: active_staff.append(s)
-        
-    u_list = ["--- 請選擇 ---"] + active_staff
+    u_list = ["--- 請選擇 ---"] + staff_df["name"].tolist()
     
     with st.form("login_form"):
         sel_u = st.selectbox("我的身分：", u_list)
@@ -125,23 +120,22 @@ if st.session_state.user_id is None:
                 st.warning("請選擇身分")
             else:
                 user_row = staff_df[staff_df["name"] == sel_u]
-                
-                # 預設密碼 (若找不到人)
-                correct_pw = "0000"
                 if not user_row.empty:
-                    # [關鍵] 確保密碼是字串，且去除可能的小數點 (如 0.0 -> 0)
-                    raw_pw = str(user_row.iloc[0]["password"]).strip()
-                    if raw_pw.endswith(".0"): raw_pw = raw_pw[:-2] # 修正 Excel 數字轉字串問題
-                    correct_pw = raw_pw
-                
-                # 比對
-                in_pw = str(input_pw).strip()
-                if in_pw == correct_pw:
-                    st.session_state.user_id = sel_u
-                    st.session_state.staff_df = staff_df # 更新 session
-                    st.rerun()
+                    # 強制轉字串比對，並處理 Excel 可能產生的 .0
+                    stored_pw = str(user_row.iloc[0]["password"]).strip()
+                    if stored_pw.endswith(".0"): stored_pw = stored_pw[:-2]
+                    
+                    input_val = str(input_pw).strip()
+                    
+                    # 萬用後門：若檔案壞了導致無法登入，允許 0000 救援
+                    if input_val == stored_pw or (input_val == "0000" and stored_pw in ["nan", ""]):
+                        st.session_state.user_id = sel_u
+                        st.session_state.staff_df = staff_df
+                        st.rerun()
+                    else:
+                        st.error("❌ 密碼錯誤")
                 else:
-                    st.error("❌ 密碼錯誤")
+                    st.error("找不到使用者資料")
     st.stop()
 
 curr_name = st.session_state.user_id
@@ -157,17 +151,11 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         elif not validate_password(new_pw): st.error("規則：至少一英文+數字4-6位")
         else:
             staff_df = load_staff()
-            # 若人名不在檔案中，新增之
-            if curr_name not in staff_df["name"].values:
-                new_row = pd.DataFrame({"name":[curr_name], "status":["在職"], "password":[new_pw]})
-                staff_df = pd.concat([staff_df, new_row], ignore_index=True)
-            else:
-                idx = staff_df[staff_df["name"] == curr_name].index[0]
-                staff_df.at[idx, "password"] = str(new_pw)
-            
+            idx = staff_df[staff_df["name"] == curr_name].index[0]
+            staff_df.at[idx, "password"] = str(new_pw)
             save_staff(staff_df)
             st.session_state.staff_df = staff_df
-            st.success("成功！下次請用新密碼")
+            st.success("成功！")
 
 if is_admin:
     st.sidebar.success("身分：管理員 / 財務行政")
@@ -188,7 +176,7 @@ if st.sidebar.button("🚪 登出系統"):
 
 menu = st.sidebar.radio("系統導覽", ["1. 填寫申請單追蹤", "2. 專案執行長簽核", "3. 財務長簽核"])
 
-# --- 5. HTML 渲染 ---
+# --- 5. 憑證渲染 HTML ---
 def render_html(row):
     try: amt_val = float(row['總金額'])
     except: amt_val = 0
@@ -291,8 +279,9 @@ if menu == "1. 填寫申請單追蹤":
         if c4.button("🆕 填下一筆", key="n_fast"): st.session_state.last_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
+    # --- 權限與資料過濾 ---
     if is_admin: 
-        disp_db = st.session_state.db 
+        disp_db = st.session_state.db # Admin 看所有
     else: 
         c_n = curr_name.strip()
         mask = (st.session_state.db["申請人"].str.contains(c_n, case=False, na=False)) | \
@@ -304,19 +293,28 @@ if menu == "1. 填寫申請單追蹤":
         h_cols = st.columns([1.2, 1.8, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
         h_cols[0].write("**單號**"); h_cols[1].write("**專案名稱**"); h_cols[2].write("**申請人**"); h_cols[3].write("**金額**"); h_cols[4].write("**狀態**")
         for i, r in disp_db.iterrows():
-            rid = r["單號"]; stt = r["狀態"]; 
-            color = "blue" if stt == "已儲存" else "orange" if stt in ["待初審", "待複審"] else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray" if stt == "已刪除" else "gray"
+            rid = r["單號"]; stt = r["狀態"]; owner = r["申請人"]
+            
+            color = "blue" if stt in ["已儲存", "草稿"] else "orange" if stt in ["待初審", "待複審"] else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
             cols = st.columns([1.2, 1.8, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
-            cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(r["申請人"])
+            cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(owner)
             fee_tag = " :red[(已扣30)]" if r["付款方式"] == "匯款(扣30手續費)" else ""
             try: f_amt = float(r['總金額'])
             except: f_amt = 0
             cols[3].markdown(f"${f_amt:,.0f}{fee_tag}"); cols[4].markdown(f":{color}[{stt}]")
             
-            # [關鍵修正] 加入 "草稿" 以相容舊資料，確保舊草稿也能修改
-            is_locked = (stt not in ["已儲存", "草稿", "已駁回"])
-            if cols[5].button("修改", key=f"e_{rid}", disabled=is_locked): st.session_state.edit_id = rid; st.rerun()
-            if cols[6].button("提交", key=f"s_{rid}", disabled=is_locked):
+            # [關鍵權限邏輯]
+            # 1. 只有狀態是「草稿/已儲存/已駁回」才可編輯
+            # 2. 只有「本人」才能編輯自己的單 (Anita 只能看別人的，不能改)
+            is_own_record = (curr_name.strip() == str(owner).strip())
+            is_editable_status = (stt in ["已儲存", "草稿", "已駁回"])
+            
+            # 如果是本人且狀態允許 -> 開放修改/刪除/提交
+            # 如果不是本人 (就算 Anita) -> 鎖定
+            enable_action = is_own_record and is_editable_status
+            
+            if cols[5].button("修改", key=f"e_{rid}", disabled=not enable_action): st.session_state.edit_id = rid; st.rerun()
+            if cols[6].button("提交", key=f"s_{rid}", disabled=not enable_action):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
                 st.session_state.db.at[idx, "狀態"] = "待初審"; st.session_state.db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); save_data(st.session_state.db); st.rerun()
             if cols[7].button("預覽", key=f"v_{rid}"): st.session_state.view_id = rid; st.rerun()
@@ -324,7 +322,7 @@ if menu == "1. 填寫申請單追蹤":
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
                 st.components.v1.html('<script>' + js_p + '</script>', height=0)
             with cols[9]:
-                with st.popover("刪除", disabled=is_locked):
+                with st.popover("刪除", disabled=not enable_action):
                     reason = st.text_input("刪除原因", key=f"re_{rid}")
                     if st.button("確認", key=f"conf_{rid}"):
                         if reason:
