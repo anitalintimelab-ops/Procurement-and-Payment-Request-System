@@ -11,55 +11,59 @@ B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 
-# 核心角色
+# 定義權限角色
 ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
 # --- 2. 核心功能函式 ---
 def validate_password(pw):
-    """規則：至少一英文+數字4-6位"""
+    # 密碼規則：至少一英文+數字4-6位
     has_letter = bool(re.search(r'[a-zA-Z]', pw))
     digit_count = len(re.findall(r'\d', pw))
     return has_letter and 4 <= digit_count <= 6
 
 def load_data():
+    # 定義完整欄位
     cols = ["單號", "日期", "類型", "申請人", "專案執行人", "專案名稱", "專案編號", 
             "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", 
             "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱",
             "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因"]
+    
     if os.path.exists(D_FILE):
         try:
+            # 讀取 CSV，不做任何過濾，確保資料完整載入
             df = pd.read_csv(D_FILE).fillna("")
+            # 補齊可能缺失的欄位 (避免舊資料欄位不足報錯)
             for c in cols:
                 if c not in df.columns: df[c] = ""
-            # 強力清理所有文字欄位的空格，確保舊資料能被搜尋到
-            df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+            # 將所有內容轉為字串並去空白，確保搜尋比對無誤
+            df = df.astype(str).apply(lambda x: x.str.strip())
             return df[cols]
-        except: pass
+        except: 
+            pass # 若讀取失敗，回傳空表
     return pd.DataFrame(columns=cols)
 
 def save_data(df):
     df.reset_index(drop=True).to_csv(D_FILE, index=False)
 
 def load_staff():
-    # 若檔案不存在，建立預設全體 0000 名單
-    if not os.path.exists(S_FILE):
-        d = {"name": STAFF_LIST,
-             "status": ["在職"] * 5,
-             "password": ["0000"] * 5} # 全部預設 0000
-        df = pd.DataFrame(d)
-        df.to_csv(S_FILE, index=False)
-        return df
+    # 若檔案存在，直接讀取使用者的設定 (包含已修改的密碼)
+    if os.path.exists(S_FILE):
+        try:
+            df = pd.read_csv(S_FILE).fillna("在職")
+            if "password" not in df.columns: 
+                df["password"] = "0000" # 若舊檔沒密碼欄位則補上
+            return df.reset_index(drop=True)
+        except: pass
     
-    try:
-        df = pd.read_csv(S_FILE).fillna("在職")
-        # 確保密碼欄位存在且格式正確
-        if "password" not in df.columns: df["password"] = "0000"
-        return df.reset_index(drop=True)
-    except:
-        # 若讀取失敗，回傳預設值
-        return pd.DataFrame({"name": STAFF_LIST, "status": ["在職"]*5, "password": ["0000"]*5})
+    # 若檔案不存在 (第一次執行)，建立預設名單，密碼全為 0000
+    d = {"name": STAFF_LIST,
+         "status": ["在職"] * 5,
+         "password": ["0000"] * 5}
+    df_n = pd.DataFrame(d)
+    df_n.to_csv(S_FILE, index=False)
+    return df_n
 
 def save_staff(df):
     df.reset_index(drop=True).to_csv(S_FILE, index=False)
@@ -78,6 +82,7 @@ def get_b64_logo():
 def clean_for_js(h_str):
     return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
+# 初始化 Session State
 if 'db' not in st.session_state: st.session_state.db = load_data()
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 if 'user_id' not in st.session_state: st.session_state.user_id = None
@@ -88,7 +93,7 @@ if 'view_id' not in st.session_state: st.session_state.view_id = None
 # --- 3. 登入識別 (Enter 鍵支援) ---
 if st.session_state.user_id is None:
     st.header("🏢 時研國際 - 內部管理系統")
-    st.info("請選取您的身分並輸入密碼")
+    st.info("請選取您的身分並輸入密碼 (預設 0000)")
     
     active_s = st.session_state.staff_df[st.session_state.staff_df["status"]=="在職"]
     u_list = ["--- 請選擇 ---"] + active_s["name"].tolist()
@@ -102,9 +107,9 @@ if st.session_state.user_id is None:
             if sel_u == "--- 請選擇 ---":
                 st.warning("請選擇身分")
             else:
+                # 從載入的 staff_df 比對密碼
                 user_row = st.session_state.staff_df[st.session_state.staff_df["name"] == sel_u]
                 if not user_row.empty:
-                    # 比對密碼 (字串去空白)
                     correct_pw = str(user_row.iloc[0]["password"]).strip()
                     if str(input_pw).strip() == correct_pw:
                         st.session_state.user_id = sel_u.strip()
@@ -112,7 +117,7 @@ if st.session_state.user_id is None:
                     else:
                         st.error("❌ 密碼錯誤")
                 else:
-                    st.error("找不到使用者資料")
+                    st.error("找不到此使用者資料")
     st.stop()
 
 curr_name = st.session_state.user_id
@@ -129,7 +134,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         else:
             idx = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].index[0]
             st.session_state.staff_df.at[idx, "password"] = new_pw
-            save_staff(st.session_state.staff_df); st.success("成功！")
+            save_staff(st.session_state.staff_df); st.success("密碼已更新，請記住新密碼！")
 
 if is_admin:
     st.sidebar.success("身分：管理員 / 財務行政")
@@ -149,7 +154,13 @@ menu = st.sidebar.radio("系統導覽", ["1. 填寫申請單追蹤", "2. 專案�
 
 # --- 5. 憑證渲染 HTML ---
 def render_html(row):
-    amt = float(row['總金額']); fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0; act = amt - fee
+    try:
+        amt_v = float(row['總金額'])
+    except:
+        amt_v = 0
+    fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0
+    act = amt_v - fee
+    
     b64 = get_b64_logo(); lg = '<h3>Time Lab</h3>'
     if b64: lg = f'<img src="data:image/jpeg;base64,{b64}" style="height:60px;">'
     rev_info = f"{row['初審人']} ({row['初審時間']})" if row['初審時間'] else "_________"
@@ -164,7 +175,7 @@ def render_html(row):
     h += f'<tr><td bgcolor="#f2f2f2" height="35">廠商</td><td>&nbsp;{row["請款廠商"]}</td><td bgcolor="#f2f2f2">付款方式</td><td>&nbsp;{row["付款方式"]}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="35">幣別</td><td>&nbsp;{row["幣別"]}</td><td bgcolor="#f2f2f2">匯款帳戶</td><td>&nbsp;{row["匯款帳戶"]}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="80" valign="top">說明</td><td colspan="3" valign="top" style="padding:10px;">{row["請款說明"]}</td></tr>'
-    h += f'<tr><td colspan="3" align="right">請款金額&nbsp;</td><td align="right">{amt:,.0f}&nbsp;</td></tr>'
+    h += f'<tr><td colspan="3" align="right">請款金額&nbsp;</td><td align="right">{amt_v:,.0f}&nbsp;</td></tr>'
     h += f'<tr><td colspan="3" align="right">提列手續費&nbsp;</td><td align="right">{fee}&nbsp;</td></tr>'
     h += f'<tr style="font-weight:bold;"><td colspan="3" align="right" height="40" bgcolor="#eee">實際請款&nbsp;</td><td align="right" bgcolor="#eee">{act:,.0f}&nbsp;</td></tr></table>'
     if str(row['帳戶影像Base64']) != "":
@@ -200,7 +211,10 @@ if menu == "1. 填寫申請單追蹤":
             exe = st.selectbox("專案執行人 *", STAFF_LIST, index=STAFF_LIST.index(ed_data["專案執行人"]) if (ed_data is not None and ed_data["專案執行人"] in STAFF_LIST) else 0)
         with c2:
             pi = st.text_input("專案編號 *", value=ed_data["專案編號"] if ed_data is not None else "")
-            amt = st.number_input("總金額 *", min_value=0, value=int(ed_data["總金額"]) if ed_data is not None else 0)
+            try:
+                val_amt = int(float(ed_data["總金額"])) if ed_data is not None and ed_data["總金額"]!="" else 0
+            except: val_amt = 0
+            amt = st.number_input("總金額 *", min_value=0, value=val_amt)
             tp = st.selectbox("類型 *", ["請款單", "採購單"], index=0 if (ed_data is None or ed_data["類型"]=="請款單") else 1)
         pay = st.radio("付款方式 *", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], horizontal=True)
         vdr, acc = st.text_input("廠商", value=ed_data["請款廠商"] if ed_data is not None else ""), st.text_input("帳戶", value=ed_data["匯款帳戶"] if ed_data is not None else "")
@@ -263,8 +277,12 @@ if menu == "1. 填寫申請單追蹤":
             color = "blue" if stt == "已儲存" else "orange" if stt in ["待初審", "待複審"] else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray" if stt == "已刪除" else "gray"
             cols = st.columns([1.2, 1.8, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
             cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(r["申請人"])
+            
+            try:
+                f_amt = float(r['總金額'])
+            except: f_amt = 0
             fee_tag = " :red[(已扣30)]" if r["付款方式"] == "匯款(扣30手續費)" else ""
-            cols[3].markdown(f"${float(r['總金額']):,.0f}{fee_tag}"); cols[4].markdown(f":{color}[{stt}]")
+            cols[3].markdown(f"${f_amt:,.0f}{fee_tag}"); cols[4].markdown(f":{color}[{stt}]")
             
             is_locked = (stt not in ["已儲存", "已駁回"])
             if cols[5].button("修改", key=f"e_{rid}", disabled=is_locked): st.session_state.edit_id = rid; st.rerun()
