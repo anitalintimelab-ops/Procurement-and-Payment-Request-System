@@ -11,14 +11,14 @@ B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 
-# 定義核心角色
+# 核心角色
 ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
 # --- 2. 核心功能函式 ---
 def validate_password(pw):
-    # 密碼規則：至少一英文+數字4-6位
+    # 密碼規則
     has_letter = bool(re.search(r'[a-zA-Z]', pw))
     digit_count = len(re.findall(r'\d', pw))
     return has_letter and 4 <= digit_count <= 6
@@ -31,11 +31,12 @@ def load_data():
     
     if os.path.exists(D_FILE):
         try:
-            # [關鍵修正] 使用 utf-8-sig 讀取，解決 Excel 存檔後的編碼問題
-            df = pd.read_csv(D_FILE, encoding='utf-8-sig').fillna("")
+            # [關鍵修正] dtype=str 強制所有資料讀取為文字，避免數字 0000 變成 0
+            # [關鍵修正] encoding='utf-8-sig' 解決 Excel 中文編碼問題
+            df = pd.read_csv(D_FILE, dtype=str, encoding='utf-8-sig').fillna("")
         except:
             try:
-                df = pd.read_csv(D_FILE).fillna("") # 嘗試預設編碼
+                df = pd.read_csv(D_FILE, dtype=str).fillna("") # 嘗試預設編碼
             except:
                 return pd.DataFrame(columns=cols)
         
@@ -43,42 +44,44 @@ def load_data():
         for c in cols:
             if c not in df.columns: df[c] = ""
             
-        # [關鍵修正] 強力轉型為字串並去除空白，確保舊資料能被搜尋
-        df = df.astype(str).apply(lambda x: x.str.strip())
+        # 清理空格
+        df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
         return df[cols]
         
     return pd.DataFrame(columns=cols)
 
 def save_data(df):
-    # [關鍵修正] 存檔時強制 utf-8-sig，保護中文不亂碼
+    # 存檔時強制 utf-8-sig
     df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
 
 def load_staff():
-    # 預設名單結構
+    # 預設名單
     default_df = pd.DataFrame({
         "name": STAFF_LIST,
         "status": ["在職"] * 5,
-        "password": ["0000"] * 5
+        "password": ["0000"] * 5 # 預設密碼字串
     })
 
     if os.path.exists(S_FILE):
         try:
-            # [關鍵修正] 讀取人員檔，並強制將密碼轉為字串 (避免 0000 變成 0)
-            df = pd.read_csv(S_FILE, encoding='utf-8-sig').fillna("在職")
-            df["password"] = df["password"].astype(str).str.strip() # 強制轉字串
+            # [關鍵修正] dtype=str 非常重要，確保 0000 被讀取為字串 "0000" 而非數字 0
+            df = pd.read_csv(S_FILE, dtype=str, encoding='utf-8-sig').fillna("在職")
             
-            # 如果發現名字完全對不上(例如舊檔是中文)，合併修正
-            if not set(STAFF_LIST).issubset(set(df["name"].unique())):
-                # 若名單不符，優先使用預設名單，但保留舊密碼(若有的話)
-                return default_df 
-                
+            # 確保欄位存在
+            if "password" not in df.columns: 
+                df["password"] = "0000"
+            
+            # 確保欄位資料乾淨
+            df["name"] = df["name"].str.strip()
+            df["password"] = df["password"].str.strip()
+            
             return df
         except:
-            return default_df # 讀取失敗就回傳預設
-    else:
-        # 檔案不存在，建立預設檔
-        default_df.to_csv(S_FILE, index=False, encoding='utf-8-sig')
-        return default_df
+            return default_df
+    
+    # 若檔案不存在，建立預設檔
+    default_df.to_csv(S_FILE, index=False, encoding='utf-8-sig')
+    return default_df
 
 def save_staff(df):
     df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
@@ -99,20 +102,21 @@ def clean_for_js(h_str):
 
 # 初始化 Session
 if 'db' not in st.session_state: st.session_state.db = load_data()
-# 每次執行都重新讀取人員，確保密碼狀態最新
-st.session_state.staff_df = load_staff()
+if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 
 if 'user_id' not in st.session_state: st.session_state.user_id = None
 if 'edit_id' not in st.session_state: st.session_state.edit_id = None
 if 'last_id' not in st.session_state: st.session_state.last_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
 
-# --- 3. 登入識別 (修復密碼判定) ---
+# --- 3. 登入識別 (修復型別誤判) ---
 if st.session_state.user_id is None:
     st.header("🏢 時研國際 - 內部管理系統")
     st.info("請選取您的身分並輸入密碼")
     
-    u_list = ["--- 請選擇 ---"] + STAFF_LIST
+    # 這裡重新讀取一次最新的 staff_df 以防萬一
+    staff_df = load_staff()
+    u_list = ["--- 請選擇 ---"] + staff_df["name"].tolist()
     
     with st.form("login_form"):
         sel_u = st.selectbox("我的身分：", u_list)
@@ -123,26 +127,23 @@ if st.session_state.user_id is None:
             if sel_u == "--- 請選擇 ---":
                 st.warning("請選擇身分")
             else:
-                # 尋找該使用者的資料
-                user_row = st.session_state.staff_df[st.session_state.staff_df["name"] == sel_u]
+                user_row = staff_df[staff_df["name"] == sel_u]
                 
                 if not user_row.empty:
-                    # [關鍵修正] 確保兩邊都是乾淨的字串進行比對
+                    # [關鍵] 強制轉字串比對，解決 0000 != 0 的問題
                     stored_pw = str(user_row.iloc[0]["password"]).strip()
                     input_val = str(input_pw).strip()
                     
-                    if input_val == stored_pw:
+                    # 萬用後門：如果檔案壞了，暫時允許 0000 登入，方便您進去重設
+                    if input_val == stored_pw or (input_val == "0000" and stored_pw == "nan"):
                         st.session_state.user_id = sel_u
+                        # 登入成功後重新整理 staff session
+                        st.session_state.staff_df = staff_df
                         st.rerun()
                     else:
-                        st.error("❌ 密碼錯誤")
+                        st.error(f"❌ 密碼錯誤") 
                 else:
-                    # 如果 CSV 裡找不到這個人 (例如剛改名)，預設允許 0000 登入以修復
-                    if str(input_pw).strip() == "0000":
-                        st.session_state.user_id = sel_u
-                        st.rerun()
-                    else:
-                        st.error("❌ 找不到使用者設定，請嘗試輸入 0000")
+                    st.error("找不到使用者資料，請聯繫管理員重建檔案")
     st.stop()
 
 curr_name = st.session_state.user_id
@@ -157,26 +158,28 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         if new_pw != confirm_pw: st.error("兩次輸入不符")
         elif not validate_password(new_pw): st.error("規則：至少一英文+數字4-6位")
         else:
-            # 檢查使用者是否存在，不存在則新增
-            if curr_name in st.session_state.staff_df["name"].values:
-                idx = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].index[0]
-                st.session_state.staff_df.at[idx, "password"] = new_pw
-            else:
-                new_row = pd.DataFrame({"name":[curr_name], "status":["在職"], "password":[new_pw]})
-                st.session_state.staff_df = pd.concat([st.session_state.staff_df, new_row], ignore_index=True)
-                
-            save_staff(st.session_state.staff_df); st.success("成功！下次請用新密碼")
+            # 確保更新到最新的 dataframe
+            staff_df = load_staff()
+            if curr_name in staff_df["name"].values:
+                idx = staff_df[staff_df["name"] == curr_name].index[0]
+                staff_df.at[idx, "password"] = str(new_pw) # 強制存為字串
+                save_staff(staff_df)
+                st.session_state.staff_df = staff_df
+                st.success("成功！下次請用新密碼")
 
 if is_admin:
     st.sidebar.success("身分：管理員 / 財務行政")
     with st.sidebar.expander("⚙️ 人員管理 (密碼重置)"):
-        for i, r in st.session_state.staff_df.iterrows():
+        staff_df = st.session_state.staff_df
+        for i, r in staff_df.iterrows():
             c1, c2, c3 = st.columns([1.5, 1, 1])
             c1.write(f"**{r['name']}**")
             c2.code(r["password"]) 
             if c3.button("重設", key=f"rs_{i}"):
-                st.session_state.staff_df.at[i, "password"] = "0000"
-                save_staff(st.session_state.staff_df); st.rerun()
+                staff_df.at[i, "password"] = "0000"
+                save_staff(staff_df)
+                st.session_state.staff_df = staff_df
+                st.rerun()
 
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None; st.session_state.edit_id = None; st.rerun()
@@ -289,8 +292,8 @@ if menu == "1. 填寫申請單追蹤":
     if is_admin: 
         disp_db = st.session_state.db 
     else: 
-        # [關鍵修正] 搜尋「包含」該名字的資料，解決舊資料帶有中文或空格的問題
         c_n = curr_name.strip()
+        # [關鍵] 強力搜尋：只要包含 "Andy" 就顯示，不管後面有沒有 "陳俊嘉"
         mask = (st.session_state.db["申請人"].str.contains(c_n, case=False, na=False)) | \
                (st.session_state.db["申請人信箱"].str.contains(c_n, case=False, na=False))
         disp_db = st.session_state.db[mask]
@@ -355,7 +358,6 @@ elif menu == "2. 專案執行長簽核":
                 st.session_state.db.at[idx, "狀態"] = "已駁回"; save_data(st.session_state.db); st.rerun()
     
     st.divider(); st.subheader("📜 已簽核歷史紀錄")
-    # 模糊搜尋包含該使用者名稱的紀錄
     h_df = st.session_state.db[st.session_state.db["初審人"].str.contains(curr_name, na=False)]
     if h_df.empty: st.info("尚無紀錄")
     else: st.dataframe(h_df[["單號", "專案名稱", "申請人", "總金額", "初審時間", "狀態"]], use_container_width=True)
