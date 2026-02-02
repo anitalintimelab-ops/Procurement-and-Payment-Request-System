@@ -17,9 +17,8 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- 2. 自動救援資料 (包含您截圖中的測試資料) ---
+# --- 2. 自動救援資料 ---
 def init_rescue_data():
-    """如果不小心資料不見了，這個函式會自動把 1/21~1/29 的資料生出來"""
     if not os.path.exists(D_FILE):
         data = {
             "單號": ["20260121-01", "20260121-02", "20260129-03", "20260129-04", "20260129-05", "20260129-06"],
@@ -48,7 +47,6 @@ def init_rescue_data():
         df = pd.DataFrame(data).astype(str)
         df.to_csv(D_FILE, index=False, encoding='utf-8-sig')
 
-# 程式啟動時檢查並救援
 init_rescue_data()
 
 # --- 3. 核心功能函式 ---
@@ -69,7 +67,6 @@ def read_csv_robust(filepath):
     return pd.DataFrame()
 
 def load_data():
-    # 使用新欄位名稱
     cols = ["單號", "日期", "類型", "申請人", "專案負責人", "專案名稱", "專案編號", 
             "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", 
             "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱",
@@ -79,7 +76,6 @@ def load_data():
     if df is None or df.empty:
         return pd.DataFrame(columns=cols)
     
-    # 自動遷移舊欄位名
     if "專案執行人" in df.columns:
         df = df.rename(columns={"專案執行人": "專案負責人"})
     
@@ -91,10 +87,9 @@ def load_data():
 
 def save_data(df):
     try:
-        # 強制同步寫入，確保資料不流失
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
     except PermissionError:
-        st.error("⚠️ 嚴重警告：無法寫入檔案！請檢查 `database.csv` 是否正由 Excel 開啟中。請務必關閉該檔案。")
+        st.error("⚠️ 嚴重警告：無法寫入檔案！請檢查 `database.csv` 是否正由 Excel 開啟中。")
         st.stop()
 
 def load_staff():
@@ -208,7 +203,6 @@ if is_admin:
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None; st.session_state.edit_id = None; st.rerun()
 
-# [修改] 選單名稱變更
 menu = st.sidebar.radio("系統導覽", ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核"])
 
 # --- 6. 憑證渲染 HTML ---
@@ -225,7 +219,6 @@ def render_html(row):
     h += f'<div style="display:flex;justify-content:space-between;align-items:center;"><div>{lg}</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
     h += f'<hr style="border:1px solid #000;margin:10px 0;"><h2 style="text-align:center;letter-spacing:10px;">{row["類型"]}</h2>'
     h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
-    # [修改] 顯示專案負責人
     h += f'<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td><td>&nbsp;{row["單號"]}</td><td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;{row["專案負責人"]}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="35">專案名稱</td><td>&nbsp;{row["專案名稱"]}</td><td bgcolor="#f2f2f2">專案編號</td><td>&nbsp;{row["專案編號"]}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="35">承辦人</td><td colspan="3">&nbsp;{row["申請人"]}</td></tr>'
@@ -262,44 +255,48 @@ if menu == "1. 填寫申請單":
     
     with st.form("apply_form"):
         fk = st.session_state.form_key
+        # [關鍵修正]：Key 加入 edit_id 資訊。
+        # 如果是新增(edit_id=None)，key 會是 pn_0_new
+        # 如果是修改(edit_id=20260202-02)，key 會是 pn_0_20260202-02
+        # 這樣 Streamlit 就會知道這是不同的輸入框，強制從 value 參數讀取資料，解決空白問題。
+        mode_suffix = st.session_state.edit_id if st.session_state.edit_id else "new"
         
         c1, c2 = st.columns(2)
         with c1:
             app = st.text_input("承辦人 *", value=curr_name, disabled=True) 
             val_pn = ed_data["專案名稱"] if ed_data is not None else ""
-            pn = st.text_input("專案名稱 *", value=val_pn, key=f"pn_{fk}")
+            pn = st.text_input("專案名稱 *", value=val_pn, key=f"pn_{fk}_{mode_suffix}")
             
-            # [修改] 欄位名稱變更：專案負責人
             val_exe = ed_data["專案負責人"] if ed_data is not None and "專案負責人" in ed_data else STAFF_LIST[0]
             idx_exe = STAFF_LIST.index(val_exe) if val_exe in STAFF_LIST else 0
-            exe = st.selectbox("專案負責人 *", STAFF_LIST, index=idx_exe, key=f"exe_{fk}")
+            exe = st.selectbox("專案負責人 *", STAFF_LIST, index=idx_exe, key=f"exe_{fk}_{mode_suffix}")
             
         with c2:
             val_pi = ed_data["專案編號"] if ed_data is not None else ""
-            pi = st.text_input("專案編號 *", value=val_pi, key=f"pi_{fk}")
+            pi = st.text_input("專案編號 *", value=val_pi, key=f"pi_{fk}_{mode_suffix}")
             
             try: val_amt = int(float(ed_data["總金額"])) if ed_data is not None and str(ed_data["總金額"])!="" else 0
             except: val_amt = 0
-            amt = st.number_input("總金額 *", min_value=0, value=val_amt, key=f"amt_{fk}")
+            amt = st.number_input("總金額 *", min_value=0, value=val_amt, key=f"amt_{fk}_{mode_suffix}")
             
             idx_tp = ["請款單", "採購單"].index(ed_data["類型"]) if (ed_data is not None and ed_data["類型"] in ["請款單", "採購單"]) else 0
-            tp = st.selectbox("類型 *", ["請款單", "採購單"], index=idx_tp, key=f"tp_{fk}")
+            tp = st.selectbox("類型 *", ["請款單", "採購單"], index=idx_tp, key=f"tp_{fk}_{mode_suffix}")
             
         pay_ops = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"]
         idx_pay = pay_ops.index(ed_data["付款方式"]) if (ed_data is not None and ed_data["付款方式"] in pay_ops) else 0
-        pay = st.radio("付款方式 *", pay_ops, index=idx_pay, horizontal=True, key=f"pay_{fk}")
+        pay = st.radio("付款方式 *", pay_ops, index=idx_pay, horizontal=True, key=f"pay_{fk}_{mode_suffix}")
         
         val_vdr = ed_data["請款廠商"] if ed_data is not None else ""
-        vdr = st.text_input("廠商", value=val_vdr, key=f"vdr_{fk}")
+        vdr = st.text_input("廠商", value=val_vdr, key=f"vdr_{fk}_{mode_suffix}")
         
         val_acc = ed_data["匯款帳戶"] if ed_data is not None else ""
-        acc = st.text_input("帳戶", value=val_acc, key=f"acc_{fk}")
+        acc = st.text_input("帳戶", value=val_acc, key=f"acc_{fk}_{mode_suffix}")
         
         val_desc = ed_data["請款說明"] if ed_data is not None else ""
-        desc = st.text_area("說明 *", value=val_desc, key=f"desc_{fk}")
+        desc = st.text_area("說明 *", value=val_desc, key=f"desc_{fk}_{mode_suffix}")
         
-        acc_f = st.file_uploader("存摺影本", type=["jpg","png"], key=f"acc_f_{fk}")
-        ims_f = st.file_uploader("報帳憑證", type=["jpg","png"], accept_multiple_files=True, key=f"ims_f_{fk}")
+        acc_f = st.file_uploader("存摺影本", type=["jpg","png"], key=f"acc_f_{fk}_{mode_suffix}")
+        ims_f = st.file_uploader("報帳憑證", type=["jpg","png"], accept_multiple_files=True, key=f"ims_f_{fk}_{mode_suffix}")
         
         c_save, c_pre, c_sub, c_prt = st.columns(4)
         do_save = c_save.form_submit_button("💾 儲存內容")
@@ -312,7 +309,6 @@ if menu == "1. 填寫申請單":
                 
                 if st.session_state.edit_id:
                     idx = current_db[current_db["單號"]==st.session_state.edit_id].index[0]
-                    # [修復] 將每一欄位獨立賦值，避免 Syntax Error
                     current_db.at[idx,"申請人"] = app
                     current_db.at[idx,"專案名稱"] = pn
                     current_db.at[idx,"專案負責人"] = exe
@@ -361,7 +357,6 @@ if menu == "1. 填寫申請單":
                     
                     st.session_state.form_key += 1
                 
-                # [關鍵] 強制同步寫入檔案
                 save_data(current_db)
                 st.session_state.db = current_db
                 st.success("資料已成功寫入！")
@@ -371,7 +366,6 @@ if menu == "1. 填寫申請單":
         st.info(f"📍 案件已儲存：{st.session_state.last_id}")
         temp_db = load_data()
         
-        # [修復] 防止 IndexError
         target_rows = temp_db[temp_db["單號"]==st.session_state.last_id]
         if not target_rows.empty:
             l_rec = target_rows.iloc[0]
@@ -408,6 +402,7 @@ if menu == "1. 填寫申請單":
         h_cols[0].write("**單號**"); h_cols[1].write("**專案名稱**"); h_cols[2].write("**申請人**"); h_cols[3].write("**金額**"); h_cols[4].write("**狀態**")
         for i, r in final_db.iterrows():
             rid = r["單號"]; stt = r["狀態"]; owner = r["申請人"]
+            
             color = "blue" if stt in ["已儲存", "草稿"] else "orange" if stt in ["待初審", "待複審"] else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
             cols = st.columns([1.2, 1.8, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
             cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(owner)
@@ -420,7 +415,6 @@ if menu == "1. 填寫申請單":
             is_own = (curr_name.strip() == str(owner).strip())
             enable_action = (is_own and is_editable_status)
             
-            # [修復] 加上 _{i} 避免 duplicate key
             if cols[5].button("修改", key=f"e_{rid}_{i}", disabled=not enable_action): st.session_state.edit_id = rid; st.rerun()
             if cols[6].button("提交", key=f"s_{rid}_{i}", disabled=not enable_action):
                 idx = disp_db[disp_db["單號"]==rid].index[0]
@@ -450,7 +444,6 @@ if menu == "1. 填寫申請單":
 
 elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核中心")
-    # [修改] 使用新欄位篩選
     if is_admin: p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
     else: p_df = st.session_state.db[(st.session_state.db["狀態"]=="待初審") & (st.session_state.db["專案負責人"].str.strip() == curr_name.strip())]
     
