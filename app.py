@@ -480,3 +480,9 @@ elif menu == "3. 財務長簽核":
                 save_data(st.session_state.db); st.rerun()
             if c2.button("❌ 財務長駁回", key=f"no_cfo_{rid}_{i}", disabled=not is_cfo):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
+                st.session_state.db.at[idx, "狀態"] = "已駁回"; save_data(st.session_state.db); st.rerun()
+
+    st.divider(); st.subheader("📜 已簽核歷史紀錄")
+    f_df = st.session_state.db[st.session_state.db["複審人"].str.contains(curr_name, na=False)]
+    if f_df.empty: st.info("尚無紀錄")
+    else: st.dataframe(f_df[["單號", "專案名稱", "申請人", "總金額", "複審時間", "狀態"]], use_container_width=True)
