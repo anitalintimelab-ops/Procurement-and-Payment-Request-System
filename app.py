@@ -17,13 +17,46 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- 2. 核心功能函式 ---
+# --- 2. 自動救援資料 (如果檔案遺失，自動重建) ---
+def init_rescue_data():
+    """如果不小心資料不見了，這個函式會自動把 1/21~1/29 的資料生出來"""
+    if not os.path.exists(D_FILE):
+        data = {
+            "單號": ["20260121-01", "20260121-02", "20260129-03", "20260129-04", "20260129-05", "20260129-06"],
+            "日期": ["2026-01-21", "2026-01-21", "2026-01-29", "2026-01-29", "2026-01-29", "2026-01-29"],
+            "類型": ["請款單", "請款單", "請款單", "請款單", "請款單", "請款單"],
+            "申請人": ["Anita", "Andy", "Charles", "Sunglin", "Eason", "Anita"],
+            "專案執行人": ["Andy", "Andy", "Andy", "Andy", "Andy", "Andy"],
+            "專案名稱": ["20260120ST001", "10111111", "10111111", "10111111", "10111111", "元大方圓"],
+            "專案編號": ["豪哥", "Test02", "2022222", "2022222", "2022222", "YUAN01"],
+            "請款說明": ["測試說明1", "測試說明2", "2168", "2168", "2168", "工程款"],
+            "總金額": ["5555", "555555", "555555", "555555", "555555", "500000"],
+            "幣別": ["TWD"]*6,
+            "付款方式": ["匯款(扣30手續費)"]*6,
+            "請款廠商": ["廠商A", "廠商B", "20260", "20260", "20260", "元大"],
+            "匯款帳戶": [""]*6, "帳戶影像Base64": [""]*6,
+            "狀態": ["待初審", "已核准", "草稿", "草稿", "草稿", "待初審"],
+            "影像Base64": [""]*6, 
+            "提交時間": ["2026-01-21 10:00", "2026-01-21 11:00", "", "", "", "2026-01-29 15:57"],
+            "申請人信箱": ["Anita", "Andy", "Charles", "Sunglin", "Eason", "Anita"],
+            "初審人": ["", "Charles", "", "", "", ""],
+            "初審時間": ["", "2026-01-21 14:00", "", "", "", ""],
+            "複審人": ["", "Charles", "", "", "", ""],
+            "複審時間": ["", "2026-01-21 15:00", "", "", "", ""],
+            "刪除人": [""]*6, "刪除時間": [""]*6, "刪除原因": [""]*6
+        }
+        df = pd.DataFrame(data).astype(str)
+        df.to_csv(D_FILE, index=False, encoding='utf-8-sig')
+
+# 程式一啟動，立刻檢查並救援資料
+init_rescue_data()
+
+# --- 3. 核心功能函式 ---
 def validate_password(pw):
     has_letter = bool(re.search(r'[a-zA-Z]', pw))
     digit_count = len(re.findall(r'\d', pw))
     return has_letter and 4 <= digit_count <= 6
 
-# 萬用讀取：解決 Excel 存檔造成的亂碼或讀取錯誤
 def read_csv_robust(filepath):
     if not os.path.exists(filepath): return None
     encodings = ['utf-8-sig', 'utf-8', 'cp950', 'big5'] 
@@ -53,11 +86,10 @@ def load_data():
 
 def save_data(df):
     try:
-        # 強制同步寫入，確保檔案內容與系統一致
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
-        time.sleep(0.1) # 確保寫入完成
     except PermissionError:
-        st.error("⚠️ 警告：無法寫入檔案！請檢查 `database.csv` 是否正由 Excel 開啟中。請關閉該檔案以確保資料同步。")
+        st.error("⚠️ 嚴重警告：無法寫入檔案！請檢查 `database.csv` 是否正由 Excel 開啟中。")
+        st.stop()
 
 def load_staff():
     default_df = pd.DataFrame({
@@ -101,7 +133,7 @@ if 'last_id' not in st.session_state: st.session_state.last_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
 if 'form_key' not in st.session_state: st.session_state.form_key = 0 
 
-# --- 3. 登入識別 ---
+# --- 4. 登入識別 ---
 if st.session_state.user_id is None:
     st.header("🏢 時研國際 - 內部管理系統")
     st.info("請選取您的身分並輸入密碼")
@@ -137,7 +169,7 @@ if st.session_state.user_id is None:
 curr_name = st.session_state.user_id
 is_admin = (curr_name in ADMINS)
 
-# --- 4. 側邊欄 ---
+# --- 5. 側邊欄 ---
 st.sidebar.markdown(f"### 👤 目前登入：{curr_name}")
 with st.sidebar.expander("🔐 修改我的密碼"):
     new_pw = st.text_input("新密碼", type="password")
@@ -147,12 +179,8 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         elif not validate_password(new_pw): st.error("規則：至少一英文+數字4-6位")
         else:
             staff_df = load_staff()
-            if curr_name in staff_df["name"].values:
-                idx = staff_df[staff_df["name"] == curr_name].index[0]
-                staff_df.at[idx, "password"] = str(new_pw)
-            else:
-                new_row = pd.DataFrame({"name":[curr_name], "status":["在職"], "password":[new_pw]})
-                staff_df = pd.concat([staff_df, new_row], ignore_index=True)
+            idx = staff_df[staff_df["name"] == curr_name].index[0]
+            staff_df.at[idx, "password"] = str(new_pw)
             save_staff(staff_df)
             st.session_state.staff_df = staff_df
             st.success("成功！")
@@ -176,7 +204,7 @@ if st.sidebar.button("🚪 登出系統"):
 
 menu = st.sidebar.radio("系統導覽", ["1. 填寫申請單追蹤", "2. 專案執行長簽核", "3. 財務長簽核"])
 
-# --- 5. 憑證渲染 HTML ---
+# --- 6. 憑證渲染 HTML ---
 def render_html(row):
     try: amt_val = float(row['總金額'])
     except: amt_val = 0
@@ -216,7 +244,7 @@ def render_html(row):
             if i % 2 == 1 or i == len(imgs)-1: v += '</div>'
     return h + v
 
-# --- 6. 主功能流程 ---
+# --- 7. 主功能流程 ---
 if menu == "1. 填寫申請單追蹤":
     st.header("時研國際設計股份有限公司 請購/請款系統")
     ed_data = None
@@ -274,6 +302,7 @@ if menu == "1. 填寫申請單追蹤":
                 
                 if st.session_state.edit_id:
                     idx = current_db[current_db["單號"]==st.session_state.edit_id].index[0]
+                    # [語法錯誤修正點] 獨立賦值
                     current_db.at[idx,"申請人"] = app
                     current_db.at[idx,"專案名稱"] = pn
                     current_db.at[idx,"專案執行人"] = exe
@@ -293,24 +322,16 @@ if menu == "1. 填寫申請單追蹤":
                     st.session_state.last_id = st.session_state.edit_id
                     st.session_state.edit_id = None
                 else:
-                    # [關鍵修復] 智慧單號：取當天最大單號 + 1，避免刪除後單號重複
                     today_str = datetime.date.today().strftime('%Y%m%d')
-                    # 篩選出今天的單號
                     today_ids = [str(x) for x in current_db["單號"] if str(x).startswith(today_str)]
                     if today_ids:
-                        # 取出後兩碼轉 int 找最大值
                         suffixes = []
                         for x in today_ids:
-                            try:
-                                parts = x.split('-')
-                                if len(parts) > 1:
-                                    suffixes.append(int(parts[-1]))
+                            try: suffixes.append(int(x.split('-')[-1]))
                             except: pass
-                        max_seq = max(suffixes) if suffixes else 0
-                        next_seq = max_seq + 1
+                        next_seq = max(suffixes) + 1 if suffixes else 1
                     else:
                         next_seq = 1
-                    
                     tid = f"{today_str}-{next_seq:02d}"
                     
                     a_b = base64.b64encode(acc_f.getvalue()).decode() if acc_f else ""
@@ -332,6 +353,7 @@ if menu == "1. 填寫申請單追蹤":
                 
                 save_data(current_db)
                 st.session_state.db = current_db
+                st.success("資料已成功寫入！")
                 st.rerun()
 
     if st.session_state.last_id:
@@ -369,6 +391,7 @@ if menu == "1. 填寫申請單追蹤":
         h_cols[0].write("**單號**"); h_cols[1].write("**專案名稱**"); h_cols[2].write("**申請人**"); h_cols[3].write("**金額**"); h_cols[4].write("**狀態**")
         for i, r in final_db.iterrows():
             rid = r["單號"]; stt = r["狀態"]; owner = r["申請人"]
+            
             color = "blue" if stt in ["已儲存", "草稿"] else "orange" if stt in ["待初審", "待複審"] else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
             cols = st.columns([1.2, 1.8, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
             cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(owner)
@@ -381,7 +404,6 @@ if menu == "1. 填寫申請單追蹤":
             is_own = (curr_name.strip() == str(owner).strip())
             enable_action = (is_own and is_editable_status)
             
-            # [關鍵修復] 加上 _{i} 避免 duplicate key error
             if cols[5].button("修改", key=f"e_{rid}_{i}", disabled=not enable_action): st.session_state.edit_id = rid; st.rerun()
             if cols[6].button("提交", key=f"s_{rid}_{i}", disabled=not enable_action):
                 idx = disp_db[disp_db["單號"]==rid].index[0]
@@ -423,16 +445,13 @@ elif menu == "2. 專案執行長簽核":
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             can_sign = (curr_name.strip() == r["專案執行人"].strip()) and not is_admin
-            # [關鍵修復] 加上 _{i}
             if c1.button("✅ 核准", key=f"ok_ceo_{rid}_{i}", disabled=not can_sign):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
-                st.session_state.db.at[idx, "狀態"] = "待複審"; st.session_state.db.at[idx, "初審人"] = curr_name
-                st.session_state.db.at[idx, "初審時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                st.session_state.db.at[idx, "狀態"] = "待複審"; st.session_state.db.at[idx, "初審人"], st.session_state.db.at[idx, "初審時間"] = curr_name, datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 save_data(st.session_state.db); st.rerun()
             if c2.button("❌ 駁回", key=f"no_ceo_{rid}_{i}", disabled=not can_sign):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
-                st.session_state.db.at[idx, "狀態"] = "已駁回"
-                save_data(st.session_state.db); st.rerun()
+                st.session_state.db.at[idx, "狀態"] = "已駁回"; save_data(st.session_state.db); st.rerun()
     
     st.divider(); st.subheader("📜 已簽核歷史紀錄")
     h_df = st.session_state.db[st.session_state.db["初審人"].str.contains(curr_name, na=False)]
@@ -457,15 +476,7 @@ elif menu == "3. 財務長簽核":
             is_cfo = (curr_name.strip() == CFO_NAME) and not is_admin
             if c1.button("👑 最終核准", key=f"ok_cfo_{rid}_{i}", disabled=not is_cfo):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
-                st.session_state.db.at[idx, "狀態"] = "已核准"; st.session_state.db.at[idx, "複審人"] = curr_name
-                st.session_state.db.at[idx, "複審時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                st.session_state.db.at[idx, "狀態"] = "已核准"; st.session_state.db.at[idx, "複審人"], st.session_state.db.at[idx, "複審時間"] = curr_name, datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 save_data(st.session_state.db); st.rerun()
             if c2.button("❌ 財務長駁回", key=f"no_cfo_{rid}_{i}", disabled=not is_cfo):
                 idx = st.session_state.db[st.session_state.db["單號"]==rid].index[0]
-                st.session_state.db.at[idx, "狀態"] = "已駁回"
-                save_data(st.session_state.db); st.rerun()
-
-    st.divider(); st.subheader("📜 已簽核歷史紀錄")
-    f_df = st.session_state.db[st.session_state.db["複審人"].str.contains(curr_name, na=False)]
-    if f_df.empty: st.info("尚無紀錄")
-    else: st.dataframe(f_df[["單號", "專案名稱", "申請人", "總金額", "複審時間", "狀態"]], use_container_width=True)
