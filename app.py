@@ -17,9 +17,10 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- 2. 自動救援資料 (包含您最新的測試資料) ---
+# --- 2. 自動救援資料 (防止資料遺失) ---
 def init_rescue_data():
     if not os.path.exists(D_FILE):
+        # 預設資料
         data = {
             "單號": ["20260121-01", "20260121-02", "20260129-06", "20260202-02", "20260203-01"],
             "日期": ["2026-01-21", "2026-01-21", "2026-01-29", "2026-02-02", "2026-02-03"],
@@ -83,11 +84,14 @@ def load_data():
     for c in cols:
         if c not in df.columns: df[c] = ""
             
+    # [關鍵] 強力去除前後空白，解決收不到單的問題
     df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
     return df[cols]
 
 def save_data(df):
     try:
+        # 存檔前再次確保去除空白
+        df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
     except PermissionError:
         st.error("⚠️ 嚴重警告：無法寫入檔案！請檢查 `database.csv` 是否正由 Excel 開啟中。")
@@ -129,7 +133,7 @@ def is_pdf(b64_str):
     """簡單判斷 Base64 是否為 PDF"""
     return b64_str.startswith("JVBERi")
 
-# 初始化 Session State
+# 初始化 Session
 if 'db' not in st.session_state: st.session_state.db = load_data()
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 
@@ -227,7 +231,13 @@ def render_html(row):
     if b64: lg = f'<img src="data:image/jpeg;base64,{b64}" style="height:60px;">'
     rev_info = f"{row['初審人']} ({row['初審時間']})" if row['初審時間'] else "_________"
     cfo_info = f"{row['複審人']} ({row['複審時間']})" if row['複審時間'] else "_________"
-    sub_time = row["提交時間"] if row["提交時間"] and str(row["提交時間"]) != "nan" else "_________"
+    
+    # [關鍵修正] 預覽時若尚未提交，顯示當下時間，否則顯示資料庫時間
+    if row["提交時間"] and str(row["提交時間"]) != "nan" and str(row["提交時間"]) != "":
+        sub_time = row["提交時間"]
+    else:
+        # 如果是草稿，預覽時顯示 "預計提交: 現在時間"
+        sub_time = f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} (預覽)"
     
     h = f'<div style="font-family:sans-serif;padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
     h += f'<div style="display:flex;justify-content:space-between;align-items:center;"><div>{lg}</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
@@ -300,6 +310,7 @@ if menu == "1. 填寫申請單":
             default_vals["vdr"] = row["請款廠商"]
             default_vals["acc"] = row["匯款帳戶"]
             default_vals["desc"] = row["請款說明"]
+            # 讀取舊檔案資料
             default_vals["acc_b64"] = row["帳戶影像Base64"]
             default_vals["ims_b64"] = row["影像Base64"]
     
@@ -327,11 +338,11 @@ if menu == "1. 填寫申請單":
         acc = st.text_input("帳戶", value=default_vals["acc"], key=f"acc_{mode_suffix}")
         desc = st.text_area("說明 *", value=default_vals["desc"], key=f"desc_{mode_suffix}")
         
-        # [功能新增] 顯示舊檔案與刪除選項
+        # [關鍵功能] 顯示舊檔案與刪除選項
         del_acc = False
         if default_vals["acc_b64"]:
             ftype = "PDF 文件" if is_pdf(default_vals["acc_b64"]) else "圖片"
-            st.info(f"✅ 存摺目前已存有 {ftype}")
+            st.info(f"✅ 存摺目前已存有 {ftype} (如需更換請直接上傳，如需刪除請勾選下方)")
             del_acc = st.checkbox("🗑️ 刪除原有存摺影本", key=f"del_acc_{mode_suffix}")
             
         # [修改] 支援 PDF 上傳
@@ -339,7 +350,7 @@ if menu == "1. 填寫申請單":
         
         del_ims = False
         if default_vals["ims_b64"]:
-            st.info(f"✅ 憑證目前已存有檔案")
+            st.info(f"✅ 憑證目前已存有檔案 (如需更換請直接上傳，如需刪除請勾選下方)")
             del_ims = st.checkbox("🗑️ 刪除原有憑證", key=f"del_ims_{mode_suffix}")
             
         ims_f = st.file_uploader("上傳新報帳憑證 (支援 JPG/PNG/PDF)", type=["jpg","png","jpeg","pdf"], accept_multiple_files=True, key=f"ims_f_{mode_suffix}")
@@ -357,7 +368,7 @@ if menu == "1. 填寫申請單":
                 final_acc_b64 = ""
                 if acc_f:
                     final_acc_b64 = base64.b64encode(acc_f.getvalue()).decode()
-                elif not del_acc: # 沒上傳且沒說要刪 -> 保留
+                elif not del_acc: # 沒上傳且沒說要刪 -> 保留舊的
                     final_acc_b64 = default_vals["acc_b64"]
                 
                 final_ims_b64 = ""
@@ -428,7 +439,7 @@ if menu == "1. 填寫申請單":
             if c2.button("🚀 提交送審", key="s_fast"):
                 idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
                 temp_db.at[idx, "狀態"] = "待初審"
-                # [修復] 提交時確實寫入時間
+                # [關鍵修復] 提交時確實寫入時間，並立即存檔
                 temp_db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 save_data(temp_db)
                 st.success("已提交！")
@@ -472,8 +483,11 @@ if menu == "1. 填寫申請單":
             if cols[5].button("修改", key=f"e_{rid}_{i}", disabled=not enable_action): st.session_state.edit_id = rid; st.rerun()
             if cols[6].button("提交", key=f"s_{rid}_{i}", disabled=not enable_action):
                 idx = disp_db[disp_db["單號"]==rid].index[0]
-                disp_db.at[idx, "狀態"] = "待初審"; disp_db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                save_data(disp_db); st.rerun()
+                disp_db.at[idx, "狀態"] = "待初審"
+                # [關鍵修復] 提交按鈕也補上時間寫入
+                disp_db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                save_data(disp_db)
+                st.rerun()
             if cols[7].button("預覽", key=f"v_{rid}_{i}"): st.session_state.view_id = rid; st.rerun()
             if cols[8].button("列印", key=f"p_{rid}_{i}"):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
@@ -493,15 +507,16 @@ if menu == "1. 填寫申請單":
             st.markdown(render_html(target_rows.iloc[0]), unsafe_allow_html=True)
             if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()
         else:
-            st.warning("⚠️ 找不到該單據，可能已被刪除。")
+            st.error("找不到該單據，可能已被刪除。")
             if st.button("關閉"): st.session_state.view_id = None; st.rerun()
 
 elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核中心")
-    # [修復] 篩選邏輯：嚴格比對專案負責人 (去空白)
+    # [關鍵修復] 篩選邏輯：強制去空白比對
     if is_admin: 
         p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
     else: 
+        # 狀態是待初審 且 (專案負責人去除空白後 == 當前登入者去除空白後)
         p_df = st.session_state.db[
             (st.session_state.db["狀態"]=="待初審") & 
             (st.session_state.db["專案負責人"].str.strip() == curr_name.strip())
