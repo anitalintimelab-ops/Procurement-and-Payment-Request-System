@@ -17,11 +17,28 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# [新增] 取得台灣時間函式 (解決時間不準問題)
+# [工具] 取得台灣時間 (UTC+8)
 def get_taiwan_time():
-    # UTC 時間 + 8 小時 = 台灣時間
     tw_time = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
     return tw_time.strftime('%Y-%m-%d %H:%M')
+
+# [工具] 清理金額 (去除逗號與非數字字符)
+def clean_amount(val):
+    if pd.isna(val) or str(val).strip() == "":
+        return 0
+    # 去除逗號
+    clean_val = str(val).replace(",", "").strip()
+    try:
+        return int(float(clean_val))
+    except:
+        return 0
+
+# [工具] 清理名字 (只留英文，去除後面的中文)
+def clean_name(val):
+    if pd.isna(val) or str(val).strip() == "":
+        return ""
+    # 用空白切割，只取第一個字 (例如 "Andy 陳俊嘉" -> "Andy")
+    return str(val).strip().split(" ")[0]
 
 # --- 2. 自動救援資料 ---
 def init_rescue_data():
@@ -89,7 +106,11 @@ def load_data():
     
     for c in cols:
         if c not in df.columns: df[c] = ""
-            
+    
+    # [關鍵] 清理名字 (只留英文)
+    df["專案負責人"] = df["專案負責人"].apply(clean_name)
+    df["申請人"] = df["申請人"].apply(clean_name)
+    
     df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
     return df[cols]
 
@@ -226,7 +247,7 @@ menu = st.sidebar.radio("系統導覽", ["1. 填寫申請單", "2. 專案執行�
 
 # --- 6. 憑證渲染 HTML ---
 def render_html(row):
-    try: amt_val = float(row['總金額'])
+    try: amt_val = clean_amount(row['總金額'])
     except: amt_val = 0
     fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0
     act = amt_val - fee
@@ -235,18 +256,17 @@ def render_html(row):
     rev_info = f"{row['初審人']} ({row['初審時間']})" if row['初審時間'] else "_________"
     cfo_info = f"{row['複審人']} ({row['複審時間']})" if row['複審時間'] else "_________"
     
-    # [修正] 預覽顯示邏輯：若沒時間，顯示台灣時間，並不顯示 (預覽) 字樣
+    # [修正] 預覽時顯示台灣時間，且不顯示(預覽)字樣
     if row["提交時間"] and str(row["提交時間"]) != "nan" and str(row["提交時間"]) != "":
         sub_time = row["提交時間"]
     else:
-        # 使用台灣時間
         sub_time = get_taiwan_time()
     
     h = f'<div style="font-family:sans-serif;padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
     h += f'<div style="display:flex;justify-content:space-between;align-items:center;"><div>{lg}</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
     h += f'<hr style="border:1px solid #000;margin:10px 0;"><h2 style="text-align:center;letter-spacing:10px;">{row["類型"]}</h2>'
     h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
-    h += f'<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td><td>&nbsp;{row["單號"]}</td><td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;{row["專案負責人"]}</td></tr>'
+    h += f'<tr><td bgcolor="#f2f2f2" width="18%" height="35">單號</td><td>&nbsp;{row["單號"]}</td><td bgcolor="#f2f2f2" width="18%">專案負責人</td><td>&nbsp;{clean_name(row["專案負責人"])}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="35">專案名稱</td><td>&nbsp;{row["專案名稱"]}</td><td bgcolor="#f2f2f2">專案編號</td><td>&nbsp;{row["專案編號"]}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="35">承辦人</td><td colspan="3">&nbsp;{row["申請人"]}</td></tr>'
     h += f'<tr><td bgcolor="#f2f2f2" height="35">廠商</td><td>&nbsp;{row["請款廠商"]}</td><td bgcolor="#f2f2f2">付款方式</td><td>&nbsp;{row["付款方式"]}</td></tr>'
@@ -302,11 +322,14 @@ if menu == "1. 填寫申請單":
             row = r_f.iloc[0]
             st.warning(f"📝 正在修改單號：{st.session_state.edit_id}")
             default_vals["pn"] = row["專案名稱"]
-            exe_val = row["專案負責人"] if "專案負責人" in row else STAFF_LIST[0]
+            # 專案負責人：確保只取英文，避免 index error
+            exe_val = clean_name(row["專案負責人"])
             default_vals["exe"] = exe_val if exe_val in STAFF_LIST else STAFF_LIST[0]
+            
             default_vals["pi"] = row["專案編號"]
-            try: default_vals["amt"] = int(float(str(row["總金額"]).replace(",", ""))) # [修正] 去除逗號防止報錯
-            except: default_vals["amt"] = 0
+            # [修正] 金額讀取使用 clean_amount 防止報錯
+            default_vals["amt"] = clean_amount(row["總金額"])
+            
             default_vals["tp"] = row["類型"]
             default_vals["pay"] = row["付款方式"]
             default_vals["vdr"] = row["請款廠商"]
@@ -339,18 +362,30 @@ if menu == "1. 填寫申請單":
         acc = st.text_input("帳戶", value=default_vals["acc"], key=f"acc_{mode_suffix}")
         desc = st.text_area("說明 *", value=default_vals["desc"], key=f"desc_{mode_suffix}")
         
+        # [修正] 修改模式下顯示舊檔案
         del_acc = False
         if default_vals["acc_b64"]:
-            ftype = "PDF 文件" if is_pdf(default_vals["acc_b64"]) else "圖片"
-            st.info(f"✅ 存摺目前已存有 {ftype} (如需更換請直接上傳，如需刪除請勾選下方)")
-            del_acc = st.checkbox("🗑️ 刪除原有存摺影本", key=f"del_acc_{mode_suffix}")
+            st.markdown("---")
+            st.markdown("##### 📁 目前存摺影本")
+            if is_pdf(default_vals["acc_b64"]):
+                st.markdown(f'<embed src="data:application/pdf;base64,{default_vals["acc_b64"]}" type="application/pdf" width="100%" height="300px" />', unsafe_allow_html=True)
+            else:
+                st.image(base64.b64decode(default_vals["acc_b64"]), width=300)
+            del_acc = st.checkbox("❌ 刪除此存摺影本 (勾選後按儲存)", key=f"del_acc_{mode_suffix}")
             
         acc_f = st.file_uploader("上傳新存摺影本 (支援 JPG/PNG/PDF)", type=["jpg","png","jpeg","pdf"], key=f"acc_f_{mode_suffix}")
         
         del_ims = False
         if default_vals["ims_b64"]:
-            st.info(f"✅ 憑證目前已存有檔案 (如需更換請直接上傳，如需刪除請勾選下方)")
-            del_ims = st.checkbox("🗑️ 刪除原有憑證", key=f"del_ims_{mode_suffix}")
+            st.markdown("---")
+            st.markdown("##### 📁 目前報帳憑證")
+            imgs = default_vals["ims_b64"].split('|')
+            for i, img in enumerate(imgs):
+                if is_pdf(img):
+                    st.markdown(f'<embed src="data:application/pdf;base64,{img}" type="application/pdf" width="100%" height="300px" />', unsafe_allow_html=True)
+                else:
+                    st.image(base64.b64decode(img), width=300)
+            del_ims = st.checkbox("❌ 刪除所有舊憑證 (勾選後按儲存)", key=f"del_ims_{mode_suffix}")
             
         ims_f = st.file_uploader("上傳新報帳憑證 (支援 JPG/PNG/PDF)", type=["jpg","png","jpeg","pdf"], accept_multiple_files=True, key=f"ims_f_{mode_suffix}")
         
@@ -362,6 +397,8 @@ if menu == "1. 填寫申請單":
                 st.error("❌ 必填未填齊！")
             else:
                 current_db = load_data()
+                
+                # 檔案處理邏輯：有新檔用新檔，沒新檔看是否刪除，否則用舊檔
                 final_acc_b64 = ""
                 if acc_f:
                     final_acc_b64 = base64.b64encode(acc_f.getvalue()).decode()
@@ -434,7 +471,6 @@ if menu == "1. 填寫申請單":
             if c2.button("🚀 提交送審", key="s_fast"):
                 idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
                 temp_db.at[idx, "狀態"] = "待初審"
-                # [修正] 提交時寫入台灣時間
                 temp_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(temp_db)
                 st.success("已提交！")
@@ -459,11 +495,11 @@ if menu == "1. 填寫申請單":
     
     if final_db.empty: st.info("目前尚無紀錄")
     else:
-        # [修正] 新增 審核主管 欄位 (專案負責人)
+        # [修正] 欄位順序與內容：增加審核主管
         h_cols = st.columns([1.2, 1.8, 1, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
         h_cols[0].write("**單號**")
         h_cols[1].write("**專案名稱**")
-        h_cols[2].write("**審核主管**") # 新增
+        h_cols[2].write("**審核主管**") # 新增欄位
         h_cols[3].write("**申請人**")
         h_cols[4].write("**金額**")
         h_cols[5].write("**狀態**")
@@ -472,16 +508,16 @@ if menu == "1. 填寫申請單":
             rid = r["單號"]; stt = r["狀態"]; owner = r["申請人"]
             color = "blue" if stt in ["已儲存", "草稿"] else "orange" if stt in ["待初審", "待複審"] else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
             
-            # 調整欄位寬度
             cols = st.columns([1.2, 1.8, 1, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
             cols[0].write(rid)
             cols[1].write(r["專案名稱"])
-            cols[2].write(r["專案負責人"]) # 顯示主管
+            # [修正] 只顯示英文名
+            cols[2].write(clean_name(r["專案負責人"])) 
             cols[3].write(owner)
             
             fee_tag = " :red[(已扣30)]" if r["付款方式"] == "匯款(扣30手續費)" else ""
-            try: f_amt = float(str(r['總金額']).replace(',', '')) # 去除逗號防止 0
-            except: f_amt = 0
+            # [修正] 確保金額顯示正確，防止為 0
+            f_amt = clean_amount(r['總金額'])
             cols[4].markdown(f"${f_amt:,.0f}{fee_tag}")
             cols[5].markdown(f":{color}[{stt}]")
             
@@ -493,7 +529,6 @@ if menu == "1. 填寫申請單":
             if cols[7].button("提交", key=f"s_{rid}_{i}", disabled=not enable_action):
                 idx = disp_db[disp_db["單號"]==rid].index[0]
                 disp_db.at[idx, "狀態"] = "待初審"
-                # [修正] 提交時寫入台灣時間
                 disp_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(disp_db); st.rerun()
             if cols[8].button("預覽", key=f"v_{rid}_{i}"): st.session_state.view_id = rid; st.rerun()
@@ -538,10 +573,10 @@ elif menu == "2. 專案執行長簽核":
 
     for i, r in p_df.iterrows():
         rid = r["單號"]
-        with st.expander(f"待初審：{rid} - {r['專案名稱']} (負責人：{r['專案負責人']})"):
+        with st.expander(f"待初審：{rid} - {r['專案名稱']} (負責人：{clean_name(r['專案負責人'])})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            can_sign = (curr_name.strip() == r["專案負責人"].strip()) and not is_admin
+            can_sign = (clean_name(r["專案負責人"]) == curr_name) or is_admin
             if c1.button("✅ 核准", key=f"ok_ceo_{rid}_{i}", disabled=not can_sign):
                 latest_db = load_data()
                 idx = latest_db[latest_db["單號"]==rid].index[0]
