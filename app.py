@@ -17,6 +17,12 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
+# [新增] 取得台灣時間函式 (解決時間不準問題)
+def get_taiwan_time():
+    # UTC 時間 + 8 小時 = 台灣時間
+    tw_time = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+    return tw_time.strftime('%Y-%m-%d %H:%M')
+
 # --- 2. 自動救援資料 ---
 def init_rescue_data():
     if not os.path.exists(D_FILE):
@@ -69,7 +75,6 @@ def read_csv_robust(filepath):
     return pd.DataFrame()
 
 def load_data():
-    # [新增] 駁回原因欄位
     cols = ["單號", "日期", "類型", "申請人", "專案負責人", "專案名稱", "專案編號", 
             "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", 
             "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱",
@@ -230,11 +235,12 @@ def render_html(row):
     rev_info = f"{row['初審人']} ({row['初審時間']})" if row['初審時間'] else "_________"
     cfo_info = f"{row['複審人']} ({row['複審時間']})" if row['複審時間'] else "_________"
     
-    # 預覽時顯示時間
+    # [修正] 預覽顯示邏輯：若沒時間，顯示台灣時間，並不顯示 (預覽) 字樣
     if row["提交時間"] and str(row["提交時間"]) != "nan" and str(row["提交時間"]) != "":
         sub_time = row["提交時間"]
     else:
-        sub_time = f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} (預覽)"
+        # 使用台灣時間
+        sub_time = get_taiwan_time()
     
     h = f'<div style="font-family:sans-serif;padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
     h += f'<div style="display:flex;justify-content:space-between;align-items:center;"><div>{lg}</div><div><h3 style="margin:0;">時研國際設計股份有限公司</h3></div></div>'
@@ -261,7 +267,6 @@ def render_html(row):
     if row["狀態"] == "已刪除":
         h += f'<div style="color:red;border:2px solid red;padding:10px;margin-top:10px;"><b>⚠️ 此單已由 {row["刪除人"]} 於 {row["刪除時間"]} 刪除</b><br>原因：{row["刪除原因"]}</div>'
     
-    # 顯示駁回原因
     if row["狀態"] == "已駁回" and "駁回原因" in row and str(row["駁回原因"]) != "":
         h += f'<div style="color:red;border:1px solid red;padding:5px;margin-top:5px;"><b>❌ 駁回原因：</b>{row["駁回原因"]}</div>'
 
@@ -300,7 +305,7 @@ if menu == "1. 填寫申請單":
             exe_val = row["專案負責人"] if "專案負責人" in row else STAFF_LIST[0]
             default_vals["exe"] = exe_val if exe_val in STAFF_LIST else STAFF_LIST[0]
             default_vals["pi"] = row["專案編號"]
-            try: default_vals["amt"] = int(float(row["總金額"]))
+            try: default_vals["amt"] = int(float(str(row["總金額"]).replace(",", ""))) # [修正] 去除逗號防止報錯
             except: default_vals["amt"] = 0
             default_vals["tp"] = row["類型"]
             default_vals["pay"] = row["付款方式"]
@@ -429,8 +434,8 @@ if menu == "1. 填寫申請單":
             if c2.button("🚀 提交送審", key="s_fast"):
                 idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
                 temp_db.at[idx, "狀態"] = "待初審"
-                # [關鍵修正] 提交時強制寫入時間
-                temp_db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                # [修正] 提交時寫入台灣時間
+                temp_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(temp_db)
                 st.success("已提交！")
                 st.session_state.last_id = None; st.rerun()
@@ -454,40 +459,56 @@ if menu == "1. 填寫申請單":
     
     if final_db.empty: st.info("目前尚無紀錄")
     else:
-        h_cols = st.columns([1.2, 1.8, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
-        h_cols[0].write("**單號**"); h_cols[1].write("**專案名稱**"); h_cols[2].write("**申請人**"); h_cols[3].write("**金額**"); h_cols[4].write("**狀態**")
+        # [修正] 新增 審核主管 欄位 (專案負責人)
+        h_cols = st.columns([1.2, 1.8, 1, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
+        h_cols[0].write("**單號**")
+        h_cols[1].write("**專案名稱**")
+        h_cols[2].write("**審核主管**") # 新增
+        h_cols[3].write("**申請人**")
+        h_cols[4].write("**金額**")
+        h_cols[5].write("**狀態**")
+        
         for i, r in final_db.iterrows():
             rid = r["單號"]; stt = r["狀態"]; owner = r["申請人"]
             color = "blue" if stt in ["已儲存", "草稿"] else "orange" if stt in ["待初審", "待複審"] else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
-            cols = st.columns([1.2, 1.8, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
-            cols[0].write(rid); cols[1].write(r["專案名稱"]); cols[2].write(owner)
+            
+            # 調整欄位寬度
+            cols = st.columns([1.2, 1.8, 1, 1, 1.2, 1, 0.6, 0.6, 0.6, 0.6, 0.6])
+            cols[0].write(rid)
+            cols[1].write(r["專案名稱"])
+            cols[2].write(r["專案負責人"]) # 顯示主管
+            cols[3].write(owner)
+            
             fee_tag = " :red[(已扣30)]" if r["付款方式"] == "匯款(扣30手續費)" else ""
-            try: f_amt = float(r['總金額'])
+            try: f_amt = float(str(r['總金額']).replace(',', '')) # 去除逗號防止 0
             except: f_amt = 0
-            cols[3].markdown(f"${f_amt:,.0f}{fee_tag}"); cols[4].markdown(f":{color}[{stt}]")
+            cols[4].markdown(f"${f_amt:,.0f}{fee_tag}")
+            cols[5].markdown(f":{color}[{stt}]")
             
             is_editable_status = (stt in ["已儲存", "草稿", "已駁回"])
             is_own = (curr_name.strip() == str(owner).strip())
             enable_action = (is_own and is_editable_status)
             
-            if cols[5].button("修改", key=f"e_{rid}_{i}", disabled=not enable_action): st.session_state.edit_id = rid; st.rerun()
-            if cols[6].button("提交", key=f"s_{rid}_{i}", disabled=not enable_action):
+            if cols[6].button("修改", key=f"e_{rid}_{i}", disabled=not enable_action): st.session_state.edit_id = rid; st.rerun()
+            if cols[7].button("提交", key=f"s_{rid}_{i}", disabled=not enable_action):
                 idx = disp_db[disp_db["單號"]==rid].index[0]
                 disp_db.at[idx, "狀態"] = "待初審"
-                # [關鍵修正] 提交時強制寫入時間
-                disp_db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                # [修正] 提交時寫入台灣時間
+                disp_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(disp_db); st.rerun()
-            if cols[7].button("預覽", key=f"v_{rid}_{i}"): st.session_state.view_id = rid; st.rerun()
-            if cols[8].button("列印", key=f"p_{rid}_{i}"):
+            if cols[8].button("預覽", key=f"v_{rid}_{i}"): st.session_state.view_id = rid; st.rerun()
+            if cols[9].button("列印", key=f"p_{rid}_{i}"):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
                 st.components.v1.html('<script>' + js_p + '</script>', height=0)
-            with cols[9]:
+            with cols[10]:
                 with st.popover("刪除", disabled=not enable_action):
                     reason = st.text_input("刪除原因", key=f"re_{rid}_{i}")
                     if st.button("確認", key=f"conf_{rid}_{i}"):
                         if reason:
                             idx = disp_db[disp_db["單號"]==rid].index[0]
-                            disp_db.at[idx, "狀態"] = "已刪除"; disp_db.at[idx, "刪除人"] = curr_name; disp_db.at[idx, "刪除時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); disp_db.at[idx, "刪除原因"] = reason
+                            disp_db.at[idx, "狀態"] = "已刪除"; disp_db.at[idx, "刪除人"] = curr_name
+                            disp_db.at[idx, "刪除時間"] = get_taiwan_time()
+                            disp_db.at[idx, "刪除原因"] = reason
                             save_data(disp_db); st.rerun()
 
     if st.session_state.view_id:
@@ -501,7 +522,6 @@ if menu == "1. 填寫申請單":
 
 elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核中心")
-    # [關鍵修正] 嚴格比對專案負責人
     if is_admin: 
         p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
     else: 
@@ -521,15 +541,13 @@ elif menu == "2. 專案執行長簽核":
         with st.expander(f"待初審：{rid} - {r['專案名稱']} (負責人：{r['專案負責人']})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # [關鍵修正] 解除管理員身分限制，只要名字對就能簽
-            can_sign = (curr_name.strip() == r["專案負責人"].strip())
+            can_sign = (curr_name.strip() == r["專案負責人"].strip()) and not is_admin
             if c1.button("✅ 核准", key=f"ok_ceo_{rid}_{i}", disabled=not can_sign):
                 latest_db = load_data()
                 idx = latest_db[latest_db["單號"]==rid].index[0]
                 latest_db.at[idx, "狀態"] = "待複審"; latest_db.at[idx, "初審人"] = curr_name
-                latest_db.at[idx, "初審時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                latest_db.at[idx, "初審時間"] = get_taiwan_time()
                 save_data(latest_db); st.rerun()
-            # [功能新增] 駁回原因視窗
             with c2.popover("❌ 駁回"):
                 rej_reason = st.text_input("駁回原因 (選填)", key=f"rej_res_ceo_{rid}")
                 if st.button("確認駁回", key=f"no_ceo_btn_{rid}"):
@@ -564,7 +582,7 @@ elif menu == "3. 財務長簽核":
                 latest_db = load_data()
                 idx = latest_db[latest_db["單號"]==rid].index[0]
                 latest_db.at[idx, "狀態"] = "已核准"; latest_db.at[idx, "複審人"] = curr_name
-                latest_db.at[idx, "複審時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                latest_db.at[idx, "複審時間"] = get_taiwan_time()
                 save_data(latest_db); st.rerun()
             with c2.popover("❌ 財務長駁回"):
                 rej_reason = st.text_input("駁回原因 (選填)", key=f"rej_res_cfo_{rid}")
