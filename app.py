@@ -15,30 +15,29 @@ S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 # 定義核心角色
 ADMINS = ["Anita"]
 CFO_NAME = "Charles"
-# 預設名單 (若檔案遺失時使用)
-DEFAULT_STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
+DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
 # [工具] 取得台灣時間 (UTC+8)
 def get_taiwan_time():
     tw_time = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
     return tw_time.strftime('%Y-%m-%d %H:%M')
 
-# [工具] 清理金額 (去除逗號與非數字字符)
+# [工具] 強力清理金額 (這是解決金額變 0 的關鍵)
 def clean_amount(val):
-    if pd.isna(val) or str(val).strip() == "":
-        return 0
-    # 去除逗號與空格
-    clean_val = str(val).replace(",", "").strip()
+    if pd.isna(val): return 0
+    # 先轉字串，去除 $ , 空白
+    s_val = str(val).replace(",", "").replace("$", "").replace(" ", "")
+    if s_val == "" or s_val.lower() == "nan": return 0
     try:
-        return int(float(clean_val))
+        # 先轉 float 處理可能的小數點，再轉 int
+        return int(float(s_val))
     except:
         return 0
 
 # [工具] 清理名字 (只留英文)
 def clean_name(val):
-    if pd.isna(val) or str(val).strip() == "":
-        return ""
-    # 切割空白，取第一個部分
+    if pd.isna(val) or str(val).strip() == "": return ""
+    # 用空白切割，只取第一個部分 (丟棄中文)
     return str(val).strip().split(" ")[0]
 
 # --- 2. 自動救援資料 ---
@@ -53,7 +52,7 @@ def init_rescue_data():
             "專案名稱": ["20260120ST001", "10111111", "元大方圓", "港廳餐廳", "公司費用"],
             "專案編號": ["豪哥", "Test02", "YUAN01", "20260101ST001", "公司費用"],
             "請款說明": ["測試說明1", "測試說明2", "工程款", "拆除第一期款項", "財務行政電腦維修升級"],
-            "總金額": ["5555", "555555", "500000", "40020", "5670"],
+            "總金額": [5555, 555555, 500000, 40020, 5670], # 這裡直接給數字
             "幣別": ["TWD"]*5,
             "付款方式": ["匯款(扣30手續費)"]*5,
             "請款廠商": ["廠商A", "廠商B", "元大", "鄭海丁", "大老資訊有限公司"],
@@ -70,7 +69,7 @@ def init_rescue_data():
             "刪除人": [""]*5, "刪除時間": [""]*5, "刪除原因": [""]*5,
             "駁回原因": [""]*5
         }
-        df = pd.DataFrame(data).astype(str)
+        df = pd.DataFrame(data)
         df.to_csv(D_FILE, index=False, encoding='utf-8-sig')
 
 init_rescue_data()
@@ -102,39 +101,50 @@ def load_data():
     if df is None or df.empty:
         return pd.DataFrame(columns=cols)
     
+    # 欄位遷移
     if "專案執行人" in df.columns:
         df = df.rename(columns={"專案執行人": "專案負責人"})
-    
+        
     for c in cols:
         if c not in df.columns: df[c] = ""
-    
-    # 名字清理
-    df["專案負責人"] = df["專案負責人"].apply(clean_name)
+            
+    # [關鍵] 資料清洗：載入時立刻把髒資料洗乾淨
+    df["總金額"] = df["總金額"].apply(clean_amount) # 強制轉為整數
+    df["專案負責人"] = df["專案負責人"].apply(clean_name) # 強制轉為英文
     df["申請人"] = df["申請人"].apply(clean_name)
     
+    # 去除前後空白
     df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+    
     return df[cols]
 
 def save_data(df):
     try:
-        df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+        # 存檔前再次確保格式
+        df["總金額"] = df["總金額"].apply(clean_amount)
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
     except PermissionError:
-        st.error("⚠️ 嚴重警告：無法寫入檔案！請檢查 `database.csv` 是否正由 Excel 開啟中。")
+        st.error("⚠️ 警告：無法寫入檔案！請關閉 Excel。")
         st.stop()
 
 def load_staff():
+    # 預設名單
     default_df = pd.DataFrame({
-        "name": DEFAULT_STAFF_LIST,
-        "status": ["在職"] * 5,
-        "password": ["0000"] * 5
+        "name": DEFAULT_STAFF,
+        "status": ["在職"] * len(DEFAULT_STAFF),
+        "password": ["0000"] * len(DEFAULT_STAFF)
     })
+    
     df = read_csv_robust(S_FILE)
     
-    # 如果舊檔案沒有 status 欄位，自動補上
+    # 若檔案損壞或遺失，用預設值
     if df is None or df.empty:
         df = default_df.copy()
-    elif "status" not in df.columns:
+        df.to_csv(S_FILE, index=False, encoding='utf-8-sig')
+        return df
+        
+    # 補齊 status 欄位 (舊檔案可能沒有)
+    if "status" not in df.columns:
         df["status"] = "在職"
         
     df["name"] = df["name"].str.strip()
@@ -166,7 +176,7 @@ if 'db' not in st.session_state: st.session_state.db = load_data()
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 
 if 'user_id' not in st.session_state: st.session_state.user_id = None
-if 'user_status' not in st.session_state: st.session_state.user_status = "在職" # 預設狀態
+if 'user_status' not in st.session_state: st.session_state.user_status = "在職"
 if 'edit_id' not in st.session_state: st.session_state.edit_id = None
 if 'last_id' not in st.session_state: st.session_state.last_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
@@ -197,10 +207,12 @@ if st.session_state.user_id is None:
                     
                     if input_val == stored_pw or (input_val == "0000" and stored_pw in ["nan", ""]):
                         st.session_state.user_id = sel_u
-                        # 儲存使用者狀態 (在職/離職)
+                        # 讀取並儲存狀態 (在職/離職)
                         st_val = user_row.iloc[0]["status"]
                         st.session_state.user_status = st_val if pd.notna(st_val) else "在職"
                         st.session_state.staff_df = staff_df
+                        
+                        # 清空暫存
                         st.session_state.view_id = None
                         st.session_state.edit_id = None
                         st.session_state.last_id = None
@@ -213,13 +225,13 @@ if st.session_state.user_id is None:
 
 curr_name = st.session_state.user_id
 curr_status = st.session_state.user_status
-is_active = (curr_status == "在職") # 判斷是否為在職，用來控制按鈕顯示
+is_active = (curr_status == "在職") # 判斷權限
 is_admin = (curr_name in ADMINS)
 
-# --- 5. 側邊欄 (含人員管理) ---
+# --- 5. 側邊欄 ---
 st.sidebar.markdown(f"### 👤 目前登入：{curr_name}")
 if not is_active:
-    st.sidebar.error("⚠️ 您目前為【離職】狀態，僅供查閱，無法執行任何動作。")
+    st.sidebar.error("⛔ 您已離職，僅供瀏覽")
 
 with st.sidebar.expander("🔐 修改我的密碼"):
     new_pw = st.text_input("新密碼", type="password")
@@ -236,46 +248,45 @@ with st.sidebar.expander("🔐 修改我的密碼"):
             st.success("成功！")
 
 if is_admin:
-    st.sidebar.success("身分：管理員 / 財務行政")
+    st.sidebar.success("身分：管理員")
     
-    # [新增] 人員管理功能：新增
+    # [新增] 新增人員
     with st.sidebar.expander("➕ 新增人員"):
-        new_staff_name = st.text_input("人員姓名 (英文)")
-        new_staff_pw = st.text_input("預設密碼", value="0000")
+        new_name = st.text_input("英文姓名")
+        new_pass = st.text_input("預設密碼", value="0000")
         if st.button("確認新增"):
-            staff_df = st.session_state.staff_df
-            if new_staff_name in staff_df["name"].values:
-                st.error("此人員已存在")
-            else:
-                new_row = pd.DataFrame({"name":[new_staff_name], "status":["在職"], "password":[new_staff_pw]})
-                staff_df = pd.concat([staff_df, new_row], ignore_index=True)
-                save_staff(staff_df)
-                st.session_state.staff_df = staff_df
-                st.success(f"已新增 {new_staff_name}")
-                st.rerun()
+            if new_name:
+                staff_df = st.session_state.staff_df
+                if new_name in staff_df["name"].values:
+                    st.error("此人已存在")
+                else:
+                    new_row = pd.DataFrame({"name":[new_name], "status":["在職"], "password":[new_pass]})
+                    staff_df = pd.concat([staff_df, new_row], ignore_index=True)
+                    save_staff(staff_df)
+                    st.session_state.staff_df = staff_df
+                    st.success(f"已新增 {new_name}")
+                    st.rerun()
 
-    # [新增] 人員管理功能：離職/重置
+    # [新增] 狀態管理 (離職)
     with st.sidebar.expander("⚙️ 人員狀態管理"):
         staff_df = st.session_state.staff_df
-        # 顯示清單供管理
         for i, r in staff_df.iterrows():
-            c1, c2, c3 = st.columns([1.5, 1.2, 1])
+            c1, c2, c3 = st.columns([1.5, 1.5, 1])
             c1.write(f"**{r['name']}**")
             
-            # 狀態切換
-            current_st = r["status"] if pd.notna(r["status"]) else "在職"
-            new_st = c2.selectbox("狀態", ["在職", "離職"], index=["在職", "離職"].index(current_st), key=f"st_{i}", label_visibility="collapsed")
+            # 狀態下拉選單
+            curr_st = r["status"] if pd.notna(r["status"]) else "在職"
+            new_st = c2.selectbox("", ["在職", "離職"], index=["在職", "離職"].index(curr_st), key=f"st_{i}", label_visibility="collapsed")
             
-            if new_st != current_st:
+            if new_st != curr_st:
                 staff_df.at[i, "status"] = new_st
                 save_staff(staff_df)
-                st.success("已更新")
                 st.rerun()
-
-            if c3.button("重置密碼", key=f"rs_{i}"):
+                
+            if c3.button("重置", key=f"rst_{i}"):
                 staff_df.at[i, "password"] = "0000"
                 save_staff(staff_df)
-                st.success("已重置")
+                st.success("OK")
 
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None
@@ -288,8 +299,8 @@ menu = st.sidebar.radio("系統導覽", ["1. 填寫申請單", "2. 專案執行�
 
 # --- 6. 憑證渲染 HTML ---
 def render_html(row):
-    try: amt_val = clean_amount(row['總金額'])
-    except: amt_val = 0
+    # [修正] 金額渲染前必先 clean
+    amt_val = clean_amount(row['總金額'])
     fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0
     act = amt_val - fee
     b64 = get_b64_logo(); lg = '<h3>Time Lab</h3>'
@@ -297,6 +308,7 @@ def render_html(row):
     rev_info = f"{row['初審人']} ({row['初審時間']})" if row['初審時間'] else "_________"
     cfo_info = f"{row['複審人']} ({row['複審時間']})" if row['複審時間'] else "_________"
     
+    # 預覽顯示台灣時間
     if row["提交時間"] and str(row["提交時間"]) != "nan" and str(row["提交時間"]) != "":
         sub_time = row["提交時間"]
     else:
@@ -350,8 +362,10 @@ def render_html(row):
 if menu == "1. 填寫申請單":
     st.header("時研國際設計股份有限公司 請購/請款系統")
     current_db = load_data()
-    # 準備名單 (只取英文)
+    # 準備名單
     staff_names = st.session_state.staff_df["name"].apply(clean_name).tolist()
+    # 確保當前使用者在名單中，避免報錯
+    if curr_name not in staff_names: staff_names.append(curr_name)
     
     default_vals = {
         "pn": "", "exe": staff_names[0], "pi": "", "amt": 0, 
@@ -365,14 +379,11 @@ if menu == "1. 填寫申請單":
             row = r_f.iloc[0]
             st.warning(f"📝 正在修改單號：{st.session_state.edit_id}")
             default_vals["pn"] = row["專案名稱"]
-            # 專案負責人：確保只取英文
             exe_val = clean_name(row["專案負責人"])
             default_vals["exe"] = exe_val if exe_val in staff_names else staff_names[0]
-            
             default_vals["pi"] = row["專案編號"]
-            # [修正] 金額讀取使用 clean_amount
+            # [修正] 載入舊資料時，強制 clean_amount，確保不是 0
             default_vals["amt"] = clean_amount(row["總金額"])
-            
             default_vals["tp"] = row["類型"]
             default_vals["pay"] = row["付款方式"]
             default_vals["vdr"] = row["請款廠商"]
@@ -433,8 +444,6 @@ if menu == "1. 填寫申請單":
         ims_f = st.file_uploader("上傳新報帳憑證 (支援 JPG/PNG/PDF)", type=["jpg","png","jpeg","pdf"], accept_multiple_files=True, key=f"ims_f_{mode_suffix}")
         
         c_save, c_pre, c_sub, c_prt = st.columns(4)
-        
-        # [權限] 離職人員不能按儲存
         do_save = c_save.form_submit_button("💾 儲存內容", disabled=not is_active)
         
         if do_save:
@@ -511,7 +520,6 @@ if menu == "1. 填寫申請單":
             l_rec = target_rows.iloc[0]
             c1, c2, c3, c4 = st.columns(4)
             if c1.button("🔍 線上預覽", key="v_fast"): st.session_state.view_id = st.session_state.last_id; st.rerun()
-            # [權限] 離職人員不能提交
             if c2.button("🚀 提交送審", key="s_fast", disabled=not is_active):
                 idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
                 temp_db.at[idx, "狀態"] = "待初審"
@@ -544,8 +552,7 @@ if menu == "1. 填寫申請單":
         h_cols[1].write("**專案名稱**")
         h_cols[2].write("**審核主管**")
         h_cols[3].write("**申請人**")
-        # [修正] 欄位名稱改為 "總金額"
-        h_cols[4].write("**總金額**") 
+        h_cols[4].write("**總金額**") # [修正] 標題改為總金額
         h_cols[5].write("**狀態**")
         
         for i, r in final_db.iterrows():
@@ -560,14 +567,14 @@ if menu == "1. 填寫申請單":
             cols[3].write(owner)
             
             fee_tag = " :red[(已扣30)]" if r["付款方式"] == "匯款(扣30手續費)" else ""
-            # [修正] 金額顯示確保不為 0
+            # [修正] 顯示前先清理金額，確保不為 0
             f_amt = clean_amount(r['總金額'])
             cols[4].markdown(f"${f_amt:,.0f}{fee_tag}")
             cols[5].markdown(f":{color}[{stt}]")
             
             is_editable_status = (stt in ["已儲存", "草稿", "已駁回"])
             is_own = (curr_name.strip() == str(owner).strip())
-            # [權限] 在職才能修改
+            # [權限] 離職不可修改
             enable_action = (is_own and is_editable_status and is_active)
             
             if cols[6].button("修改", key=f"e_{rid}_{i}", disabled=not enable_action): st.session_state.edit_id = rid; st.rerun()
@@ -605,7 +612,7 @@ elif menu == "2. 專案執行長簽核":
     if is_admin: 
         p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
     else: 
-        # [修正] 篩選邏輯使用 clean_name 確保中英文皆可過
+        # [修正] 篩選時只比對英文名
         p_df = st.session_state.db[
             (st.session_state.db["狀態"]=="待初審") & 
             (st.session_state.db["專案負責人"].apply(clean_name) == curr_name)
@@ -619,11 +626,10 @@ elif menu == "2. 專案執行長簽核":
 
     for i, r in p_df.iterrows():
         rid = r["單號"]
-        # [修正] 只顯示英文
         with st.expander(f"待初審：{rid} - {r['專案名稱']} (負責人：{clean_name(r['專案負責人'])})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # [權限] 離職不能簽核
+            # [權限] 離職不可簽核
             can_sign = ((clean_name(r["專案負責人"]) == curr_name) or is_admin) and is_active
             if c1.button("✅ 核准", key=f"ok_ceo_{rid}_{i}", disabled=not can_sign):
                 latest_db = load_data()
@@ -633,7 +639,6 @@ elif menu == "2. 專案執行長簽核":
                 save_data(latest_db); st.rerun()
             with c2.popover("❌ 駁回"):
                 rej_reason = st.text_input("駁回原因 (選填)", key=f"rej_res_ceo_{rid}")
-                # [權限] 離職不能駁回
                 if st.button("確認駁回", key=f"no_ceo_btn_{rid}", disabled=not can_sign):
                     latest_db = load_data()
                     idx = latest_db[latest_db["單號"]==rid].index[0]
@@ -661,8 +666,8 @@ elif menu == "3. 財務長簽核":
         with st.expander(f"待複審：{rid} - {r['專案名稱']}"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # [權限] 離職不能簽核
-            is_cfo = ((curr_name.strip() == CFO_NAME) and is_active) or (is_admin and is_active)
+            # [權限] 離職不可簽核
+            is_cfo = ((curr_name.strip() == CFO_NAME) or is_admin) and is_active
             if c1.button("👑 最終核准", key=f"ok_cfo_{rid}_{i}", disabled=not is_cfo):
                 latest_db = load_data()
                 idx = latest_db[latest_db["單號"]==rid].index[0]
