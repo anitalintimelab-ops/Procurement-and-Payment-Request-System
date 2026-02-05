@@ -17,10 +17,9 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 STAFF_LIST = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- 2. 自動救援資料 (防止資料遺失) ---
+# --- 2. 自動救援資料 ---
 def init_rescue_data():
     if not os.path.exists(D_FILE):
-        # 預設資料
         data = {
             "單號": ["20260121-01", "20260121-02", "20260129-06", "20260202-02", "20260203-01"],
             "日期": ["2026-01-21", "2026-01-21", "2026-01-29", "2026-02-02", "2026-02-03"],
@@ -44,7 +43,8 @@ def init_rescue_data():
             "初審時間": ["", "2026-01-21 14:00", "", "", ""],
             "複審人": ["", "Charles", "", "", ""],
             "複審時間": ["", "2026-01-21 15:00", "", "", ""],
-            "刪除人": [""]*5, "刪除時間": [""]*5, "刪除原因": [""]*5
+            "刪除人": [""]*5, "刪除時間": [""]*5, "刪除原因": [""]*5,
+            "駁回原因": [""]*5
         }
         df = pd.DataFrame(data).astype(str)
         df.to_csv(D_FILE, index=False, encoding='utf-8-sig')
@@ -69,10 +69,11 @@ def read_csv_robust(filepath):
     return pd.DataFrame()
 
 def load_data():
+    # [新增] 駁回原因欄位
     cols = ["單號", "日期", "類型", "申請人", "專案負責人", "專案名稱", "專案編號", 
             "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", 
             "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱",
-            "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因"]
+            "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因"]
     
     df = read_csv_robust(D_FILE)
     if df is None or df.empty:
@@ -84,13 +85,11 @@ def load_data():
     for c in cols:
         if c not in df.columns: df[c] = ""
             
-    # [關鍵] 強力去除前後空白，解決收不到單的問題
     df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
     return df[cols]
 
 def save_data(df):
     try:
-        # 存檔前再次確保去除空白
         df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
     except PermissionError:
@@ -130,7 +129,6 @@ def clean_for_js(h_str):
     return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
 def is_pdf(b64_str):
-    """簡單判斷 Base64 是否為 PDF"""
     return b64_str.startswith("JVBERi")
 
 # 初始化 Session
@@ -232,11 +230,10 @@ def render_html(row):
     rev_info = f"{row['初審人']} ({row['初審時間']})" if row['初審時間'] else "_________"
     cfo_info = f"{row['複審人']} ({row['複審時間']})" if row['複審時間'] else "_________"
     
-    # [關鍵修正] 預覽時若尚未提交，顯示當下時間，否則顯示資料庫時間
+    # 預覽時顯示時間
     if row["提交時間"] and str(row["提交時間"]) != "nan" and str(row["提交時間"]) != "":
         sub_time = row["提交時間"]
     else:
-        # 如果是草稿，預覽時顯示 "預計提交: 現在時間"
         sub_time = f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} (預覽)"
     
     h = f'<div style="font-family:sans-serif;padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
@@ -253,7 +250,6 @@ def render_html(row):
     h += f'<tr><td colspan="3" align="right">提列手續費&nbsp;</td><td align="right">{fee}&nbsp;</td></tr>'
     h += f'<tr style="font-weight:bold;"><td colspan="3" align="right" height="40" bgcolor="#eee">實際請款&nbsp;</td><td align="right" bgcolor="#eee">{act:,.0f}&nbsp;</td></tr></table>'
     
-    # 存摺渲染 (支援圖片與 PDF)
     if str(row['帳戶影像Base64']) != "":
         h += '<div style="margin-top:10px;border:1px dashed #ccc;padding:10px;"><b>存摺影本：</b><br>'
         if is_pdf(str(row['帳戶影像Base64'])):
@@ -265,11 +261,14 @@ def render_html(row):
     if row["狀態"] == "已刪除":
         h += f'<div style="color:red;border:2px solid red;padding:10px;margin-top:10px;"><b>⚠️ 此單已由 {row["刪除人"]} 於 {row["刪除時間"]} 刪除</b><br>原因：{row["刪除原因"]}</div>'
     
+    # 顯示駁回原因
+    if row["狀態"] == "已駁回" and "駁回原因" in row and str(row["駁回原因"]) != "":
+        h += f'<div style="color:red;border:1px solid red;padding:5px;margin-top:5px;"><b>❌ 駁回原因：</b>{row["駁回原因"]}</div>'
+
     h += f'<div style="display:flex;flex-direction:column;gap:15px;margin-top:40px;font-size:11px;">'
     h += f'<div style="display:flex;justify-content:space-between;"><span>承辦人：{row["申請人"]} ({sub_time})</span><span>專案執行長簽核：{rev_info}</span></div>'
     h += f'<div style="display:flex;justify-content:space-between;"><span>財務長簽核：{cfo_info}</span><span>財務簽核：_________</span></div></div></div>'
     
-    # 憑證渲染 (分頁)
     v = ""
     if str(row['影像Base64']) != "":
         imgs = str(row['影像Base64']).split('|')
@@ -285,9 +284,7 @@ def render_html(row):
 # --- 7. 主功能流程 ---
 if menu == "1. 填寫申請單":
     st.header("時研國際設計股份有限公司 請購/請款系統")
-    
     current_db = load_data()
-    # 預設變數
     default_vals = {
         "pn": "", "exe": STAFF_LIST[0], "pi": "", "amt": 0, 
         "tp": "請款單", "pay": "匯款(扣30手續費)", "vdr": "", 
@@ -310,7 +307,6 @@ if menu == "1. 填寫申請單":
             default_vals["vdr"] = row["請款廠商"]
             default_vals["acc"] = row["匯款帳戶"]
             default_vals["desc"] = row["請款說明"]
-            # 讀取舊檔案資料
             default_vals["acc_b64"] = row["帳戶影像Base64"]
             default_vals["ims_b64"] = row["影像Base64"]
     
@@ -338,14 +334,12 @@ if menu == "1. 填寫申請單":
         acc = st.text_input("帳戶", value=default_vals["acc"], key=f"acc_{mode_suffix}")
         desc = st.text_area("說明 *", value=default_vals["desc"], key=f"desc_{mode_suffix}")
         
-        # [關鍵功能] 顯示舊檔案與刪除選項
         del_acc = False
         if default_vals["acc_b64"]:
             ftype = "PDF 文件" if is_pdf(default_vals["acc_b64"]) else "圖片"
             st.info(f"✅ 存摺目前已存有 {ftype} (如需更換請直接上傳，如需刪除請勾選下方)")
             del_acc = st.checkbox("🗑️ 刪除原有存摺影本", key=f"del_acc_{mode_suffix}")
             
-        # [修改] 支援 PDF 上傳
         acc_f = st.file_uploader("上傳新存摺影本 (支援 JPG/PNG/PDF)", type=["jpg","png","jpeg","pdf"], key=f"acc_f_{mode_suffix}")
         
         del_ims = False
@@ -363,12 +357,10 @@ if menu == "1. 填寫申請單":
                 st.error("❌ 必填未填齊！")
             else:
                 current_db = load_data()
-                
-                # 處理圖片邏輯：有新圖用新圖，沒新圖看是否刪除，否則用舊圖
                 final_acc_b64 = ""
                 if acc_f:
                     final_acc_b64 = base64.b64encode(acc_f.getvalue()).decode()
-                elif not del_acc: # 沒上傳且沒說要刪 -> 保留舊的
+                elif not del_acc:
                     final_acc_b64 = default_vals["acc_b64"]
                 
                 final_ims_b64 = ""
@@ -393,7 +385,6 @@ if menu == "1. 填寫申請單":
                     current_db.at[idx,"申請人信箱"] = curr_name 
                     current_db.at[idx,"帳戶影像Base64"] = final_acc_b64
                     current_db.at[idx,"影像Base64"] = final_ims_b64
-                    
                     st.session_state.last_id = st.session_state.edit_id
                     st.session_state.edit_id = None
                 else:
@@ -416,7 +407,7 @@ if menu == "1. 填寫申請單":
                         "請款廠商":vdr, "匯款帳戶":acc, "帳戶影像Base64":final_acc_b64, 
                         "狀態":"已儲存", "影像Base64":final_ims_b64, "提交時間":"", 
                         "申請人信箱":curr_name, "初審人":"", "初審時間":"", 
-                        "複審人":"", "複審時間":"", "刪除人":"", "刪除時間":"", "刪除原因":""
+                        "複審人":"", "複審時間":"", "刪除人":"", "刪除時間":"", "刪除原因":"", "駁回原因":""
                     }
                     current_db = pd.concat([current_db, pd.DataFrame([nr])], ignore_index=True)
                     st.session_state.last_id = tid
@@ -431,7 +422,6 @@ if menu == "1. 填寫申請單":
         st.info(f"📍 案件已儲存：{st.session_state.last_id}")
         temp_db = load_data()
         target_rows = temp_db[temp_db["單號"]==st.session_state.last_id]
-        
         if not target_rows.empty:
             l_rec = target_rows.iloc[0]
             c1, c2, c3, c4 = st.columns(4)
@@ -439,7 +429,7 @@ if menu == "1. 填寫申請單":
             if c2.button("🚀 提交送審", key="s_fast"):
                 idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
                 temp_db.at[idx, "狀態"] = "待初審"
-                # [關鍵修復] 提交時確實寫入時間，並立即存檔
+                # [關鍵修正] 提交時強制寫入時間
                 temp_db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 save_data(temp_db)
                 st.success("已提交！")
@@ -484,10 +474,9 @@ if menu == "1. 填寫申請單":
             if cols[6].button("提交", key=f"s_{rid}_{i}", disabled=not enable_action):
                 idx = disp_db[disp_db["單號"]==rid].index[0]
                 disp_db.at[idx, "狀態"] = "待初審"
-                # [關鍵修復] 提交按鈕也補上時間寫入
+                # [關鍵修正] 提交時強制寫入時間
                 disp_db.at[idx, "提交時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                save_data(disp_db)
-                st.rerun()
+                save_data(disp_db); st.rerun()
             if cols[7].button("預覽", key=f"v_{rid}_{i}"): st.session_state.view_id = rid; st.rerun()
             if cols[8].button("列印", key=f"p_{rid}_{i}"):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
@@ -507,16 +496,15 @@ if menu == "1. 填寫申請單":
             st.markdown(render_html(target_rows.iloc[0]), unsafe_allow_html=True)
             if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()
         else:
-            st.error("找不到該單據，可能已被刪除。")
+            st.warning("⚠️ 找不到該單據，可能已被刪除。")
             if st.button("關閉"): st.session_state.view_id = None; st.rerun()
 
 elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核中心")
-    # [關鍵修復] 篩選邏輯：強制去空白比對
+    # [關鍵修正] 嚴格比對專案負責人
     if is_admin: 
         p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
     else: 
-        # 狀態是待初審 且 (專案負責人去除空白後 == 當前登入者去除空白後)
         p_df = st.session_state.db[
             (st.session_state.db["狀態"]=="待初審") & 
             (st.session_state.db["專案負責人"].str.strip() == curr_name.strip())
@@ -533,17 +521,23 @@ elif menu == "2. 專案執行長簽核":
         with st.expander(f"待初審：{rid} - {r['專案名稱']} (負責人：{r['專案負責人']})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            can_sign = (curr_name.strip() == r["專案負責人"].strip()) and not is_admin
+            # [關鍵修正] 解除管理員身分限制，只要名字對就能簽
+            can_sign = (curr_name.strip() == r["專案負責人"].strip())
             if c1.button("✅ 核准", key=f"ok_ceo_{rid}_{i}", disabled=not can_sign):
                 latest_db = load_data()
                 idx = latest_db[latest_db["單號"]==rid].index[0]
                 latest_db.at[idx, "狀態"] = "待複審"; latest_db.at[idx, "初審人"] = curr_name
                 latest_db.at[idx, "初審時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 save_data(latest_db); st.rerun()
-            if c2.button("❌ 駁回", key=f"no_ceo_{rid}_{i}", disabled=not can_sign):
-                latest_db = load_data()
-                idx = latest_db[latest_db["單號"]==rid].index[0]
-                latest_db.at[idx, "狀態"] = "已駁回"; save_data(latest_db); st.rerun()
+            # [功能新增] 駁回原因視窗
+            with c2.popover("❌ 駁回"):
+                rej_reason = st.text_input("駁回原因 (選填)", key=f"rej_res_ceo_{rid}")
+                if st.button("確認駁回", key=f"no_ceo_btn_{rid}"):
+                    latest_db = load_data()
+                    idx = latest_db[latest_db["單號"]==rid].index[0]
+                    latest_db.at[idx, "狀態"] = "已駁回"
+                    latest_db.at[idx, "駁回原因"] = rej_reason
+                    save_data(latest_db); st.rerun()
     
     st.divider(); st.subheader("📜 已簽核歷史紀錄")
     h_df = st.session_state.db[st.session_state.db["初審人"].str.contains(curr_name, na=False)]
@@ -572,10 +566,14 @@ elif menu == "3. 財務長簽核":
                 latest_db.at[idx, "狀態"] = "已核准"; latest_db.at[idx, "複審人"] = curr_name
                 latest_db.at[idx, "複審時間"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 save_data(latest_db); st.rerun()
-            if c2.button("❌ 財務長駁回", key=f"no_cfo_{rid}_{i}", disabled=not is_cfo):
-                latest_db = load_data()
-                idx = latest_db[latest_db["單號"]==rid].index[0]
-                latest_db.at[idx, "狀態"] = "已駁回"; save_data(latest_db); st.rerun()
+            with c2.popover("❌ 財務長駁回"):
+                rej_reason = st.text_input("駁回原因 (選填)", key=f"rej_res_cfo_{rid}")
+                if st.button("確認駁回", key=f"no_cfo_btn_{rid}"):
+                    latest_db = load_data()
+                    idx = latest_db[latest_db["單號"]==rid].index[0]
+                    latest_db.at[idx, "狀態"] = "已駁回"
+                    latest_db.at[idx, "駁回原因"] = rej_reason
+                    save_data(latest_db); st.rerun()
 
     st.divider(); st.subheader("📜 已簽核歷史紀錄")
     f_df = st.session_state.db[st.session_state.db["複審人"].str.contains(curr_name, na=False)]
