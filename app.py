@@ -25,7 +25,6 @@ def get_taiwan_time():
 # [工具] 強力清理金額
 def clean_amount(val):
     if pd.isna(val) or str(val).strip() == "": return 0
-    # 去除 $ , 以及中文全形逗號
     s_val = str(val).replace(",", "").replace("$", "").replace("，", "").replace(" ", "")
     try:
         return int(float(s_val))
@@ -35,32 +34,32 @@ def clean_amount(val):
 # [工具] 強力清理名字 (只留英文，去除空白與中文)
 def clean_name(val):
     if pd.isna(val) or str(val).strip() == "": return ""
-    # 1. 先去除前後空白
+    # 1. 轉字串並去空白
     val = str(val).strip()
-    # 2. 用空白切割，只取第一段 (假設格式為 "Andy 陳俊嘉" -> 取 "Andy")
+    # 2. 如果包含中文或空白，只取第一段 (假設 "Andy 陳" -> "Andy")
     return val.split(" ")[0]
 
 # --- 2. 自動救援資料 ---
 def init_rescue_data():
     if not os.path.exists(D_FILE):
         data = {
-            "單號": ["20260121-01", "20260121-02", "20260129-06", "20260202-02", "20260203-01"],
-            "日期": ["2026-01-21", "2026-01-21", "2026-01-29", "2026-02-02", "2026-02-03"],
+            "單號": ["20260121-01", "20260121-02", "20260129-06", "20260202-02", "20260205-01"],
+            "日期": ["2026-01-21", "2026-01-21", "2026-01-29", "2026-02-02", "2026-02-05"],
             "類型": ["請款單", "請款單", "請款單", "請款單", "請款單"],
             "申請人": ["Anita", "Andy", "Anita", "Andy", "Anita"],
-            "專案負責人": ["Andy", "Andy", "Andy", "Sunglin", "Andy"],
+            "專案負責人": ["Andy", "Andy", "Andy", "Sunglin", "Charles"], # 確保這裡有名稱
             "專案名稱": ["20260120ST001", "10111111", "元大方圓", "港廳餐廳", "公司費用"],
             "專案編號": ["豪哥", "Test02", "YUAN01", "20260101ST001", "公司費用"],
             "請款說明": ["測試說明1", "測試說明2", "工程款", "拆除第一期款項", "財務行政電腦維修升級"],
-            "總金額": [5555, 555555, 500000, 40020, 5670],
+            "總金額": [5555, 555555, 500000, 40020, 5600],
             "幣別": ["TWD"]*5,
             "付款方式": ["匯款(扣30手續費)"]*5,
-            "請款廠商": ["廠商A", "廠商B", "元大", "鄭海丁", "大老資訊有限公司"],
+            "請款廠商": ["廠商A", "廠商B", "元大", "鄭海丁", "大老資訊"],
             "匯款帳戶": ["", "", "", "009-00005545622", ""],
             "帳戶影像Base64": [""]*5,
             "狀態": ["待初審", "已核准", "待初審", "草稿", "待初審"],
             "影像Base64": [""]*5, 
-            "提交時間": ["2026-01-21 10:00", "2026-01-21 11:00", "2026-01-29 15:57", "", "2026-02-03 14:20"],
+            "提交時間": ["2026-01-21 10:00", "2026-01-21 11:00", "2026-01-29 15:57", "", "2026-02-05 14:00"],
             "申請人信箱": ["Anita", "Andy", "Anita", "Andy", "Anita"],
             "初審人": ["", "Charles", "", "", ""],
             "初審時間": ["", "2026-01-21 14:00", "", "", ""],
@@ -107,19 +106,19 @@ def load_data():
     for c in cols:
         if c not in df.columns: df[c] = ""
             
-    # [資料清洗] 載入時立刻清理
+    # [關鍵] 強制轉型與清洗，避免看不見
     df["總金額"] = df["總金額"].apply(clean_amount)
-    df["專案負責人"] = df["專案負責人"].apply(clean_name)
-    df["申請人"] = df["申請人"].apply(clean_name)
+    df["專案負責人"] = df["專案負責人"].astype(str).apply(clean_name)
+    df["申請人"] = df["申請人"].astype(str).apply(clean_name)
+    df["狀態"] = df["狀態"].astype(str).str.strip() # 強制去空白
     
-    df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
     return df[cols]
 
 def save_data(df):
     try:
-        # [資料清洗] 存檔前再次清理，確保格式統一
         df["總金額"] = df["總金額"].apply(clean_amount)
-        df["專案負責人"] = df["專案負責人"].apply(clean_name)
+        df["專案負責人"] = df["專案負責人"].astype(str).apply(clean_name)
+        df["狀態"] = df["狀態"].astype(str).str.strip()
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
     except PermissionError:
         st.error("⚠️ 警告：無法寫入檔案！請關閉 Excel。")
@@ -136,10 +135,7 @@ def load_staff():
         df = default_df.copy()
         df.to_csv(S_FILE, index=False, encoding='utf-8-sig')
         return df
-        
-    if "status" not in df.columns:
-        df["status"] = "在職"
-        
+    if "status" not in df.columns: df["status"] = "在職"
     df["name"] = df["name"].str.strip()
     df["password"] = df["password"].str.strip()
     return df
@@ -362,7 +358,7 @@ if menu == "1. 填寫申請單":
             exe_val = clean_name(row["專案負責人"])
             default_vals["exe"] = exe_val if exe_val in staff_names else staff_names[0]
             default_vals["pi"] = row["專案編號"]
-            default_vals["amt"] = clean_amount(row["總金額"]) # [修復] 強制轉型
+            default_vals["amt"] = clean_amount(row["總金額"])
             default_vals["tp"] = row["類型"]
             default_vals["pay"] = row["付款方式"]
             default_vals["vdr"] = row["請款廠商"]
@@ -501,6 +497,7 @@ if menu == "1. 填寫申請單":
             if c2.button("🚀 提交送審", key="s_fast", disabled=not is_active):
                 idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
                 temp_db.at[idx, "狀態"] = "待初審"
+                # [關鍵修復] 提交時強制寫入台灣時間
                 temp_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(temp_db)
                 st.success("已提交！")
@@ -556,6 +553,7 @@ if menu == "1. 填寫申請單":
             if cols[7].button("提交", key=f"s_{rid}_{i}", disabled=not enable_action):
                 idx = disp_db[disp_db["單號"]==rid].index[0]
                 disp_db.at[idx, "狀態"] = "待初審"
+                # [關鍵修復] 提交時強制寫入台灣時間
                 disp_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(disp_db); st.rerun()
             if cols[8].button("預覽", key=f"v_{rid}_{i}"): st.session_state.view_id = rid; st.rerun()
@@ -585,8 +583,10 @@ if menu == "1. 填寫申請單":
 elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核中心")
     if is_admin: 
+        # 管理員看到所有待初審的單
         p_df = st.session_state.db[st.session_state.db["狀態"]=="待初審"]
     else: 
+        # 執行長只看自己且狀態為待初審的單
         p_df = st.session_state.db[
             (st.session_state.db["狀態"]=="待初審") & 
             (st.session_state.db["專案負責人"].apply(clean_name) == curr_name)
@@ -594,10 +594,8 @@ elif menu == "2. 專案執行長簽核":
     
     if not p_df.empty:
         st.write("#### 待處理單據清單")
-        if is_admin:
-            st.dataframe(p_df[["單號", "專案名稱", "專案負責人", "申請人", "總金額", "提交時間"]], use_container_width=True)
-        else:
-            st.dataframe(p_df[["單號", "專案名稱", "申請人", "總金額", "提交時間"]], use_container_width=True)
+        # [顯示負責人] 讓管理員知道是誰的單
+        st.dataframe(p_df[["單號", "專案名稱", "專案負責人", "申請人", "總金額", "提交時間"]], use_container_width=True)
     else:
         st.info("目前無待初審單據")
 
@@ -606,8 +604,13 @@ elif menu == "2. 專案執行長簽核":
         with st.expander(f"待初審：{rid} - {r['專案名稱']} (負責人：{clean_name(r['專案負責人'])})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # [權限] Anita 只能看 (反灰)，除非她自己是負責人
-            can_sign = (clean_name(r["專案負責人"]) == curr_name) and is_active
+            
+            # [權限修復]
+            # 1. 必須是本人(名字相符) 
+            # 2. 必須是在職
+            # 3. 管理員(Anita)如果是本人也可以簽，如果不是本人則不能簽 (反灰)
+            is_responsible = (clean_name(r["專案負責人"]) == curr_name)
+            can_sign = is_responsible and is_active
             
             if c1.button("✅ 核准", key=f"ok_ceo_{rid}_{i}", disabled=not can_sign):
                 latest_db = load_data()
@@ -615,10 +618,11 @@ elif menu == "2. 專案執行長簽核":
                 latest_db.at[idx, "狀態"] = "待複審"; latest_db.at[idx, "初審人"] = curr_name
                 latest_db.at[idx, "初審時間"] = get_taiwan_time()
                 save_data(latest_db); st.rerun()
-            with c2.popover("❌ 駁回"):
-                # 如果不能簽核，也無法打開駁回視窗 (但 popover 本身無 disabled，故在按鈕擋)
+            
+            # [修正] 駁回彈出視窗：如果沒有權限，直接 disabled 按鈕，不讓視窗跳出來
+            with c2.popover("❌ 駁回", disabled=not can_sign):
                 rej_reason = st.text_input("駁回原因 (選填)", key=f"rej_res_ceo_{rid}")
-                if st.button("確認駁回", key=f"no_ceo_btn_{rid}", disabled=not can_sign):
+                if st.button("確認駁回", key=f"no_ceo_btn_{rid}"):
                     latest_db = load_data()
                     idx = latest_db[latest_db["單號"]==rid].index[0]
                     latest_db.at[idx, "狀態"] = "已駁回"
@@ -626,11 +630,12 @@ elif menu == "2. 專案執行長簽核":
                     save_data(latest_db); st.rerun()
     
     st.divider(); st.subheader("📜 已簽核歷史紀錄")
+    # 管理員看全部，其他人看自己
     if is_admin:
         h_df = st.session_state.db[st.session_state.db["初審人"].notna() & (st.session_state.db["初審人"] != "")]
     else:
         h_df = st.session_state.db[st.session_state.db["初審人"].apply(clean_name) == curr_name]
-        
+    
     if h_df.empty: st.info("尚無紀錄")
     else: st.dataframe(h_df[["單號", "專案名稱", "申請人", "總金額", "初審時間", "狀態"]], use_container_width=True)
 
@@ -658,9 +663,10 @@ elif menu == "3. 財務長簽核":
                 latest_db.at[idx, "狀態"] = "已核准"; latest_db.at[idx, "複審人"] = curr_name
                 latest_db.at[idx, "複審時間"] = get_taiwan_time()
                 save_data(latest_db); st.rerun()
-            with c2.popover("❌ 財務長駁回"):
+            
+            with c2.popover("❌ 財務長駁回", disabled=not is_real_cfo):
                 rej_reason = st.text_input("駁回原因 (選填)", key=f"rej_res_cfo_{rid}")
-                if st.button("確認駁回", key=f"no_cfo_btn_{rid}", disabled=not is_real_cfo):
+                if st.button("確認駁回", key=f"no_cfo_btn_{rid}"):
                     latest_db = load_data()
                     idx = latest_db[latest_db["單號"]==rid].index[0]
                     latest_db.at[idx, "狀態"] = "已駁回"
