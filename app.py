@@ -117,20 +117,12 @@ def save_data(df):
         st.stop()
 
 def load_staff():
-    default_df = pd.DataFrame({
-        "name": DEFAULT_STAFF, 
-        "status": ["在職"]*len(DEFAULT_STAFF), 
-        "password": ["0000"]*len(DEFAULT_STAFF)
-    })
-    
+    default_df = pd.DataFrame({"name": DEFAULT_STAFF, "status": ["在職"]*5, "password": ["0000"]*5})
     df = read_csv_robust(S_FILE)
-    
-    # [關鍵修復] 這裡增加 df is None 的判斷，防止 AttributeError
-    if df is None or df.empty or "name" not in df.columns:
+    if df is None or df.empty:
         df = default_df.copy()
         df.to_csv(S_FILE, index=False, encoding='utf-8-sig')
         return df
-        
     if "status" not in df.columns: df["status"] = "在職"
     df["name"] = df["name"].str.strip()
     return df
@@ -359,7 +351,7 @@ if menu == "1. 填寫申請單":
     db = load_data()
     my_db = db if is_admin else db[(db["申請人"].str.contains(curr_name)) | (db["申請人信箱"].str.contains(curr_name))]
     
-    st.dataframe(my_db[["單號", "專案名稱", "專案負責人", "總金額", "狀態"]])
+    # [移除] 這裡已經沒有 raw dataframe 顯示了
     
     for i, r in my_db.iterrows():
         c1, c2, c3, c4, c5 = st.columns([1.5, 2, 1, 1, 2.5])
@@ -385,23 +377,29 @@ elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核")
     db = load_data()
     
-    # [權限邏輯] 管理員看所有待審，執行長只看自己的
+    # [修復] 管理員看所有待審，執行長看「包含自己名字」的
     if is_admin:
         p_df = db[db["狀態"] == "待初審"]
     else:
-        p_df = db[(db["狀態"] == "待初審") & (db["專案負責人"].apply(clean_name) == curr_name)]
+        # 使用 str.contains 寬鬆比對，解決 "Andy " vs "Andy" 問題
+        p_df = db[(db["狀態"] == "待初審") & (db["專案負責人"].str.contains(curr_name))]
     
     if p_df.empty: st.info("無待審單據")
-    else: st.dataframe(p_df[["單號", "專案名稱", "專案負責人", "申請人", "總金額", "提交時間"]])
+    
+    # [移除] 這裡已經沒有 raw dataframe 顯示了
 
     for i, r in p_df.iterrows():
         with st.expander(f"{r['單號']} - {r['專案名稱']} (負責人: {clean_name(r['專案負責人'])})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            # [按鈕權限] 只有當負責人是登入者本人時，按鈕才亮起
-            is_responsible = (clean_name(r["專案負責人"]) == curr_name)
-            can_sign = is_responsible and is_active
+            # [權限核心] 
+            # 1. 管理員(Anita)如果是當事人，可以按
+            # 2. 本人(Andy)如果是當事人，可以按
+            # 3. 如果是 Anita 看 Andy 的單 -> 按鈕 Disabled
+            
+            responsible_person = clean_name(r["專案負責人"])
+            can_sign = (responsible_person == curr_name) and is_active
             
             if c1.button("✅ 核准", key=f"ok{i}", disabled=not can_sign):
                 idx = db[db["單號"]==r["單號"]].index[0]
@@ -421,26 +419,28 @@ elif menu == "2. 專案執行長簽核":
         h_df = db[db["初審人"].notna() & (db["初審人"] != "")]
     else:
         h_df = db[db["初審人"].apply(clean_name) == curr_name]
-    st.dataframe(h_df[["單號", "專案名稱", "申請人", "總金額", "初審時間", "狀態"]])
+    
+    # 這裡也不顯示 raw dataframe，只顯示列表
+    for i, r in h_df.iterrows():
+        st.text(f"{r['單號']} | {r['專案名稱']} | 金額:${clean_amount(r['總金額'])} | {r['狀態']}")
 
 elif menu == "3. 財務長簽核":
-    st.subheader("🏁 財務長簽核")
+    st.header("🏁 財務長簽核")
     db = load_data()
     
     if is_admin:
         p_df = db[db["狀態"] == "待複審"]
     else:
         p_df = db[(db["狀態"] == "待複審") & (curr_name == CFO_NAME)]
-        
+    
     if p_df.empty: st.info("無待審單據")
-    else: st.dataframe(p_df[["單號", "專案名稱", "申請人", "總金額"]])
 
     for i, r in p_df.iterrows():
-        with st.expander(f"{r['單號']}"):
+        with st.expander(f"{r['單號']} - {r['專案名稱']}"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            # [按鈕權限] 只有 CFO 本人能簽
+            # 只有 CFO 本人能簽，Admin 只是看 (除非 Admin 也是 CFO)
             is_cfo = (curr_name == CFO_NAME) and is_active
             
             if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo):
@@ -460,7 +460,9 @@ elif menu == "3. 財務長簽核":
         f_df = db[db["複審人"].notna() & (db["複審人"] != "")]
     else:
         f_df = db[db["複審人"].apply(clean_name) == curr_name]
-    st.dataframe(f_df[["單號", "專案名稱", "申請人", "總金額", "複審時間", "狀態"]])
+    
+    for i, r in f_df.iterrows():
+        st.text(f"{r['單號']} | {r['專案名稱']} | 金額:${clean_amount(r['總金額'])} | {r['狀態']}")
 
 if st.session_state.view_id:
     r = load_data(); r = r[r["單號"]==st.session_state.view_id]
