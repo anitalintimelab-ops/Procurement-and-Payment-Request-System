@@ -252,7 +252,7 @@ def render_html(row):
 
 # --- 主程式 ---
 if menu == "1. 填寫申請單":
-    st.subheader("填寫申請單")
+    st.header("時研國際設計股份有限公司 請購/請款系統")
     db = load_data()
     staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
     if curr_name not in staffs: staffs.append(curr_name)
@@ -335,7 +335,7 @@ if menu == "1. 填寫申請單":
 
     if st.session_state.last_id:
         c1, c2, c3, c4 = st.columns(4)
-        if c1.button("🔍 預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
+        if c1.button("🔍 線上預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
         if c2.button("🚀 提交", disabled=not is_active):
             db = load_data()
             idx = db[db["單號"]==st.session_state.last_id].index[0]
@@ -348,15 +348,18 @@ if menu == "1. 填寫申請單":
         if c4.button("🆕 下一筆"): st.session_state.last_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
+    
+    # [新增] 功能說明橫列
+    st.info("💡 功能說明：申請單號 | 專案名稱 | 申請人 | 負責執行長 | 總金額 | 狀態")
+    
     db = load_data()
     my_db = db if is_admin else db[(db["申請人"].str.contains(curr_name)) | (db["申請人信箱"].str.contains(curr_name))]
     
-    # [移除] 這裡已經沒有 raw dataframe 顯示了
-    
     for i, r in my_db.iterrows():
         c1, c2, c3, c4, c5 = st.columns([1.5, 2, 1, 1, 2.5])
-        c1.write(r["單號"]); c2.write(r["專案名稱"]); c3.write(clean_name(r["專案負責人"])); c4.write(clean_amount(r["總金額"]))
+        c1.write(r["單號"]); c2.write(r["專案名稱"]); c3.write(clean_name(r["專案負責人"])); c4.write(f"${clean_amount(r['總金額']):,.0f}")
         
+        # 權限判斷：未提交或已駁回才能改
         is_own = (str(r["申請人"]).strip() == curr_name)
         can_edit = (r["狀態"] in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
         
@@ -366,9 +369,14 @@ if menu == "1. 填寫申請單":
             db.at[idx, "狀態"] = "待初審"
             db.at[idx, "提交時間"] = get_taiwan_time()
             save_data(db); st.rerun()
+        if c5.button("線上預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
+        if c5.button("列印", key=f"p{i}"):
+            js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
+            st.components.v1.html('<script>' + js_p + '</script>', height=0)
         with c5.popover("刪除", disabled=not can_edit):
-            reason = st.text_input("原因", key=f"d_res_{i}")
+            reason = st.text_input("刪除原因", key=f"d_res_{i}")
             if st.button("確認", key=f"d{i}"):
+                if not reason: st.error("請輸入原因"); st.stop()
                 idx = db[db["單號"]==r["單號"]].index[0]
                 db.at[idx, "狀態"] = "已刪除"; db.at[idx, "刪除人"] = curr_name; db.at[idx, "刪除原因"] = reason
                 save_data(db); st.rerun()
@@ -377,29 +385,22 @@ elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核")
     db = load_data()
     
-    # [修復] 管理員看所有待審，執行長看「包含自己名字」的
     if is_admin:
         p_df = db[db["狀態"] == "待初審"]
     else:
-        # 使用 str.contains 寬鬆比對，解決 "Andy " vs "Andy" 問題
         p_df = db[(db["狀態"] == "待初審") & (db["專案負責人"].str.contains(curr_name))]
     
     if p_df.empty: st.info("無待審單據")
-    
-    # [移除] 這裡已經沒有 raw dataframe 顯示了
+    else: st.dataframe(p_df[["單號", "專案名稱", "專案負責人", "申請人", "總金額", "提交時間"]])
 
     for i, r in p_df.iterrows():
         with st.expander(f"{r['單號']} - {r['專案名稱']} (負責人: {clean_name(r['專案負責人'])})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            # [權限核心] 
-            # 1. 管理員(Anita)如果是當事人，可以按
-            # 2. 本人(Andy)如果是當事人，可以按
-            # 3. 如果是 Anita 看 Andy 的單 -> 按鈕 Disabled
-            
-            responsible_person = clean_name(r["專案負責人"])
-            can_sign = (responsible_person == curr_name) and is_active
+            # [權限] 只有當前登入者 == 負責人 才能按
+            is_responsible = (clean_name(r["專案負責人"]) == curr_name)
+            can_sign = is_responsible and is_active
             
             if c1.button("✅ 核准", key=f"ok{i}", disabled=not can_sign):
                 idx = db[db["單號"]==r["單號"]].index[0]
@@ -419,10 +420,7 @@ elif menu == "2. 專案執行長簽核":
         h_df = db[db["初審人"].notna() & (db["初審人"] != "")]
     else:
         h_df = db[db["初審人"].apply(clean_name) == curr_name]
-    
-    # 這裡也不顯示 raw dataframe，只顯示列表
-    for i, r in h_df.iterrows():
-        st.text(f"{r['單號']} | {r['專案名稱']} | 金額:${clean_amount(r['總金額'])} | {r['狀態']}")
+    st.dataframe(h_df[["單號", "專案名稱", "申請人", "總金額", "初審時間", "狀態"]])
 
 elif menu == "3. 財務長簽核":
     st.header("🏁 財務長簽核")
@@ -432,15 +430,16 @@ elif menu == "3. 財務長簽核":
         p_df = db[db["狀態"] == "待複審"]
     else:
         p_df = db[(db["狀態"] == "待複審") & (curr_name == CFO_NAME)]
-    
+        
     if p_df.empty: st.info("無待審單據")
+    else: st.dataframe(p_df[["單號", "專案名稱", "申請人", "總金額"]])
 
     for i, r in p_df.iterrows():
-        with st.expander(f"{r['單號']} - {r['專案名稱']}"):
+        with st.expander(f"{r['單號']}"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            # 只有 CFO 本人能簽，Admin 只是看 (除非 Admin 也是 CFO)
+            # [權限] 只有 CFO 能按
             is_cfo = (curr_name == CFO_NAME) and is_active
             
             if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo):
@@ -460,12 +459,10 @@ elif menu == "3. 財務長簽核":
         f_df = db[db["複審人"].notna() & (db["複審人"] != "")]
     else:
         f_df = db[db["複審人"].apply(clean_name) == curr_name]
-    
-    for i, r in f_df.iterrows():
-        st.text(f"{r['單號']} | {r['專案名稱']} | 金額:${clean_amount(r['總金額'])} | {r['狀態']}")
+    st.dataframe(f_df[["單號", "專案名稱", "申請人", "總金額", "複審時間", "狀態"]])
 
 if st.session_state.view_id:
     r = load_data(); r = r[r["單號"]==st.session_state.view_id]
     if not r.empty:
         st.markdown(render_html(r.iloc[0]), unsafe_allow_html=True)
-        if st.button("關閉"): st.session_state.view_id = None; st.rerun()
+        if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()+
