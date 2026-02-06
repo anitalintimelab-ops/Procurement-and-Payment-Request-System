@@ -277,9 +277,6 @@ if is_admin:
 
 if st.sidebar.button("🚪 登出系統"):
     st.session_state.user_id = None
-    st.session_state.edit_id = None
-    st.session_state.view_id = None
-    st.session_state.last_id = None
     st.rerun()
 
 menu = st.sidebar.radio("系統導覽", ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核"])
@@ -347,7 +344,6 @@ def render_html(row):
 if menu == "1. 填寫申請單":
     st.header("時研國際設計股份有限公司 請購/請款系統")
     current_db = load_data()
-    # 準備名單 (只取英文)
     staff_names = st.session_state.staff_df["name"].apply(clean_name).tolist()
     if curr_name not in staff_names: staff_names.append(curr_name)
     
@@ -366,7 +362,7 @@ if menu == "1. 填寫申請單":
             exe_val = clean_name(row["專案負責人"])
             default_vals["exe"] = exe_val if exe_val in staff_names else staff_names[0]
             default_vals["pi"] = row["專案編號"]
-            default_vals["amt"] = clean_amount(row["總金額"])
+            default_vals["amt"] = clean_amount(row["總金額"]) # [修復] 強制轉型
             default_vals["tp"] = row["類型"]
             default_vals["pay"] = row["付款方式"]
             default_vals["vdr"] = row["請款廠商"]
@@ -598,7 +594,6 @@ elif menu == "2. 專案執行長簽核":
     
     if not p_df.empty:
         st.write("#### 待處理單據清單")
-        # [新增] 顯示負責人，讓管理員知道是誰的單
         if is_admin:
             st.dataframe(p_df[["單號", "專案名稱", "專案負責人", "申請人", "總金額", "提交時間"]], use_container_width=True)
         else:
@@ -611,7 +606,7 @@ elif menu == "2. 專案執行長簽核":
         with st.expander(f"待初審：{rid} - {r['專案名稱']} (負責人：{clean_name(r['專案負責人'])})"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # [權限] Anita 只能看不能審，除非她自己就是負責人
+            # [權限] Anita 只能看 (反灰)，除非她自己是負責人
             can_sign = (clean_name(r["專案負責人"]) == curr_name) and is_active
             
             if c1.button("✅ 核准", key=f"ok_ceo_{rid}_{i}", disabled=not can_sign):
@@ -621,6 +616,7 @@ elif menu == "2. 專案執行長簽核":
                 latest_db.at[idx, "初審時間"] = get_taiwan_time()
                 save_data(latest_db); st.rerun()
             with c2.popover("❌ 駁回"):
+                # 如果不能簽核，也無法打開駁回視窗 (但 popover 本身無 disabled，故在按鈕擋)
                 rej_reason = st.text_input("駁回原因 (選填)", key=f"rej_res_ceo_{rid}")
                 if st.button("確認駁回", key=f"no_ceo_btn_{rid}", disabled=not can_sign):
                     latest_db = load_data()
@@ -630,7 +626,6 @@ elif menu == "2. 專案執行長簽核":
                     save_data(latest_db); st.rerun()
     
     st.divider(); st.subheader("📜 已簽核歷史紀錄")
-    # 管理員可以看到所有歷史，其他人只看自己的
     if is_admin:
         h_df = st.session_state.db[st.session_state.db["初審人"].notna() & (st.session_state.db["初審人"] != "")]
     else:
@@ -654,7 +649,7 @@ elif menu == "3. 財務長簽核":
         with st.expander(f"待複審：{rid} - {r['專案名稱']}"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # [權限] 只有 CFO 或 管理員能審，但如果是 Admin 且不是 CFO，則只能看
+            # [權限] 只有 CFO 能簽，Admin 只能看 (反灰)
             is_real_cfo = (curr_name == CFO_NAME) and is_active
             
             if c1.button("👑 最終核准", key=f"ok_cfo_{rid}_{i}", disabled=not is_real_cfo):
