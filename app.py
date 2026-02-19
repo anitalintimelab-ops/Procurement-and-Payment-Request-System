@@ -335,10 +335,8 @@ if st.session_state.last_menu != menu:
     st.session_state.view_id = None
     st.session_state.last_menu = menu
 
-# [系統分離過濾器]：根據登入的系統過濾資料
 def get_filtered_db():
     db = load_data()
-    # 支援舊資料(請款單)與新系統名稱(請購單)
     sys_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else ("請購單", "請款單")
     if isinstance(sys_type, tuple):
         return db[db["類型"].isin(sys_type)]
@@ -351,18 +349,22 @@ def render_html(row):
     fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0
     sub_time = row["提交時間"] if row["提交時間"] and str(row["提交時間"]) != "nan" else get_taiwan_time()
     
-    # 根據資料實際類型渲染抬頭，支援舊名稱相容
     t = row.get("類型", "請購單")
     sys_type_title = "請購單" if t == "請款單" else t
     
     logo_b64 = get_b64_logo()
     lg_html = f'<img src="data:image/png;base64,{logo_b64}" style="height:50px;">' if logo_b64 else ''
     
+    # [關鍵修正] 修改預覽/列印的表頭排版，Logo 與公司名稱平行放置在同一行，且不會斷行
     h = f'<div style="padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
-    h += f'<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px;">'
-    h += f'<div style="width:20%;">{lg_html}</div>'
-    h += f'<div style="width:60%; text-align:center;"><h2 style="margin:0;">時研國際設計股份有限公司</h2><h3 style="margin:5px 0 0 0; letter-spacing:5px;">{sys_type_title}</h3></div>'
-    h += f'<div style="width:20%;"></div></div>'
+    h += f'<div style="text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px;">'
+    h += f'<div style="display:flex; justify-content:center; align-items:center; gap:15px;">'
+    if lg_html:
+        h += f'{lg_html}'
+    h += f'<h2 style="margin:0; white-space:nowrap;">時研國際設計股份有限公司</h2>'
+    h += f'</div>'
+    h += f'<h3 style="margin:10px 0 0 0; letter-spacing:5px;">{sys_type_title}</h3>'
+    h += f'</div>'
     
     h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
     h += f'<tr><td bgcolor="#eee" width="15%">單號</td><td width="35%">{row["單號"]}</td><td bgcolor="#eee" width="15%">負責人</td><td width="35%">{clean_name(row["專案負責人"])}</td></tr>'
@@ -401,7 +403,6 @@ if menu == "1. 填寫申請單":
     staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
     if curr_name not in staffs: staffs.append(curr_name)
     
-    # [新增] 幣別選項
     curr_options = ["TWD", "USD", "EUR", "JPY", "CNY", "HKD", "GBP", "AUD"]
     dv = {"pn":"", "exe":staffs[0], "pi":"", "amt":0, "curr":"TWD", "pay":"現金", "vdr":"", "acc":"", "desc":"", "ab64":"", "ib64":""}
     
@@ -429,8 +430,6 @@ if menu == "1. 填寫申請單":
         exe = c1.selectbox("專案負責人", staffs, index=staffs.index(dv["exe"]), key=f"exe_{mode_suffix}")
         pi = c2.text_input("專案編號", value=dv["pi"], key=f"pi_{mode_suffix}")
         amt = c2.number_input("總金額", value=dv["amt"], min_value=0, key=f"amt_{mode_suffix}")
-        
-        # [變更] 將「類型」改為「幣別」
         currency = c2.selectbox("幣別", curr_options, index=curr_options.index(dv["curr"]), key=f"curr_{mode_suffix}")
         
         pay = st.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]), horizontal=True, key=f"pay_{mode_suffix}")
@@ -460,14 +459,13 @@ if menu == "1. 填寫申請單":
                 b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else ("" if del_acc else dv["ab64"])
                 b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else ("" if del_ims else dv["ib64"])
                 
-                # 自動判斷儲存類型
                 sys_save_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else "請購單"
                 
                 if st.session_state.edit_id:
                     idx = db[db["單號"]==st.session_state.edit_id].index[0]
                     db.at[idx, "專案名稱"] = pn; db.at[idx, "專案負責人"] = exe; db.at[idx, "專案編號"] = pi
                     db.at[idx, "總金額"] = amt; db.at[idx, "請款說明"] = desc
-                    db.at[idx, "幣別"] = currency # 存入幣別
+                    db.at[idx, "幣別"] = currency 
                     db.at[idx, "付款方式"] = pay; db.at[idx, "請款廠商"] = vdr; db.at[idx, "匯款帳戶"] = acc
                     db.at[idx, "帳戶影像Base64"] = b_acc; db.at[idx, "影像Base64"] = b_ims
                     st.session_state.edit_id = None
@@ -485,7 +483,6 @@ if menu == "1. 填寫申請單":
                 st.success("成功")
                 st.rerun()
 
-    # [指令3] 儲存後功能鍵維持，除提交/修改反灰外其餘不變
     if st.session_state.last_id:
         c1, c2, c3, c4, c5 = st.columns(5)
         
@@ -495,7 +492,6 @@ if menu == "1. 填寫申請單":
         can_edit_or_submit = False
         if not curr_row.empty:
             curr_st = curr_row.iloc[0]["狀態"]
-            # 狀態是已儲存、草稿、已駁回時，按鈕啟用；其餘狀態(如待簽核)按鈕反灰
             if curr_st in ["已儲存", "草稿", "已駁回"] and is_active:
                 can_edit_or_submit = True
 
@@ -504,7 +500,6 @@ if menu == "1. 填寫申請單":
             temp_db.at[idx, "狀態"] = "待簽核"
             temp_db.at[idx, "提交時間"] = get_taiwan_time()
             save_data(temp_db)
-            # [關鍵] 不清除 last_id，讓按鈕列保留在畫面上
             st.success("已成功提交，等待主管簽核！")
             st.rerun()
             
@@ -536,7 +531,6 @@ if menu == "1. 填寫申請單":
     h5.write("**總金額**")
     h6.write("**狀態與操作**") 
     
-    # 根據系統選項分離清單
     sys_db = get_filtered_db()
     my_db = sys_db if is_admin else sys_db[sys_db["申請人"] == curr_name]
     
@@ -556,7 +550,6 @@ if menu == "1. 填寫申請單":
             can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
             
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
-                # 重新讀取確保不覆蓋
                 fresh_db = load_data()
                 idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                 fresh_db.at[idx, "狀態"] = "待簽核" 
@@ -697,7 +690,6 @@ elif menu == "4. 表單狀態總覽":
     sys_db = get_filtered_db()
     display_df = sys_db.copy()
     display_df["負責執行長"] = display_df["專案負責人"]
-    # 加上幣別顯示
     display_df["總金額"] = display_df.apply(lambda x: f"{x.get('幣別','TWD')} ${clean_amount(x['總金額']):,.0f}", axis=1)
     display_df = display_df.rename(columns={"單號": "申請單號"})
     
