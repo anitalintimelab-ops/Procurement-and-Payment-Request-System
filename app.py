@@ -248,7 +248,7 @@ if st.sidebar.button("登出"):
     st.session_state.user_id = None
     st.rerun()
 
-# 導覽選單邏輯：Anita 多一個選項
+# 導覽選單
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
 if is_admin:
     menu_options.append("5. 請款狀態") # [功能3] Anita 專屬
@@ -441,6 +441,9 @@ if menu == "1. 填寫申請單":
 
 # --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
+    # [關鍵功能] 清除上一頁的殘留預覽，確保執行長進來是乾淨的
+    if st.session_state.view_id: st.session_state.view_id = None
+    
     st.header("🔍 專案執行長簽核")
     db = load_data()
     
@@ -480,6 +483,10 @@ elif menu == "2. 專案執行長簽核":
 
 # --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
+    if curr_name != CFO_NAME:
+        # [權限] 非 Charles 登入雖可進入，但顯示無權限且按鈕反灰
+        st.warning("👀 僅供檢視，您非財務長無法執行簽核。")
+
     st.header("🏁 財務長簽核")
     db = load_data()
     p_df = db[db["狀態"] == "待複審"]
@@ -492,7 +499,6 @@ elif menu == "3. 財務長簽核":
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            # [功能] 只有 CFO 能簽，其他人 (含 Admin) 只能看 (反灰)
             is_cfo = (curr_name == CFO_NAME) and is_active
             
             if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo):
