@@ -3,7 +3,6 @@ import pandas as pd
 import datetime
 import os
 import base64
-import re
 import time
 
 # --- 1. 系統設定 ---
@@ -63,19 +62,14 @@ def init_rescue_data():
             "複審人": ["", ""],
             "複審時間": ["", ""],
             "刪除人": ["", ""], "刪除時間": ["", ""], "刪除原因": ["", ""], "駁回原因": ["", ""],
-            "匯款狀態": ["", ""], "匯款日期": ["", ""]
+            "匯款狀態": ["尚未匯款", "尚未匯款"], "匯款日期": ["", ""]
         }
         df = pd.DataFrame(data)
         df.to_csv(D_FILE, index=False, encoding='utf-8-sig')
 
 init_rescue_data()
 
-# --- 3. 核心功能 ---
-def validate_password(pw):
-    has_letter = bool(re.search(r'[a-zA-Z]', pw))
-    digit_count = len(re.findall(r'\d', pw))
-    return has_letter and 4 <= digit_count <= 6
-
+# --- 3. 資料處理 ---
 def read_csv_robust(filepath):
     if not os.path.exists(filepath): return None
     for enc in ['utf-8-sig', 'utf-8', 'cp950', 'big5']:
@@ -191,7 +185,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
     confirm_pw = st.text_input("確認新密碼", type="password")
     if st.button("更新密碼", disabled=not is_active):
         if new_pw != confirm_pw: st.error("兩次輸入不符")
-        elif not validate_password(new_pw): st.error("規則：至少一英文+數字4-6位")
+        elif len(str(new_pw)) < 4: st.error("密碼過短")
         else:
             staff_df = st.session_state.staff_df
             idx = staff_df[staff_df["name"] == curr_name].index[0]
@@ -203,12 +197,10 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 if is_admin:
     st.sidebar.success("管理員模式")
     
-    # [功能1] 顯示所有密碼 (Anita 限定)
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         staff_df = st.session_state.staff_df
         st.dataframe(staff_df[["name", "password"]], hide_index=True)
         
-        # [功能2] 恢復原始密碼
         st.markdown("---")
         st.write("**恢復預設密碼 (0000)**")
         reset_target = st.selectbox("選擇人員", staff_df["name"].tolist(), key="rst_sel")
@@ -219,7 +211,6 @@ if is_admin:
             st.session_state.staff_df = staff_df
             st.success(f"{reset_target} 密碼已重置")
 
-    # [功能] 新增人員
     with st.sidebar.expander("➕ 新增人員"):
         n = st.text_input("姓名")
         if st.button("新增"):
@@ -232,7 +223,6 @@ if is_admin:
                 st.rerun()
             else: st.error("已存在")
     
-    # [功能] 狀態管理
     with st.sidebar.expander("⚙️ 人員狀態管理"):
         staff_df = st.session_state.staff_df
         for i, r in staff_df.iterrows():
@@ -251,7 +241,7 @@ if st.sidebar.button("登出"):
 # 導覽選單
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
 if is_admin:
-    menu_options.append("5. 請款狀態") # [功能3] Anita 專屬
+    menu_options.append("5. 請款狀態")
 
 menu = st.sidebar.radio("導覽", menu_options)
 
@@ -373,6 +363,7 @@ if menu == "1. 填寫申請單":
                 st.success("成功")
                 st.rerun()
 
+    # [功能] 儲存後的功能區
     if st.session_state.last_id:
         c1, c2, c3, c4 = st.columns(4)
         if c1.button("🔍 線上預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
@@ -381,8 +372,15 @@ if menu == "1. 填寫申請單":
             target = temp_db[temp_db["單號"]==st.session_state.last_id].iloc[0]
             js = "var w=window.open();w.document.write('" + clean_for_js(render_html(target)) + "');w.print();w.close();"
             st.components.v1.html(f"<script>{js}</script>", height=0)
-        if c3.button("🚀 提交", disabled=not is_active):
-            db = load_data()
+        
+        # [修復] 提交後反灰
+        can_submit_last = (st.session_state.user_status == "在職")
+        # 檢查該單狀態是否已經提交
+        curr_row = db[db["單號"]==st.session_state.last_id]
+        if not curr_row.empty and curr_row.iloc[0]["狀態"] != "已儲存":
+            can_submit_last = False
+            
+        if c3.button("🚀 提交", disabled=not can_submit_last):
             idx = db[db["單號"]==st.session_state.last_id].index[0]
             db.at[idx, "狀態"] = "待初審"
             db.at[idx, "提交時間"] = get_taiwan_time()
@@ -418,17 +416,19 @@ if menu == "1. 填寫申請單":
             b1, b2, b3, b4, b5 = st.columns(5)
             
             is_own = (str(r["申請人"]).strip() == curr_name)
-            can_edit = (r["狀態"] in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
+            # 權限：未提交(草稿/已儲存) 或 已駁回 且 是本人 且 在職 才能 修改/提交/刪除
+            can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
             
             if b1.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
-            if b2.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.edit_id = r["單號"]; st.rerun()
-            if b3.button("提交", key=f"s{i}", disabled=not can_edit):
+            if b2.button("提交", key=f"s{i}", disabled=not can_edit):
                 idx = db[db["單號"]==r["單號"]].index[0]
                 db.at[idx, "狀態"] = "待初審"; db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(db); st.rerun()
-            if b4.button("列印", key=f"p{i}"):
+            if b3.button("列印", key=f"p{i}"):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
                 st.components.v1.html('<script>' + js_p + '</script>', height=0)
+            if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.edit_id = r["單號"]; st.rerun()
+            
             with b5.popover("刪除", disabled=not can_edit):
                 reason = st.text_input("刪除原因", key=f"d_res_{i}")
                 if st.button("確認", key=f"d{i}"):
@@ -441,9 +441,6 @@ if menu == "1. 填寫申請單":
 
 # --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
-    # [關鍵功能] 清除上一頁的殘留預覽，確保執行長進來是乾淨的
-    if st.session_state.view_id: st.session_state.view_id = None
-    
     st.header("🔍 專案執行長簽核")
     db = load_data()
     
@@ -483,10 +480,7 @@ elif menu == "2. 專案執行長簽核":
 
 # --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
-    if curr_name != CFO_NAME:
-        # [權限] 非 Charles 登入雖可進入，但顯示無權限且按鈕反灰
-        st.warning("👀 僅供檢視，您非財務長無法執行簽核。")
-
+    # [移除] 移除警告，但保持權限邏輯 (按鈕反灰)
     st.header("🏁 財務長簽核")
     db = load_data()
     p_df = db[db["狀態"] == "待複審"]
@@ -499,6 +493,7 @@ elif menu == "3. 財務長簽核":
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
+            # [權限] 只有 CFO 能簽
             is_cfo = (curr_name == CFO_NAME) and is_active
             
             if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo):
@@ -538,7 +533,7 @@ elif menu == "5. 請款狀態":
     display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,.0f}")
     display_df = display_df.rename(columns={"單號": "申請單號"})
     
-    # [關鍵修正] 預先轉換日期，避免 StreamlitAPIException
+    # [關鍵修復] 強制轉型，避免 StreamlitAPIException
     display_df["匯款日期"] = pd.to_datetime(display_df["匯款日期"], errors='coerce')
     
     target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
@@ -550,8 +545,8 @@ elif menu == "5. 請款狀態":
         column_config={
             "匯款狀態": st.column_config.SelectboxColumn(
                 "匯款狀態",
-                options=["", "待匯款", "已匯款", "異常"],
-                required=False,
+                options=["尚未匯款", "已匯款"], # [修復] 下拉選單
+                required=True,
                 width="medium"
             ),
             "匯款日期": st.column_config.DateColumn(
@@ -563,20 +558,28 @@ elif menu == "5. 請款狀態":
     )
     
     if st.button("💾 儲存匯款資訊"):
+        # [功能] 強制檢查：已匯款必須填日期
+        valid = True
         for i, row in edited_df.iterrows():
-            orig_idx = db[db["單號"]==row["申請單號"]].index[0]
-            db.at[orig_idx, "匯款狀態"] = str(row["匯款狀態"]) if row["匯款狀態"] else ""
-            # 日期轉回字串存檔
-            date_val = row["匯款日期"]
-            if pd.notna(date_val):
-                db.at[orig_idx, "匯款日期"] = date_val.strftime('%Y-%m-%d')
-            else:
-                db.at[orig_idx, "匯款日期"] = ""
+            if row["匯款狀態"] == "已匯款" and pd.isna(row["匯款日期"]):
+                st.error(f"❌ 申請單號 {row['申請單號']}：選擇「已匯款」時，必須填寫匯款日期！")
+                valid = False
+        
+        if valid:
+            for i, row in edited_df.iterrows():
+                orig_idx = db[db["單號"]==row["申請單號"]].index[0]
+                db.at[orig_idx, "匯款狀態"] = str(row["匯款狀態"]) if row["匯款狀態"] else ""
+                # 日期轉回字串存檔
+                date_val = row["匯款日期"]
+                if pd.notna(date_val):
+                    db.at[orig_idx, "匯款日期"] = date_val.strftime('%Y-%m-%d')
+                else:
+                    db.at[orig_idx, "匯款日期"] = ""
             
-        save_data(db)
-        st.success("✅ 匯款資訊已更新！")
-        time.sleep(1)
-        st.rerun()
+            save_data(db)
+            st.success("✅ 匯款資訊已成功更新！")
+            time.sleep(1)
+            st.rerun()
 
 if st.session_state.view_id:
     r = load_data(); r = r[r["單號"]==st.session_state.view_id]
