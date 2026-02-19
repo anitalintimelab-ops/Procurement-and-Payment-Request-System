@@ -11,6 +11,7 @@ st.set_page_config(page_title="時研-管理系統", layout="wide")
 B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
+O_FILE = os.path.join(B_DIR, "online_users.csv") # 新增：在線人數追蹤檔
 
 # 定義核心角色
 ADMINS = ["Anita"]
@@ -35,6 +36,28 @@ def clean_amount(val):
 def clean_name(val):
     if pd.isna(val) or str(val).strip() == "": return ""
     return str(val).strip().split(" ")[0]
+
+# [工具] 追蹤並取得在線人數 (最近5分鐘內有動作視為在線)
+def track_and_get_online_users(username):
+    if not username: return 1
+    try:
+        now = time.time()
+        if os.path.exists(O_FILE):
+            df = pd.read_csv(O_FILE)
+        else:
+            df = pd.DataFrame(columns=["name", "timestamp"])
+        
+        # 移除舊紀錄並加入新紀錄
+        df = df[df["name"] != username]
+        new_row = pd.DataFrame([{"name": username, "timestamp": now}])
+        df = pd.concat([df, new_row], ignore_index=True)
+        
+        # 只保留 5 分鐘 (300秒) 內的紀錄
+        df = df[now - df["timestamp"] <= 300]
+        df.to_csv(O_FILE, index=False)
+        return len(df['name'].unique())
+    except:
+        return 1
 
 # --- 2. 自動救援資料 ---
 def init_rescue_data():
@@ -176,8 +199,13 @@ curr_name = st.session_state.user_id
 is_active = (st.session_state.user_status == "在職")
 is_admin = (curr_name in ADMINS)
 
+# 取得最新在線人數
+online_count = track_and_get_online_users(curr_name)
+
 # --- 5. 側邊欄 ---
 st.sidebar.markdown(f"### 👤 {curr_name}")
+st.sidebar.success(f"🟢 目前在線人數：{online_count} 人")
+
 if not is_active: st.sidebar.error("⛔ 已離職")
 
 # [功能] 所有人可見的密碼修改
@@ -368,7 +396,6 @@ if menu == "1. 填寫申請單":
         c1, c2, c3, c4 = st.columns(4)
         if c1.button("🔍 線上預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
         
-        # 檢查該單狀態
         temp_db = load_data()
         curr_row = temp_db[temp_db["單號"]==st.session_state.last_id]
         can_submit_last = False
@@ -541,8 +568,6 @@ elif menu == "4. 表單狀態總覽":
     display_df["負責執行長"] = display_df["專案負責人"].apply(clean_name)
     display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,.0f}")
     display_df = display_df.rename(columns={"單號": "申請單號"})
-    
-    # [新增] 將匯款狀態與匯款日期加入總覽，與請款狀態完全同步
     target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
     st.dataframe(display_df[target_cols], use_container_width=True)
 
@@ -556,6 +581,7 @@ elif menu == "5. 請款狀態":
     display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,.0f}")
     display_df = display_df.rename(columns={"單號": "申請單號"})
     
+    # [關鍵修正] 將日期欄位轉為 date 物件，避免編輯器崩潰，空值填 NaT
     display_df["匯款日期"] = pd.to_datetime(display_df["匯款日期"], errors='coerce').dt.date
     
     target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
