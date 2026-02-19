@@ -367,11 +367,6 @@ if menu == "1. 填寫申請單":
     if st.session_state.last_id:
         c1, c2, c3, c4 = st.columns(4)
         if c1.button("🔍 線上預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
-        if c2.button("🖨️ 線上列印"):
-            temp_db = load_data()
-            target = temp_db[temp_db["單號"]==st.session_state.last_id].iloc[0]
-            js = "var w=window.open();w.document.write('" + clean_for_js(render_html(target)) + "');w.print();w.close();"
-            st.components.v1.html(f"<script>{js}</script>", height=0)
         
         # 檢查該單狀態
         temp_db = load_data()
@@ -382,7 +377,7 @@ if menu == "1. 填寫申請單":
             if curr_st in ["已儲存", "草稿", "已駁回"] and is_active:
                 can_submit_last = True
 
-        if c3.button("🚀 提交", disabled=not can_submit_last):
+        if c2.button("🚀 提交", disabled=not can_submit_last):
             idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
             temp_db.at[idx, "狀態"] = "待初審"
             temp_db.at[idx, "提交時間"] = get_taiwan_time()
@@ -390,6 +385,12 @@ if menu == "1. 填寫申請單":
             st.session_state.last_id = None
             st.success("已提交")
             st.rerun()
+            
+        if c3.button("🖨️ 線上列印"):
+            target = temp_db[temp_db["單號"]==st.session_state.last_id].iloc[0]
+            js = "var w=window.open();w.document.write('" + clean_for_js(render_html(target)) + "');w.print();w.close();"
+            st.components.v1.html(f"<script>{js}</script>", height=0)
+            
         if c4.button("🆕 下一筆"): st.session_state.last_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
@@ -418,13 +419,13 @@ if menu == "1. 填寫申請單":
             b1, b2, b3, b4, b5 = st.columns(5)
             
             is_own = (str(r["申請人"]).strip() == curr_name)
-            can_edit = (r["狀態"] in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
+            can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
             
-            if b1.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
-            if b2.button("提交", key=f"s{i}", disabled=not can_edit):
+            if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                 idx = db[db["單號"]==r["單號"]].index[0]
                 db.at[idx, "狀態"] = "待初審"; db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(db); st.rerun()
+            if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
             if b3.button("列印", key=f"p{i}"):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
                 st.components.v1.html('<script>' + js_p + '</script>', height=0)
@@ -442,7 +443,6 @@ if menu == "1. 填寫申請單":
 
 # --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
-    # [功能] 強制清除預覽
     if st.session_state.view_id: st.session_state.view_id = None
     
     st.header("🔍 專案執行長簽核")
@@ -474,7 +474,6 @@ elif menu == "2. 專案執行長簽核":
                 reason = st.text_input("原因", key=f"r{i}")
                 if st.button("確認", key=f"no{i}"):
                     idx = db[db["單號"]==r["單號"]].index[0]
-                    # [修正] 駁回也要記錄初審人，確保歷史紀錄看得到
                     db.at[idx, "狀態"] = "已駁回"; db.at[idx, "駁回原因"] = reason
                     db.at[idx, "初審人"] = curr_name
                     db.at[idx, "初審時間"] = get_taiwan_time()
@@ -482,11 +481,9 @@ elif menu == "2. 專案執行長簽核":
     
     st.divider(); st.subheader("📜 歷史紀錄 (已核准/已駁回)")
     
-    # 邏輯：有初審人紀錄的資料 (代表經過 CEO 手，無論是核准或駁回)
     if is_admin: 
         h_df = db[db["初審人"].notna() & (db["初審人"] != "")]
     else: 
-        # CEO 只能看自己審過的
         h_df = db[db["初審人"].apply(clean_name) == curr_name]
         
     st.dataframe(h_df[["單號", "專案名稱", "申請人", "總金額", "初審時間", "狀態"]])
@@ -496,12 +493,10 @@ elif menu == "3. 財務長簽核":
     st.header("🏁 財務長簽核")
     db = load_data()
     
-    # 待審區塊
     st.subheader("⏳ 待財務長簽核")
     if is_admin or curr_name == CFO_NAME:
         p_df = db[db["狀態"] == "待複審"]
     else:
-        # 其他人只能看自己是 PM 的單
         p_df = db[(db["狀態"] == "待複審") & (db["專案負責人"].apply(clean_name) == curr_name)]
         
     if p_df.empty: st.info("無待審單據")
@@ -512,7 +507,6 @@ elif menu == "3. 財務長簽核":
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            # 只有 CFO 且在職能按
             is_cfo_action = (curr_name == CFO_NAME) and is_active
             
             if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo_action):
@@ -524,7 +518,6 @@ elif menu == "3. 財務長簽核":
                 reason = st.text_input("原因", key=f"cr{i}")
                 if st.button("確認", key=f"cno{i}"):
                     idx = db[db["單號"]==r["單號"]].index[0]
-                    # [修正] 駁回也要記錄複審人
                     db.at[idx, "狀態"] = "已駁回"; db.at[idx, "駁回原因"] = reason
                     db.at[idx, "複審人"] = curr_name
                     db.at[idx, "複審時間"] = get_taiwan_time()
@@ -533,13 +526,9 @@ elif menu == "3. 財務長簽核":
     st.divider()
     st.subheader("📜 歷史紀錄 (已核准/已駁回)")
     
-    # 邏輯：有複審人紀錄的資料 (代表經過 CFO 手，無論是核准或駁回)
-    # 這裡直接抓 "複審人" 欄位不為空的資料
-    
     if is_admin or curr_name == CFO_NAME:
         f_df = db[db["複審人"].notna() & (db["複審人"] != "")]
     else:
-        # 其他人只能看自己是專案負責人且經過複審的單
         f_df = db[(db["複審人"].notna() & (db["複審人"] != "")) & (db["專案負責人"].apply(clean_name) == curr_name)]
         
     st.dataframe(f_df[["單號", "專案名稱", "申請人", "總金額", "複審時間", "狀態"]])
@@ -552,7 +541,9 @@ elif menu == "4. 表單狀態總覽":
     display_df["負責執行長"] = display_df["專案負責人"].apply(clean_name)
     display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,.0f}")
     display_df = display_df.rename(columns={"單號": "申請單號"})
-    target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態"]
+    
+    # [新增] 將匯款狀態與匯款日期加入總覽，與請款狀態完全同步
+    target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
     st.dataframe(display_df[target_cols], use_container_width=True)
 
 # --- 頁面 5: 請款狀態 (Anita 專屬) ---
@@ -565,7 +556,6 @@ elif menu == "5. 請款狀態":
     display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,.0f}")
     display_df = display_df.rename(columns={"單號": "申請單號"})
     
-    # [關鍵修正] 預先轉換日期，避免 StreamlitAPIException
     display_df["匯款日期"] = pd.to_datetime(display_df["匯款日期"], errors='coerce').dt.date
     
     target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
@@ -603,7 +593,6 @@ elif menu == "5. 請款狀態":
                 orig_idx = db[db["單號"]==row["申請單號"]].index[0]
                 db.at[orig_idx, "匯款狀態"] = str(row["匯款狀態"]) if row["匯款狀態"] else ""
                 
-                # 日期轉回字串存檔
                 date_val = row["匯款日期"]
                 if pd.notna(date_val) and str(date_val) != "NaT":
                     db.at[orig_idx, "匯款日期"] = str(date_val)
