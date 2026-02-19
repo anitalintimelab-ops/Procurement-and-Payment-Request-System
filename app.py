@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 import os
 import base64
+import re
 import time
 
 # --- 1. 系統設定 ---
@@ -62,14 +63,19 @@ def init_rescue_data():
             "複審人": ["", ""],
             "複審時間": ["", ""],
             "刪除人": ["", ""], "刪除時間": ["", ""], "刪除原因": ["", ""], "駁回原因": ["", ""],
-            "匯款狀態": ["尚未匯款", "尚未匯款"], "匯款日期": ["", ""]
+            "匯款狀態": ["", ""], "匯款日期": ["", ""]
         }
         df = pd.DataFrame(data)
         df.to_csv(D_FILE, index=False, encoding='utf-8-sig')
 
 init_rescue_data()
 
-# --- 3. 資料處理 ---
+# --- 3. 核心功能 ---
+def validate_password(pw):
+    has_letter = bool(re.search(r'[a-zA-Z]', pw))
+    digit_count = len(re.findall(r'\d', pw))
+    return has_letter and 4 <= digit_count <= 6
+
 def read_csv_robust(filepath):
     if not os.path.exists(filepath): return None
     for enc in ['utf-8-sig', 'utf-8', 'cp950', 'big5']:
@@ -334,6 +340,7 @@ if menu == "1. 填寫申請單":
             del_ims = st.checkbox("❌ 刪除所有憑證", key=f"di_{mode_suffix}")
         f_ims = st.file_uploader("上傳憑證", accept_multiple_files=True, key=f"fi_{mode_suffix}")
         
+        # 表單內儲存按鈕
         if st.form_submit_button("💾 儲存", disabled=not is_active):
             db = load_data()
             if not (pn and pi and amt>0 and desc):
@@ -363,31 +370,40 @@ if menu == "1. 填寫申請單":
                 st.success("成功")
                 st.rerun()
 
-    # [功能] 儲存後的功能區
+    # [儲存後的功能區]
     if st.session_state.last_id:
+        # 1. 提交 (提交後反灰)
+        # 2. 線上預覽
+        # 3. 線上列印
+        # 4. 下一筆
         c1, c2, c3, c4 = st.columns(4)
-        if c1.button("🔍 線上預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
-        if c2.button("🖨️ 線上列印"):
-            temp_db = load_data()
+        
+        # 檢查該單狀態
+        temp_db = load_data()
+        curr_row = temp_db[temp_db["單號"]==st.session_state.last_id]
+        
+        # 狀態邏輯：如果狀態不是 "已儲存" 或 "已駁回"，則不能再提交
+        can_submit_last = False
+        if not curr_row.empty:
+            curr_st = curr_row.iloc[0]["狀態"]
+            if curr_st in ["已儲存", "草稿", "已駁回"] and is_active:
+                can_submit_last = True
+
+        if c1.button("🚀 提交", disabled=not can_submit_last):
+            idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
+            temp_db.at[idx, "狀態"] = "待初審"
+            temp_db.at[idx, "提交時間"] = get_taiwan_time()
+            save_data(temp_db)
+            st.success("已提交")
+            st.rerun()
+            
+        if c2.button("🔍 線上預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
+        
+        if c3.button("🖨️ 線上列印"):
             target = temp_db[temp_db["單號"]==st.session_state.last_id].iloc[0]
             js = "var w=window.open();w.document.write('" + clean_for_js(render_html(target)) + "');w.print();w.close();"
             st.components.v1.html(f"<script>{js}</script>", height=0)
-        
-        # [修復] 提交後反灰
-        can_submit_last = (st.session_state.user_status == "在職")
-        # 檢查該單狀態是否已經提交
-        curr_row = db[db["單號"]==st.session_state.last_id]
-        if not curr_row.empty and curr_row.iloc[0]["狀態"] != "已儲存":
-            can_submit_last = False
             
-        if c3.button("🚀 提交", disabled=not can_submit_last):
-            idx = db[db["單號"]==st.session_state.last_id].index[0]
-            db.at[idx, "狀態"] = "待初審"
-            db.at[idx, "提交時間"] = get_taiwan_time()
-            save_data(db)
-            st.session_state.last_id = None
-            st.success("已提交")
-            st.rerun()
         if c4.button("🆕 下一筆"): st.session_state.last_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
@@ -419,11 +435,12 @@ if menu == "1. 填寫申請單":
             # 權限：未提交(草稿/已儲存) 或 已駁回 且 是本人 且 在職 才能 修改/提交/刪除
             can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
             
-            if b1.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
-            if b2.button("提交", key=f"s{i}", disabled=not can_edit):
+            # [依序排列] 提交 -> 預覽 -> 列印 -> 修改 -> 刪除
+            if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                 idx = db[db["單號"]==r["單號"]].index[0]
                 db.at[idx, "狀態"] = "待初審"; db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(db); st.rerun()
+            if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
             if b3.button("列印", key=f"p{i}"):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
                 st.components.v1.html('<script>' + js_p + '</script>', height=0)
@@ -441,6 +458,9 @@ if menu == "1. 填寫申請單":
 
 # --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
+    # [關鍵功能] 強制清除上一頁的預覽，只顯示清單
+    if st.session_state.view_id: st.session_state.view_id = None
+    
     st.header("🔍 專案執行長簽核")
     db = load_data()
     
@@ -480,7 +500,7 @@ elif menu == "2. 專案執行長簽核":
 
 # --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
-    # [移除] 移除警告，但保持權限邏輯 (按鈕反灰)
+    # [移除警告文字，僅保留權限鎖定]
     st.header("🏁 財務長簽核")
     db = load_data()
     p_df = db[db["狀態"] == "待複審"]
@@ -493,7 +513,6 @@ elif menu == "3. 財務長簽核":
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            # [權限] 只有 CFO 能簽
             is_cfo = (curr_name == CFO_NAME) and is_active
             
             if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo):
@@ -533,7 +552,7 @@ elif menu == "5. 請款狀態":
     display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,.0f}")
     display_df = display_df.rename(columns={"單號": "申請單號"})
     
-    # [關鍵修復] 強制轉型，避免 StreamlitAPIException
+    # [關鍵修正] 日期預先轉為 datetime，防止編輯器報錯
     display_df["匯款日期"] = pd.to_datetime(display_df["匯款日期"], errors='coerce')
     
     target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
