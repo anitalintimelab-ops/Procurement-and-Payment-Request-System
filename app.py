@@ -248,10 +248,10 @@ if st.sidebar.button("登出"):
     st.session_state.user_id = None
     st.rerun()
 
-# 導覽選單
+# 導覽選單邏輯：Anita 多一個選項
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
 if is_admin:
-    menu_options.append("5. 請款狀態") 
+    menu_options.append("5. 請款狀態") # [功能3] Anita 專屬
 
 menu = st.sidebar.radio("導覽", menu_options)
 
@@ -480,10 +480,6 @@ elif menu == "2. 專案執行長簽核":
 
 # --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
-    if curr_name != CFO_NAME:
-        st.error("⛔ 無權限存取 (僅限財務長)")
-        st.stop()
-
     st.header("🏁 財務長簽核")
     db = load_data()
     p_df = db[db["狀態"] == "待複審"]
@@ -496,6 +492,7 @@ elif menu == "3. 財務長簽核":
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
+            # [功能] 只有 CFO 能簽，其他人 (含 Admin) 只能看 (反灰)
             is_cfo = (curr_name == CFO_NAME) and is_active
             
             if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo):
@@ -535,7 +532,7 @@ elif menu == "5. 請款狀態":
     display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,.0f}")
     display_df = display_df.rename(columns={"單號": "申請單號"})
     
-    # [關鍵修復] 日期轉 datetime, 避免編輯器崩潰
+    # [關鍵修正] 預先轉換日期，避免 StreamlitAPIException
     display_df["匯款日期"] = pd.to_datetime(display_df["匯款日期"], errors='coerce')
     
     target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
