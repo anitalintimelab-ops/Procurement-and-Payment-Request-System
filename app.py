@@ -355,7 +355,6 @@ def render_html(row):
     logo_b64 = get_b64_logo()
     lg_html = f'<img src="data:image/png;base64,{logo_b64}" style="height:50px;">' if logo_b64 else ''
     
-    # [關鍵修正] 修改預覽/列印的表頭排版，Logo 與公司名稱平行放置在同一行，且不會斷行
     h = f'<div style="padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
     h += f'<div style="text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px;">'
     h += f'<div style="display:flex; justify-content:center; align-items:center; gap:15px;">'
@@ -688,13 +687,21 @@ elif menu == "4. 表單狀態總覽":
     render_header()
     st.subheader("📊 表單狀態總覽")
     sys_db = get_filtered_db()
-    display_df = sys_db.copy()
-    display_df["負責執行長"] = display_df["專案負責人"]
-    display_df["總金額"] = display_df.apply(lambda x: f"{x.get('幣別','TWD')} ${clean_amount(x['總金額']):,.0f}", axis=1)
-    display_df = display_df.rename(columns={"單號": "申請單號"})
     
-    target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
-    st.dataframe(display_df[target_cols], use_container_width=True)
+    # [新增/修改限制] 只有申請人是本人，或是專案負責人(執行長)是本人，才能看到該筆表單的狀態
+    if not is_admin:
+        sys_db = sys_db[(sys_db["申請人"] == curr_name) | (sys_db["專案負責人"] == curr_name)]
+        
+    display_df = sys_db.copy()
+    if not display_df.empty:
+        display_df["負責執行長"] = display_df["專案負責人"]
+        display_df["總金額"] = display_df.apply(lambda x: f"{x.get('幣別','TWD')} ${clean_amount(x['總金額']):,.0f}", axis=1)
+        display_df = display_df.rename(columns={"單號": "申請單號"})
+        
+        target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
+        st.dataframe(display_df[target_cols], use_container_width=True)
+    else:
+        st.info("尚無您的表單狀態紀錄。")
 
 # --- 頁面 5: 請款狀態 (Anita 專屬) ---
 elif menu == "5. 請款狀態":
@@ -703,63 +710,66 @@ elif menu == "5. 請款狀態":
     sys_db = get_filtered_db()
     
     display_df = sys_db.copy()
-    display_df["負責執行長"] = display_df["專案負責人"]
-    display_df["總金額"] = display_df.apply(lambda x: f"{x.get('幣別','TWD')} ${clean_amount(x['總金額']):,.0f}", axis=1)
-    display_df = display_df.rename(columns={"單號": "申請單號"})
-    
-    def parse_date(d_str):
-        if pd.isna(d_str) or str(d_str).strip() == "": return None
-        try: return datetime.datetime.strptime(str(d_str).strip(), "%Y-%m-%d").date()
-        except: return None
+    if not display_df.empty:
+        display_df["負責執行長"] = display_df["專案負責人"]
+        display_df["總金額"] = display_df.apply(lambda x: f"{x.get('幣別','TWD')} ${clean_amount(x['總金額']):,.0f}", axis=1)
+        display_df = display_df.rename(columns={"單號": "申請單號"})
         
-    display_df["匯款日期"] = display_df["匯款日期"].apply(parse_date)
-    
-    target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
-    
-    edited_df = st.data_editor(
-        display_df[target_cols],
-        disabled=["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態"],
-        use_container_width=True,
-        column_config={
-            "匯款狀態": st.column_config.SelectboxColumn(
-                "匯款狀態",
-                options=["尚未匯款", "已匯款"],
-                required=True,
-                width="medium"
-            ),
-            "匯款日期": st.column_config.DateColumn(
-                "匯款日期",
-                format="YYYY-MM-DD",
-                width="medium",
-                min_value=datetime.date(2020, 1, 1),
-                max_value=datetime.date(2030, 12, 31)
-            )
-        }
-    )
-    
-    if st.button("💾 儲存匯款資訊"):
-        valid = True
-        for i, row in edited_df.iterrows():
-            if row["匯款狀態"] == "已匯款" and pd.isna(row["匯款日期"]):
-                st.error(f"❌ 申請單號 {row['申請單號']}：選擇「已匯款」時，必須填寫匯款日期！")
-                valid = False
-        
-        if valid:
-            fresh_db = load_data()
-            for i, row in edited_df.iterrows():
-                orig_idx = fresh_db[fresh_db["單號"]==row["申請單號"]].index[0]
-                fresh_db.at[orig_idx, "匯款狀態"] = str(row["匯款狀態"]) if row["匯款狀態"] else "尚未匯款"
-                
-                date_val = row["匯款日期"]
-                if pd.notna(date_val):
-                    fresh_db.at[orig_idx, "匯款日期"] = str(date_val)
-                else:
-                    fresh_db.at[orig_idx, "匯款日期"] = ""
+        def parse_date(d_str):
+            if pd.isna(d_str) or str(d_str).strip() == "": return None
+            try: return datetime.datetime.strptime(str(d_str).strip(), "%Y-%m-%d").date()
+            except: return None
             
-            save_data(fresh_db)
-            st.success("✅ 匯款資訊已成功更新！")
-            time.sleep(1)
-            st.rerun()
+        display_df["匯款日期"] = display_df["匯款日期"].apply(parse_date)
+        
+        target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
+        
+        edited_df = st.data_editor(
+            display_df[target_cols],
+            disabled=["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態"],
+            use_container_width=True,
+            column_config={
+                "匯款狀態": st.column_config.SelectboxColumn(
+                    "匯款狀態",
+                    options=["尚未匯款", "已匯款"],
+                    required=True,
+                    width="medium"
+                ),
+                "匯款日期": st.column_config.DateColumn(
+                    "匯款日期",
+                    format="YYYY-MM-DD",
+                    width="medium",
+                    min_value=datetime.date(2020, 1, 1),
+                    max_value=datetime.date(2030, 12, 31)
+                )
+            }
+        )
+        
+        if st.button("💾 儲存匯款資訊"):
+            valid = True
+            for i, row in edited_df.iterrows():
+                if row["匯款狀態"] == "已匯款" and (pd.isna(row["匯款日期"]) or str(row["匯款日期"]) == "NaT"):
+                    st.error(f"❌ 申請單號 {row['申請單號']}：選擇「已匯款」時，必須填寫匯款日期！")
+                    valid = False
+            
+            if valid:
+                fresh_db = load_data()
+                for i, row in edited_df.iterrows():
+                    orig_idx = fresh_db[fresh_db["單號"]==row["申請單號"]].index[0]
+                    fresh_db.at[orig_idx, "匯款狀態"] = str(row["匯款狀態"]) if row["匯款狀態"] else "尚未匯款"
+                    
+                    date_val = row["匯款日期"]
+                    if pd.notna(date_val) and str(date_val) != "NaT":
+                        fresh_db.at[orig_idx, "匯款日期"] = str(date_val)
+                    else:
+                        fresh_db.at[orig_idx, "匯款日期"] = ""
+                
+                save_data(fresh_db)
+                st.success("✅ 匯款資訊已成功更新！")
+                time.sleep(1)
+                st.rerun()
+    else:
+        st.info("尚無請款單/採購單資料。")
 
 # [全域預覽] 放在最底下確保渲染
 if st.session_state.view_id:
