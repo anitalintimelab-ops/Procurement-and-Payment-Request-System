@@ -165,8 +165,7 @@ if st.session_state.user_id is None:
         if st.form_submit_button("登入"):
             row = staff_df[staff_df["name"] == u].iloc[0]
             stored_p = str(row["password"]).strip().replace(".0", "")
-            input_p = str(p).strip()
-            if input_p == stored_p or (input_p == "0000" and stored_p in ["nan", ""]):
+            if str(p).strip() == stored_p or (str(p).strip() == "0000" and stored_p in ["nan", ""]):
                 st.session_state.user_id = u
                 st.session_state.user_status = row["status"] if pd.notna(row["status"]) else "在職"
                 st.session_state.staff_df = staff_df
@@ -212,7 +211,8 @@ if st.sidebar.button("登出"):
     st.session_state.user_id = None
     st.rerun()
 
-menu = st.sidebar.radio("導覽", ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核"])
+# 導覽選單
+menu = st.sidebar.radio("導覽", ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"])
 
 # --- HTML 渲染 ---
 def render_html(row):
@@ -250,9 +250,9 @@ def render_html(row):
             v += '</div>'
     return h + v
 
-# --- 主程式 ---
+# --- 頁面 1: 填寫與追蹤 ---
 if menu == "1. 填寫申請單":
-    st.header("時研國際設計股份有限公司 請購/請款系統")
+    st.header("填寫申請單")
     db = load_data()
     staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
     if curr_name not in staffs: staffs.append(curr_name)
@@ -263,10 +263,9 @@ if menu == "1. 填寫申請單":
         r = db[db["單號"]==st.session_state.edit_id]
         if not r.empty:
             row = r.iloc[0]
-            st.info(f"修改中: {st.session_state.edit_id}")
+            st.info(f"📝 修改中: {st.session_state.edit_id}")
             dv["pn"] = row["專案名稱"]
-            exe_clean = clean_name(row["專案負責人"])
-            dv["exe"] = exe_clean if exe_clean in staffs else staffs[0]
+            dv["exe"] = clean_name(row["專案負責人"]) if clean_name(row["專案負責人"]) in staffs else staffs[0]
             dv["pi"] = row["專案編號"]
             dv["amt"] = clean_amount(row["總金額"])
             dv["tp"] = row["類型"]
@@ -335,8 +334,13 @@ if menu == "1. 填寫申請單":
 
     if st.session_state.last_id:
         c1, c2, c3, c4 = st.columns(4)
-        if c1.button("🔍 預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
-        if c2.button("🚀 提交", disabled=not is_active):
+        if c1.button("🔍 線上預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
+        if c2.button("🖨️ 線上列印"):
+            temp_db = load_data()
+            target = temp_db[temp_db["單號"]==st.session_state.last_id].iloc[0]
+            js = "var w=window.open();w.document.write('" + clean_for_js(render_html(target)) + "');w.print();w.close();"
+            st.components.v1.html(f"<script>{js}</script>", height=0)
+        if c3.button("🚀 提交", disabled=not is_active):
             db = load_data()
             idx = db[db["單號"]==st.session_state.last_id].index[0]
             db.at[idx, "狀態"] = "待初審"
@@ -348,39 +352,66 @@ if menu == "1. 填寫申請單":
         if c4.button("🆕 下一筆"): st.session_state.last_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
-    st.info("💡 功能說明：申請單號 | 專案名稱 | 負責執行長 | 申請人 | 總金額 | 狀態")
+    
+    h1, h2, h3, h4, h5, h6 = st.columns([1.5, 2, 1.2, 1, 1, 3.5])
+    h1.write("**申請單號**")
+    h2.write("**專案名稱**")
+    h3.write("**負責執行長**")
+    h4.write("**申請人**")
+    h5.write("**總金額**")
+    h6.write("**功能操作**") 
     
     db = load_data()
     my_db = db if is_admin else db[(db["申請人"].str.contains(curr_name)) | (db["申請人信箱"].str.contains(curr_name))]
     
     for i, r in my_db.iterrows():
-        c1, c2, c3, c4, c5 = st.columns([1.5, 2, 1, 1, 2.5])
-        c1.write(r["單號"]); c2.write(r["專案名稱"]); c3.write(clean_name(r["專案負責人"])); c4.write(clean_amount(r["總金額"]))
+        c1, c2, c3, c4, c5, c6 = st.columns([1.5, 2, 1.2, 1, 1, 3.5])
+        c1.write(r["單號"]); c2.write(r["專案名稱"]); c3.write(clean_name(r["專案負責人"]))
+        c4.write(r["申請人"]); c5.write(f"${clean_amount(r['總金額']):,.0f}")
         
-        is_own = (str(r["申請人"]).strip() == curr_name)
-        can_edit = (r["狀態"] in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
+        stt = r["狀態"]
+        color = "blue" if stt in ["已儲存", "草稿"] else "orange" if stt in ["待初審", "待複審"] else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
         
-        if c5.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.edit_id = r["單號"]; st.rerun()
-        if c5.button("提交", key=f"s{i}", disabled=not can_edit):
-            idx = db[db["單號"]==r["單號"]].index[0]
-            db.at[idx, "狀態"] = "待初審"
-            db.at[idx, "提交時間"] = get_taiwan_time()
-            save_data(db); st.rerun()
-        if c5.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
-        if c5.button("列印", key=f"p{i}"):
-            js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
-            st.components.v1.html('<script>' + js_p + '</script>', height=0)
-        with c5.popover("刪除", disabled=not can_edit):
-            reason = st.text_input("原因", key=f"d_res_{i}")
-            if st.button("確認", key=f"d{i}"):
+        with c6:
+            st.markdown(f":{color}[{stt}]")
+            b1, b2, b3, b4, b5 = st.columns(5)
+            
+            is_own = (str(r["申請人"]).strip() == curr_name)
+            can_edit = (r["狀態"] in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
+            
+            if b1.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
+            if b2.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.edit_id = r["單號"]; st.rerun()
+            if b3.button("提交", key=f"s{i}", disabled=not can_edit):
                 idx = db[db["單號"]==r["單號"]].index[0]
-                db.at[idx, "狀態"] = "已刪除"; db.at[idx, "刪除人"] = curr_name; db.at[idx, "刪除原因"] = reason
+                db.at[idx, "狀態"] = "待初審"; db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(db); st.rerun()
+            if b4.button("列印", key=f"p{i}"):
+                js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
+                st.components.v1.html('<script>' + js_p + '</script>', height=0)
+            with b5.popover("刪除", disabled=not can_edit):
+                reason = st.text_input("刪除原因", key=f"d_res_{i}")
+                if st.button("確認", key=f"d{i}"):
+                    if not reason: st.error("請輸入原因")
+                    else:
+                        idx = db[db["單號"]==r["單號"]].index[0]
+                        db.at[idx, "狀態"] = "已刪除"; db.at[idx, "刪除人"] = curr_name
+                        db.at[idx, "刪除時間"] = get_taiwan_time(); db.at[idx, "刪除原因"] = reason
+                        save_data(db); st.rerun()
 
+# --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核")
-    db = load_data()
     
+    # [功能1] 密碼修改
+    with st.expander("🔐 修改密碼"):
+        new_pw = st.text_input("新密碼 (CEO專用)", type="password")
+        if st.button("變更密碼"):
+            staff_df = st.session_state.staff_df
+            idx = staff_df[staff_df["name"] == curr_name].index[0]
+            staff_df.at[idx, "password"] = str(new_pw)
+            save_staff(staff_df); st.success("密碼已變更"); st.rerun()
+
+    db = load_data()
     if is_admin:
         p_df = db[db["狀態"] == "待初審"]
     else:
@@ -394,7 +425,7 @@ elif menu == "2. 專案執行長簽核":
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            # [權限核心] Anita 看全部但不能按，只有負責人能按
+            # [功能] Anita 只能看 (反灰)，只有負責人能按
             responsible_person = clean_name(r["專案負責人"])
             can_sign = (responsible_person == curr_name) and is_active
             
@@ -412,20 +443,20 @@ elif menu == "2. 專案執行長簽核":
                     save_data(db); st.rerun()
     
     st.divider(); st.subheader("📜 歷史紀錄")
-    if is_admin:
-        h_df = db[db["初審人"].notna() & (db["初審人"] != "")]
-    else:
-        h_df = db[db["初審人"].apply(clean_name) == curr_name]
+    if is_admin: h_df = db[db["初審人"].notna() & (db["初審人"] != "")]
+    else: h_df = db[db["初審人"].apply(clean_name) == curr_name]
     st.dataframe(h_df[["單號", "專案名稱", "申請人", "總金額", "初審時間", "狀態"]])
 
+# --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
+    # [功能2] 非 Charles 登入則反灰/禁止進入
+    if curr_name != CFO_NAME:
+        st.error("⛔ 無權限存取 (僅限財務長)")
+        st.stop()
+
     st.header("🏁 財務長簽核")
     db = load_data()
-    
-    if is_admin:
-        p_df = db[db["狀態"] == "待複審"]
-    else:
-        p_df = db[(db["狀態"] == "待複審") & (curr_name == CFO_NAME)]
+    p_df = db[db["狀態"] == "待複審"]
     
     if p_df.empty: st.info("無待審單據")
     else: st.dataframe(p_df[["單號", "專案名稱", "申請人", "總金額"]])
@@ -435,14 +466,12 @@ elif menu == "3. 財務長簽核":
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            is_cfo = (curr_name == CFO_NAME) and is_active
-            
-            if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo):
+            if c1.button("👑 核准", key=f"cok{i}"):
                 idx = db[db["單號"]==r["單號"]].index[0]
                 db.at[idx, "狀態"] = "已核准"; db.at[idx, "複審人"] = curr_name
                 db.at[idx, "複審時間"] = get_taiwan_time()
                 save_data(db); st.rerun()
-            with c2.popover("❌ 駁回", disabled=not is_cfo):
+            with c2.popover("❌ 駁回"):
                 reason = st.text_input("原因", key=f"cr{i}")
                 if st.button("確認", key=f"cno{i}"):
                     idx = db[db["單號"]==r["單號"]].index[0]
@@ -450,11 +479,26 @@ elif menu == "3. 財務長簽核":
                     save_data(db); st.rerun()
 
     st.divider(); st.subheader("📜 歷史紀錄")
-    if is_admin:
-        f_df = db[db["複審人"].notna() & (db["複審人"] != "")]
-    else:
-        f_df = db[db["複審人"].apply(clean_name) == curr_name]
+    f_df = db[db["複審人"].apply(clean_name) == curr_name]
     st.dataframe(f_df[["單號", "專案名稱", "申請人", "總金額", "複審時間", "狀態"]])
+
+# --- 頁面 4: 表單狀態總覽 ---
+elif menu == "4. 表單狀態總覽":
+    st.header("📊 表單狀態總覽")
+    db = load_data()
+    # [功能3] 新增狀態檢視頁面，顯示指定欄位
+    # 申請單號 | 專案名稱 | 負責執行長 | 申請人 | 總金額 | 狀態
+    
+    # 清洗資料以供顯示
+    display_df = db.copy()
+    display_df["負責執行長"] = display_df["專案負責人"].apply(clean_name)
+    display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,.0f}")
+    
+    # 重新命名與排序欄位
+    display_df = display_df.rename(columns={"單號": "申請單號"})
+    target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態"]
+    
+    st.dataframe(display_df[target_cols], use_container_width=True)
 
 if st.session_state.view_id:
     r = load_data(); r = r[r["單號"]==st.session_state.view_id]
