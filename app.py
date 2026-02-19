@@ -204,21 +204,20 @@ if is_admin:
     st.sidebar.success("管理員模式")
     
     # [功能1] 顯示所有密碼 (Anita 限定)
-    with st.sidebar.expander("🔑 所有人員密碼"):
+    with st.sidebar.expander("🔑 所有人員密碼清單"):
         staff_df = st.session_state.staff_df
-        # 顯示 Dataframe，包含 Name 和 Password
         st.dataframe(staff_df[["name", "password"]], hide_index=True)
         
         # [功能2] 恢復原始密碼
         st.markdown("---")
-        st.write("**恢復原始密碼 (0000)**")
+        st.write("**恢復預設密碼 (0000)**")
         reset_target = st.selectbox("選擇人員", staff_df["name"].tolist(), key="rst_sel")
         if st.button("確認恢復預設", key="rst_btn"):
             idx = staff_df[staff_df["name"] == reset_target].index[0]
             staff_df.at[idx, "password"] = "0000"
             save_staff(staff_df)
             st.session_state.staff_df = staff_df
-            st.success(f"{reset_target} 密碼已恢復為 0000")
+            st.success(f"{reset_target} 密碼已重置")
 
     # [功能] 新增人員
     with st.sidebar.expander("➕ 新增人員"):
@@ -249,10 +248,10 @@ if st.sidebar.button("登出"):
     st.session_state.user_id = None
     st.rerun()
 
-# 導覽選單邏輯：Anita 多一個選項
+# 導覽選單
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
 if is_admin:
-    menu_options.append("5. 請款狀態") # [功能3] Anita 專屬
+    menu_options.append("5. 請款狀態") 
 
 menu = st.sidebar.radio("導覽", menu_options)
 
@@ -481,7 +480,6 @@ elif menu == "2. 專案執行長簽核":
 
 # --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
-    # [權限] 非 Charles 登入則反灰/禁止進入
     if curr_name != CFO_NAME:
         st.error("⛔ 無權限存取 (僅限財務長)")
         st.stop()
@@ -532,28 +530,25 @@ elif menu == "5. 請款狀態":
     st.header("💰 請款狀態 (Admin)")
     db = load_data()
     
-    # 準備資料
     display_df = db.copy()
     display_df["負責執行長"] = display_df["專案負責人"].apply(clean_name)
     display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,.0f}")
     display_df = display_df.rename(columns={"單號": "申請單號"})
     
-    # 確保這兩欄是文字格式，避免編輯器反灰
-    display_df["匯款狀態"] = display_df["匯款狀態"].astype(str)
-    display_df["匯款日期"] = display_df["匯款日期"].astype(str)
+    # [關鍵修復] 日期轉 datetime, 避免編輯器崩潰
+    display_df["匯款日期"] = pd.to_datetime(display_df["匯款日期"], errors='coerce')
     
     target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
     
-    # [解決反灰] 使用 column_config 強制指定編輯類型
     edited_df = st.data_editor(
         display_df[target_cols],
-        disabled=["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態"], # 只有匯款相關可編輯
+        disabled=["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態"],
         use_container_width=True,
         column_config={
             "匯款狀態": st.column_config.SelectboxColumn(
                 "匯款狀態",
                 options=["", "待匯款", "已匯款", "異常"],
-                required=True,
+                required=False,
                 width="medium"
             ),
             "匯款日期": st.column_config.DateColumn(
@@ -564,19 +559,20 @@ elif menu == "5. 請款狀態":
         }
     )
     
-    # 儲存邏輯
     if st.button("💾 儲存匯款資訊"):
         for i, row in edited_df.iterrows():
-            # 找回原資料庫的 index
             orig_idx = db[db["單號"]==row["申請單號"]].index[0]
-            # 更新資料
-            db.at[orig_idx, "匯款狀態"] = row["匯款狀態"]
-            # 日期轉字串存檔
-            db.at[orig_idx, "匯款日期"] = str(row["匯款日期"]) if row["匯款日期"] else ""
+            db.at[orig_idx, "匯款狀態"] = str(row["匯款狀態"]) if row["匯款狀態"] else ""
+            # 日期轉回字串存檔
+            date_val = row["匯款日期"]
+            if pd.notna(date_val):
+                db.at[orig_idx, "匯款日期"] = date_val.strftime('%Y-%m-%d')
+            else:
+                db.at[orig_idx, "匯款日期"] = ""
             
         save_data(db)
         st.success("✅ 匯款資訊已更新！")
-        time.sleep(1) # 稍微暫停讓使用者看到成功訊息
+        time.sleep(1)
         st.rerun()
 
 if st.session_state.view_id:
