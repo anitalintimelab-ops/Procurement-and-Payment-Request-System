@@ -7,7 +7,7 @@ import re
 import time
 
 # --- 1. 系統設定 ---
-st.set_page_config(page_title="時研-管理系統", layout="wide")
+st.set_page_config(page_title="時研-管理系統", layout="wide", page_icon="🏢")
 B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
@@ -137,7 +137,6 @@ def save_data(df):
         st.stop()
 
 def load_staff():
-    # [新增] 擴充 avatar 欄位
     default_df = pd.DataFrame({"name": DEFAULT_STAFF, "status": ["在職"]*5, "password": ["0000"]*5, "avatar": [""]*5})
     df = read_csv_robust(S_FILE)
     if df is None or df.empty:
@@ -145,7 +144,7 @@ def load_staff():
         df.to_csv(S_FILE, index=False, encoding='utf-8-sig')
         return df
     if "status" not in df.columns: df["status"] = "在職"
-    if "avatar" not in df.columns: df["avatar"] = "" # 自動相容舊資料
+    if "avatar" not in df.columns: df["avatar"] = ""
     df["name"] = df["name"].str.strip()
     df["avatar"] = df["avatar"].fillna("")
     return df
@@ -156,11 +155,28 @@ def save_staff(df):
 def get_b64_logo():
     try:
         for f in os.listdir(B_DIR):
-            if any(x in f.lower() for x in ["logo", "timelab"]) and f.lower().endswith(('.png', '.jpg')):
+            if any(x in f.lower() for x in ["logo", "timelab"]) and f.lower().endswith(('.png', '.jpg', '.jpeg')):
                 with open(os.path.join(B_DIR, f), "rb") as img:
                     return base64.b64encode(img.read()).decode()
     except: pass
     return ""
+
+# [新增] 渲染頁面標題的 Helper 函數
+def render_header():
+    logo_b64 = get_b64_logo()
+    if logo_b64:
+        st.markdown(
+            f"""
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                <img src="data:image/png;base64,{logo_b64}" style="height: 60px;">
+                <h2 style="margin: 0; color: #333;">Time Lab 時研國際設計股份有限公司</h2>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.title("Time Lab 時研國際設計股份有限公司")
+    st.divider()
 
 def clean_for_js(h_str):
     return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
@@ -180,7 +196,19 @@ if 'form_key' not in st.session_state: st.session_state.form_key = 0
 
 # --- 4. 登入 ---
 if st.session_state.user_id is None:
-    st.header("🏢 時研國際 - 內部管理系統")
+    # [修改] 登入畫面標題與 Logo
+    logo_b64 = get_b64_logo()
+    if logo_b64:
+        st.markdown(
+            f"""
+            <div style="text-align: center; margin-bottom: 30px;">
+                <img src="data:image/png;base64,{logo_b64}" style="height: 100px;">
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    st.markdown("<h1 style='text-align: center;'>🏢 Time Lab 時研國際設計股份有限公司 - 內部管理系統-請款&採購申請、審核系統</h1>", unsafe_allow_html=True)
+    
     staff_df = load_staff()
     with st.form("login"):
         u = st.selectbox("身分", staff_df["name"].tolist())
@@ -201,17 +229,32 @@ curr_name = st.session_state.user_id
 is_active = (st.session_state.user_status == "在職")
 is_admin = (curr_name in ADMINS)
 
-# 取得當前使用者的大頭貼資料
 curr_user_row = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0]
 avatar_b64 = curr_user_row.get("avatar", "")
 
 # --- 5. 側邊欄 ---
-# [新增] 渲染大頭貼與姓名
+# [新增] 側邊欄 Logo 與公司名稱
+logo_b64 = get_b64_logo()
+if logo_b64:
+    st.sidebar.markdown(
+        f"""
+        <div style="text-align: center; margin-bottom: 20px;">
+            <img src="data:image/png;base64,{logo_b64}" style="height: 80px;">
+            <h3 style="margin-top: 10px; color: #333;">Time Lab 時研國際設計股份有限公司</h3>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+else:
+    st.sidebar.title("Time Lab 時研國際設計股份有限公司")
+
+st.sidebar.divider()
+
 if avatar_b64:
     st.sidebar.markdown(f'''
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
-            <img src="data:image/jpeg;base64,{avatar_b64}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd;">
-            <span style="font-size: 22px; font-weight: bold;">{curr_name}</span>
+            <img src="data:image/jpeg;base64,{avatar_b64}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 3px solid #eee; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <span style="font-size: 22px; font-weight: bold; color: #333;">{curr_name}</span>
         </div>
     ''', unsafe_allow_html=True)
 else:
@@ -222,7 +265,6 @@ st.sidebar.info(f"🟢 目前在線人數：**{online_count}** 人")
 
 if not is_active: st.sidebar.error("⛔ 已離職")
 
-# [新增] 上傳大頭貼功能
 with st.sidebar.expander("📸 修改大頭貼"):
     new_avatar = st.file_uploader("上傳您的圖片", type=["jpg", "jpeg", "png"])
     if st.button("更新大頭貼", disabled=not is_active):
@@ -239,7 +281,6 @@ with st.sidebar.expander("📸 修改大頭貼"):
         else:
             st.error("請選擇圖片檔")
 
-# 密碼修改
 with st.sidebar.expander("🔐 修改我的密碼"):
     new_pw = st.text_input("新密碼", type="password")
     confirm_pw = st.text_input("確認新密碼", type="password")
@@ -276,7 +317,6 @@ if is_admin:
         if st.button("新增"):
             staff_df = st.session_state.staff_df
             if n not in staff_df["name"].values:
-                # 確保新增時也有 avatar 欄位
                 staff_df = pd.concat([staff_df, pd.DataFrame({"name":[n], "status":["在職"], "password":["0000"], "avatar":[""]})])
                 save_staff(staff_df)
                 st.session_state.staff_df = staff_df
@@ -344,7 +384,8 @@ def render_html(row):
 
 # --- 頁面 1: 填寫與追蹤 ---
 if menu == "1. 填寫申請單":
-    st.header("填寫申請單")
+    render_header()
+    st.subheader("填寫申請單")
     db = load_data()
     staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
     if curr_name not in staffs: staffs.append(curr_name)
@@ -438,7 +479,7 @@ if menu == "1. 填寫申請單":
 
         if c1.button("🚀 提交", disabled=not can_edit_or_submit):
             idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
-            temp_db.at[idx, "狀態"] = "待簽核" 
+            temp_db.at[idx, "狀態"] = "待簽核"
             temp_db.at[idx, "提交時間"] = get_taiwan_time()
             save_data(temp_db)
             st.session_state.last_id = None
@@ -517,7 +558,8 @@ elif menu == "2. 專案執行長簽核":
     if st.session_state.view_id: 
         st.session_state.view_id = None
     
-    st.header("🔍 專案執行長簽核")
+    render_header()
+    st.subheader("🔍 專案執行長簽核")
     db = load_data()
     
     if is_admin:
@@ -570,7 +612,8 @@ elif menu == "2. 專案執行長簽核":
 
 # --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
-    st.header("🏁 財務長簽核")
+    render_header()
+    st.subheader("🏁 財務長簽核")
     db = load_data()
     
     st.subheader("⏳ 待財務長簽核")
@@ -620,7 +663,8 @@ elif menu == "3. 財務長簽核":
 
 # --- 頁面 4: 表單狀態總覽 ---
 elif menu == "4. 表單狀態總覽":
-    st.header("📊 表單狀態總覽")
+    render_header()
+    st.subheader("📊 表單狀態總覽")
     db = load_data()
     display_df = db.copy()
     display_df["負責執行長"] = display_df["專案負責人"]
@@ -632,7 +676,8 @@ elif menu == "4. 表單狀態總覽":
 
 # --- 頁面 5: 請款狀態 (Anita 專屬) ---
 elif menu == "5. 請款狀態":
-    st.header("💰 請款狀態 (Admin)")
+    render_header()
+    st.subheader("💰 請款狀態 (Admin)")
     db = load_data()
     
     display_df = db.copy()
