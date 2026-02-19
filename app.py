@@ -418,7 +418,7 @@ if menu == "1. 填寫申請單":
             b1, b2, b3, b4, b5 = st.columns(5)
             
             is_own = (str(r["申請人"]).strip() == curr_name)
-            can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
+            can_edit = (r["狀態"] in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
             
             if b1.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
             if b2.button("提交", key=f"s{i}", disabled=not can_edit):
@@ -442,6 +442,7 @@ if menu == "1. 填寫申請單":
 
 # --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
+    # [功能] 強制清除預覽
     if st.session_state.view_id: st.session_state.view_id = None
     
     st.header("🔍 專案執行長簽核")
@@ -480,36 +481,46 @@ elif menu == "2. 專案執行長簽核":
                     save_data(db); st.rerun()
     
     st.divider(); st.subheader("📜 歷史紀錄 (已核准/已駁回)")
+    
+    # 邏輯：有初審人紀錄的資料 (代表經過 CEO 手，無論是核准或駁回)
     if is_admin: 
-        # 管理員看所有有初審人紀錄的
         h_df = db[db["初審人"].notna() & (db["初審人"] != "")]
     else: 
-        # 執行長看自己簽過的 (含核准與駁回)
+        # CEO 只能看自己審過的
         h_df = db[db["初審人"].apply(clean_name) == curr_name]
+        
     st.dataframe(h_df[["單號", "專案名稱", "申請人", "總金額", "初審時間", "狀態"]])
 
 # --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
     st.header("🏁 財務長簽核")
     db = load_data()
-    p_df = db[db["狀態"] == "待複審"]
     
+    # 待審區塊
+    st.subheader("⏳ 待財務長簽核")
+    if is_admin or curr_name == CFO_NAME:
+        p_df = db[db["狀態"] == "待複審"]
+    else:
+        # 其他人只能看自己是 PM 的單
+        p_df = db[(db["狀態"] == "待複審") & (db["專案負責人"].apply(clean_name) == curr_name)]
+        
     if p_df.empty: st.info("無待審單據")
     else: st.dataframe(p_df[["單號", "專案名稱", "申請人", "總金額"]])
 
     for i, r in p_df.iterrows():
-        with st.expander(f"{r['單號']}"):
+        with st.expander(f"審核: {r['單號']}"):
             st.markdown(render_html(r), unsafe_allow_html=True)
             c1, c2 = st.columns(2)
             
-            is_cfo = (curr_name == CFO_NAME) and is_active
+            # 只有 CFO 且在職能按
+            is_cfo_action = (curr_name == CFO_NAME) and is_active
             
-            if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo):
+            if c1.button("👑 核准", key=f"cok{i}", disabled=not is_cfo_action):
                 idx = db[db["單號"]==r["單號"]].index[0]
                 db.at[idx, "狀態"] = "已核准"; db.at[idx, "複審人"] = curr_name
                 db.at[idx, "複審時間"] = get_taiwan_time()
                 save_data(db); st.rerun()
-            with c2.popover("❌ 駁回", disabled=not is_cfo):
+            with c2.popover("❌ 駁回", disabled=not is_cfo_action):
                 reason = st.text_input("原因", key=f"cr{i}")
                 if st.button("確認", key=f"cno{i}"):
                     idx = db[db["單號"]==r["單號"]].index[0]
@@ -519,8 +530,12 @@ elif menu == "3. 財務長簽核":
                     db.at[idx, "複審時間"] = get_taiwan_time()
                     save_data(db); st.rerun()
 
-    st.divider(); st.subheader("📜 歷史紀錄 (已核准/已駁回)")
-    # 管理員或 CFO 看所有複審紀錄
+    st.divider()
+    st.subheader("📜 歷史紀錄 (已核准/已駁回)")
+    
+    # 邏輯：有複審人紀錄的資料 (代表經過 CFO 手，無論是核准或駁回)
+    # 這裡直接抓 "複審人" 欄位不為空的資料
+    
     if is_admin or curr_name == CFO_NAME:
         f_df = db[db["複審人"].notna() & (db["複審人"] != "")]
     else:
@@ -579,7 +594,6 @@ elif menu == "5. 請款狀態":
     if st.button("💾 儲存匯款資訊"):
         valid = True
         for i, row in edited_df.iterrows():
-            # [功能] 強制檢查：已匯款必須填日期
             if row["匯款狀態"] == "已匯款" and (pd.isna(row["匯款日期"]) or str(row["匯款日期"]) == "NaT"):
                 st.error(f"❌ 申請單號 {row['申請單號']}：選擇「已匯款」時，必須填寫匯款日期！")
                 valid = False
@@ -588,6 +602,8 @@ elif menu == "5. 請款狀態":
             for i, row in edited_df.iterrows():
                 orig_idx = db[db["單號"]==row["申請單號"]].index[0]
                 db.at[orig_idx, "匯款狀態"] = str(row["匯款狀態"]) if row["匯款狀態"] else ""
+                
+                # 日期轉回字串存檔
                 date_val = row["匯款日期"]
                 if pd.notna(date_val) and str(date_val) != "NaT":
                     db.at[orig_idx, "匯款日期"] = str(date_val)
