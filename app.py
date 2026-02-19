@@ -206,14 +206,12 @@ if st.session_state.user_id is None:
             """,
             unsafe_allow_html=True
         )
-    # [指令2] 更新登入標題
     st.markdown("<h1 style='text-align: center;'>🏢 時研國際設計股份有限公司 - 請款&採購申請、審核系統</h1>", unsafe_allow_html=True)
     
     staff_df = load_staff()
     with st.form("login"):
         u = st.selectbox("身分", staff_df["name"].tolist())
         p = st.text_input("密碼", type="password")
-        # [指令3] 新增登入系統選擇
         sys_choice = st.selectbox("登入系統", ["請購單系統", "採購單系統"])
         
         if st.form_submit_button("登入"):
@@ -223,7 +221,7 @@ if st.session_state.user_id is None:
                 st.session_state.user_id = u
                 st.session_state.user_status = row["status"] if pd.notna(row["status"]) else "在職"
                 st.session_state.staff_df = staff_df
-                st.session_state.sys_choice = sys_choice # 記錄選擇的系統
+                st.session_state.sys_choice = sys_choice
                 st.rerun()
             else:
                 st.error("密碼錯誤")
@@ -253,7 +251,6 @@ else:
 
 st.sidebar.divider()
 
-# 顯示登入的系統名稱
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 
 if avatar_b64:
@@ -352,13 +349,19 @@ if is_admin:
 
 menu = st.sidebar.radio("導覽", menu_options)
 
+# [修正] 偵測頁面切換，切換時自動清除預覽畫面，解決殘留問題，同時不影響頁面內的預覽按鈕
+if 'last_menu' not in st.session_state:
+    st.session_state.last_menu = menu
+if st.session_state.last_menu != menu:
+    st.session_state.view_id = None
+    st.session_state.last_menu = menu
+
 # --- HTML 渲染 ---
 def render_html(row):
     amt = clean_amount(row['總金額'])
     fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0
     sub_time = row["提交時間"] if row["提交時間"] and str(row["提交時間"]) != "nan" else get_taiwan_time()
     
-    # [指令3] 動態修改表單預覽抬頭
     sys_type_title = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else "請購單"
     logo_b64 = get_b64_logo()
     lg_html = f'<img src="data:image/png;base64,{logo_b64}" style="height:50px;">' if logo_b64 else ''
@@ -570,9 +573,6 @@ if menu == "1. 填寫申請單":
 
 # --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
-    if st.session_state.view_id: 
-        st.session_state.view_id = None
-    
     render_header()
     st.subheader("🔍 專案執行長簽核")
     db = load_data()
