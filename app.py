@@ -161,7 +161,6 @@ def get_b64_logo():
     except: pass
     return ""
 
-# [新增] 渲染頁面標題的 Helper 函數
 def render_header():
     logo_b64 = get_b64_logo()
     if logo_b64:
@@ -169,13 +168,13 @@ def render_header():
             f"""
             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
                 <img src="data:image/png;base64,{logo_b64}" style="height: 60px;">
-                <h2 style="margin: 0; color: #333;">Time Lab 時研國際設計股份有限公司</h2>
+                <h2 style="margin: 0; color: #333;">時研國際設計股份有限公司</h2>
             </div>
             """,
             unsafe_allow_html=True
         )
     else:
-        st.title("Time Lab 時研國際設計股份有限公司")
+        st.title("時研國際設計股份有限公司")
     st.divider()
 
 def clean_for_js(h_str):
@@ -193,10 +192,10 @@ if 'edit_id' not in st.session_state: st.session_state.edit_id = None
 if 'last_id' not in st.session_state: st.session_state.last_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
 if 'form_key' not in st.session_state: st.session_state.form_key = 0 
+if 'sys_choice' not in st.session_state: st.session_state.sys_choice = "請購單系統"
 
 # --- 4. 登入 ---
 if st.session_state.user_id is None:
-    # [修改] 登入畫面標題與 Logo
     logo_b64 = get_b64_logo()
     if logo_b64:
         st.markdown(
@@ -207,12 +206,16 @@ if st.session_state.user_id is None:
             """,
             unsafe_allow_html=True
         )
-    st.markdown("<h1 style='text-align: center;'>🏢 Time Lab 時研國際設計股份有限公司 - 內部管理系統-請款&採購申請、審核系統</h1>", unsafe_allow_html=True)
+    # [指令2] 更新登入標題
+    st.markdown("<h1 style='text-align: center;'>🏢 時研國際設計股份有限公司 - 請款&採購申請、審核系統</h1>", unsafe_allow_html=True)
     
     staff_df = load_staff()
     with st.form("login"):
         u = st.selectbox("身分", staff_df["name"].tolist())
         p = st.text_input("密碼", type="password")
+        # [指令3] 新增登入系統選擇
+        sys_choice = st.selectbox("登入系統", ["請購單系統", "採購單系統"])
+        
         if st.form_submit_button("登入"):
             row = staff_df[staff_df["name"] == u].iloc[0]
             stored_p = str(row["password"]).strip().replace(".0", "")
@@ -220,6 +223,7 @@ if st.session_state.user_id is None:
                 st.session_state.user_id = u
                 st.session_state.user_status = row["status"] if pd.notna(row["status"]) else "在職"
                 st.session_state.staff_df = staff_df
+                st.session_state.sys_choice = sys_choice # 記錄選擇的系統
                 st.rerun()
             else:
                 st.error("密碼錯誤")
@@ -233,22 +237,24 @@ curr_user_row = st.session_state.staff_df[st.session_state.staff_df["name"] == c
 avatar_b64 = curr_user_row.get("avatar", "")
 
 # --- 5. 側邊欄 ---
-# [新增] 側邊欄 Logo 與公司名稱
 logo_b64 = get_b64_logo()
 if logo_b64:
     st.sidebar.markdown(
         f"""
         <div style="text-align: center; margin-bottom: 20px;">
             <img src="data:image/png;base64,{logo_b64}" style="height: 80px;">
-            <h3 style="margin-top: 10px; color: #333;">Time Lab 時研國際設計股份有限公司</h3>
+            <h3 style="margin-top: 10px; color: #333;">時研國際設計股份有限公司</h3>
         </div>
         """,
         unsafe_allow_html=True
     )
 else:
-    st.sidebar.title("Time Lab 時研國際設計股份有限公司")
+    st.sidebar.title("時研國際設計股份有限公司")
 
 st.sidebar.divider()
+
+# 顯示登入的系統名稱
+st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 
 if avatar_b64:
     st.sidebar.markdown(f'''
@@ -352,10 +358,19 @@ def render_html(row):
     fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0
     sub_time = row["提交時間"] if row["提交時間"] and str(row["提交時間"]) != "nan" else get_taiwan_time()
     
+    # [指令3] 動態修改表單預覽抬頭
+    sys_type_title = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else "請購單"
+    logo_b64 = get_b64_logo()
+    lg_html = f'<img src="data:image/png;base64,{logo_b64}" style="height:50px;">' if logo_b64 else ''
+    
     h = f'<div style="padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
-    h += f'<h3>時研國際設計 - {row["類型"]}</h3><hr>'
+    h += f'<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px;">'
+    h += f'<div style="width:20%;">{lg_html}</div>'
+    h += f'<div style="width:60%; text-align:center;"><h2 style="margin:0;">時研國際設計股份有限公司</h2><h3 style="margin:5px 0 0 0; letter-spacing:5px;">{sys_type_title}</h3></div>'
+    h += f'<div style="width:20%;"></div></div>'
+    
     h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
-    h += f'<tr><td bgcolor="#eee">單號</td><td>{row["單號"]}</td><td bgcolor="#eee">負責人</td><td>{clean_name(row["專案負責人"])}</td></tr>'
+    h += f'<tr><td bgcolor="#eee" width="15%">單號</td><td width="35%">{row["單號"]}</td><td bgcolor="#eee" width="15%">負責人</td><td width="35%">{clean_name(row["專案負責人"])}</td></tr>'
     h += f'<tr><td bgcolor="#eee">專案</td><td>{row["專案名稱"]}</td><td bgcolor="#eee">編號</td><td>{row["專案編號"]}</td></tr>'
     h += f'<tr><td bgcolor="#eee">申請人</td><td>{row["申請人"]}</td><td bgcolor="#eee">廠商</td><td>{row["請款廠商"]}</td></tr>'
     h += f'<tr><td bgcolor="#eee">說明</td><td colspan="3">{row["請款說明"]}</td></tr>'
