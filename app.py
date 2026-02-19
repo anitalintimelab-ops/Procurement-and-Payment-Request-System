@@ -182,6 +182,21 @@ is_admin = (curr_name in ADMINS)
 st.sidebar.markdown(f"### 👤 {curr_name}")
 if not is_active: st.sidebar.error("⛔ 已離職")
 
+# [功能1] 密碼修改 (移至左欄)
+with st.sidebar.expander("🔐 修改密碼"):
+    new_pw = st.text_input("新密碼", type="password")
+    confirm_pw = st.text_input("確認新密碼", type="password")
+    if st.button("更新密碼", disabled=not is_active):
+        if new_pw != confirm_pw: st.error("兩次輸入不符")
+        elif not validate_password(new_pw): st.error("規則：至少一英文+數字4-6位")
+        else:
+            staff_df = st.session_state.staff_df
+            idx = staff_df[staff_df["name"] == curr_name].index[0]
+            staff_df.at[idx, "password"] = str(new_pw)
+            save_staff(staff_df)
+            st.session_state.staff_df = staff_df
+            st.success("成功")
+
 if is_admin:
     st.sidebar.success("管理員模式")
     with st.sidebar.expander("➕ 新增人員"):
@@ -401,43 +416,39 @@ if menu == "1. 填寫申請單":
 # --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
     st.header("🔍 專案執行長簽核")
-    
-    # [功能1] 密碼修改
-    with st.expander("🔐 修改密碼"):
-        new_pw = st.text_input("新密碼 (CEO專用)", type="password")
-        if st.button("變更密碼"):
-            staff_df = st.session_state.staff_df
-            idx = staff_df[staff_df["name"] == curr_name].index[0]
-            staff_df.at[idx, "password"] = str(new_pw)
-            save_staff(staff_df); st.success("密碼已變更"); st.rerun()
-
     db = load_data()
+    
     if is_admin:
         p_df = db[db["狀態"] == "待初審"]
     else:
         p_df = db[(db["狀態"] == "待初審") & (db["專案負責人"].str.contains(curr_name))]
     
     if p_df.empty: st.info("無待審單據")
-    else: st.dataframe(p_df[["單號", "專案名稱", "專案負責人", "申請人", "總金額", "提交時間"]])
+    
+    h1, h2, h3, h4, h5, h6 = st.columns([1.5, 2, 1.2, 1, 1, 2])
+    h1.write("**單號**"); h2.write("**專案名稱**"); h3.write("**負責執行長**")
+    h4.write("**申請人**"); h5.write("**總金額**"); h6.write("**提交時間**")
 
     for i, r in p_df.iterrows():
-        with st.expander(f"{r['單號']} - {r['專案名稱']} (負責人: {clean_name(r['專案負責人'])})"):
+        c1, c2, c3, c4, c5, c6 = st.columns([1.5, 2, 1.2, 1, 1, 2])
+        c1.write(r["單號"]); c2.write(r["專案名稱"]); c3.write(clean_name(r["專案負責人"]))
+        c4.write(r["申請人"]); c5.write(f"${clean_amount(r['總金額']):,.0f}"); c6.write(r["提交時間"])
+        
+        with st.expander(f"審核: {r['單號']}"):
             st.markdown(render_html(r), unsafe_allow_html=True)
-            c1, c2 = st.columns(2)
+            b1, b2 = st.columns(2)
             
-            # [功能] Anita 只能看 (反灰)，只有負責人能按
-            responsible_person = clean_name(r["專案負責人"])
-            can_sign = (responsible_person == curr_name) and is_active
+            can_sign = (clean_name(r["專案負責人"]) == curr_name) and is_active
             
-            if c1.button("✅ 核准", key=f"ok{i}", disabled=not can_sign):
+            if b1.button("✅ 核准", key=f"ok{i}", disabled=not can_sign):
                 idx = db[db["單號"]==r["單號"]].index[0]
                 db.at[idx, "狀態"] = "待複審"; db.at[idx, "初審人"] = curr_name
                 db.at[idx, "初審時間"] = get_taiwan_time()
                 save_data(db); st.rerun()
-                
-            with c2.popover("❌ 駁回", disabled=not can_sign):
-                reason = st.text_input("原因", key=f"r{i}")
-                if st.button("確認", key=f"no{i}"):
+            
+            with b2.popover("❌ 駁回", disabled=not can_sign):
+                reason = st.text_input("駁回原因", key=f"rej_{i}")
+                if st.button("確認駁回", key=f"no{i}"):
                     idx = db[db["單號"]==r["單號"]].index[0]
                     db.at[idx, "狀態"] = "已駁回"; db.at[idx, "駁回原因"] = reason
                     save_data(db); st.rerun()
