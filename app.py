@@ -37,11 +37,6 @@ def clean_name(val):
     if pd.isna(val) or str(val).strip() == "": return ""
     return str(val).strip().split(" ")[0]
 
-# [工具] 跳轉至修改頁面 (Callback - 解決 StreamlitAPIException)
-def navigate_to_edit(eid):
-    st.session_state.edit_id = eid
-    st.session_state.menu_radio = "1. 填寫申請單"
-
 # [工具] 追蹤在線人數
 def get_online_users(curr_user):
     try:
@@ -476,7 +471,15 @@ if menu == "1. 填寫申請單":
                     db.at[idx, "帳戶影像Base64"] = b_acc; db.at[idx, "影像Base64"] = b_ims
                     st.session_state.edit_id = None
                 else:
-                    tid = f"{datetime.date.today().strftime('%Y%m%d')}-{len(db)+1:02d}"
+                    # [指令1 - 修復] 序號每日從 1 開始計算
+                    today_str = datetime.date.today().strftime('%Y%m%d')
+                    if not db.empty:
+                        today_count = len(db[db["單號"].str.startswith(today_str)])
+                        next_num = today_count + 1
+                    else:
+                        next_num = 1
+                    tid = f"{today_str}-{next_num:02d}"
+                    
                     nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":sys_save_type, "申請人":curr_name, 
                           "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":desc, "總金額":amt, 
                           "幣別":currency, "付款方式":pay, "請款廠商":vdr, "匯款帳戶":acc, 
@@ -653,8 +656,33 @@ elif menu == "2. 專案執行長簽核":
                     js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
                     st.components.v1.html('<script>' + js_p + '</script>', height=0)
                 
+                # [指令2 - 專屬修改] 使用 Popover 在原地修改，不再跳轉，解決報錯問題
                 can_ceo_edit = (r["狀態"] == "待複審") and (r["專案負責人"] == curr_name) and is_active
-                lb3.button("✏️ 修改", key=f"h_ceo_e_{i}", disabled=not can_ceo_edit, on_click=navigate_to_edit, args=(r["單號"],))
+                with lb3.popover("✏️ 修改", disabled=not can_ceo_edit):
+                    st.write("**修改表單內容**")
+                    new_desc = st.text_area("修改說明", value=r["請款說明"], key=f"ceo_desc_{i}")
+                    if st.button("💾 儲存說明", key=f"ceo_save_desc_{i}"):
+                        fresh_db = load_data()
+                        idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                        fresh_db.at[idx, "請款說明"] = new_desc
+                        save_data(fresh_db)
+                        st.success("說明已更新！")
+                        st.rerun()
+                    
+                    st.divider()
+                    st.write("**變更狀態**")
+                    rej_reason = st.text_input("駁回原因", key=f"ceo_rej_r_{i}")
+                    if st.button("❌ 撤回並駁回", key=f"ceo_rej_btn_{i}"):
+                        if not rej_reason:
+                            st.error("請填寫駁回原因")
+                        else:
+                            fresh_db = load_data()
+                            idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                            fresh_db.at[idx, "狀態"] = "已駁回"
+                            fresh_db.at[idx, "駁回原因"] = rej_reason
+                            save_data(fresh_db)
+                            st.success("已改為駁回！")
+                            st.rerun()
 
 # --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
@@ -752,20 +780,39 @@ elif menu == "4. 表單狀態總覽":
 elif menu == "5. 請款狀態":
     render_header()
     
-    st.error("⚠️ **雲端暫存機制提醒：** 免費的雲端主機重啟時會清空資料。請管理員務必在下班前【下載資料庫備份】。隔天若資料不見，點擊【還原資料庫】上傳昨天的備份檔即可恢復所有紀錄！")
-    with st.expander("💾 資料庫備份與還原 (解決資料隔天不見的問題)", expanded=True):
+    # [指令4] 解決隔天重置問題的終極方案 - 提供資料庫與大頭貼雙重備份還原
+    st.error("⚠️ **雲端暫存機制提醒：** 免費的雲端主機重啟時會清空資料（包含表單與大頭貼）。請管理員務必在下班前下載備份！")
+    
+    with st.expander("💾 表單資料庫備份與還原", expanded=True):
         col_down, col_up = st.columns(2)
         with col_down:
-            st.write("⬇️ **步驟一：下載最新資料庫**")
+            st.write("⬇️ **步驟一：下載最新表單資料庫**")
             with open(D_FILE, "rb") as f:
-                st.download_button("下載最新資料庫備份檔", f, file_name=f"時研系統資料庫備份_{datetime.date.today()}.csv", mime="text/csv")
+                st.download_button("下載表單備份檔", f, file_name=f"時研系統表單備份_{datetime.date.today()}.csv", mime="text/csv")
         with col_up:
-            st.write("⬆️ **步驟二：隔天還原資料庫**")
-            uploaded_db = st.file_uploader("上傳備份的 CSV 檔", type=["csv"], label_visibility="collapsed")
-            if uploaded_db and st.button("確認還原資料庫"):
+            st.write("⬆️ **步驟二：還原表單資料庫**")
+            uploaded_db = st.file_uploader("上傳表單 CSV 檔", type=["csv"], key="up_db", label_visibility="collapsed")
+            if uploaded_db and st.button("確認還原表單"):
                 with open(D_FILE, "wb") as f:
                     f.write(uploaded_db.getbuffer())
-                st.success("資料庫已完美還原！")
+                st.success("表單資料庫已還原！")
+                time.sleep(1)
+                st.rerun()
+
+    with st.expander("👥 人員與大頭貼資料備份與還原"):
+        col_down2, col_up2 = st.columns(2)
+        with col_down2:
+            st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼)**")
+            with open(S_FILE, "rb") as f:
+                st.download_button("下載人員備份檔", f, file_name=f"時研系統人員備份_{datetime.date.today()}.csv", mime="text/csv")
+        with col_up2:
+            st.write("⬆️ **步驟二：還原人員資料**")
+            uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
+            if uploaded_staff and st.button("確認還原人員資料"):
+                with open(S_FILE, "wb") as f:
+                    f.write(uploaded_staff.getbuffer())
+                st.session_state.staff_df = load_staff() # 強制刷新 Session
+                st.success("人員與大頭貼資料已還原！")
                 time.sleep(1)
                 st.rerun()
 
