@@ -205,8 +205,6 @@ if st.session_state.user_id is None:
                 st.session_state.user_status = row["status"] if pd.notna(row["status"]) else "在職"
                 st.session_state.staff_df = staff_df
                 st.session_state.sys_choice = sys_choice
-                # [關鍵修正] 登入時強制重置選單，避免記憶錯亂導致白屏
-                st.session_state.menu_radio = "1. 填寫申請單"
                 st.rerun()
             else:
                 st.error("密碼錯誤")
@@ -216,7 +214,6 @@ curr_name = st.session_state.user_id
 is_active = (st.session_state.user_status == "在職")
 is_admin = (curr_name in ADMINS)
 
-# [安全防護] 避免大頭貼抓取時報錯導致白屏
 avatar_b64 = ""
 try:
     curr_user_row = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0]
@@ -330,27 +327,22 @@ if is_admin:
 
 if st.sidebar.button("登出"):
     st.session_state.user_id = None
-    # [關鍵防護] 登出時刪除選單暫存，防止下一個人登入時崩潰白屏
-    if 'menu_radio' in st.session_state:
-        del st.session_state['menu_radio']
     st.rerun()
 
-# 導覽選單與安全性處理
+# 導覽選單
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
 if is_admin:
     menu_options.append("5. 請款狀態")
 
-# [安全防護] 確保暫存中的選單是合法選項，否則重置，避免白屏
-if 'menu_radio' in st.session_state and st.session_state.menu_radio not in menu_options:
-    st.session_state.menu_radio = "1. 填寫申請單"
+# 安全地使用 radio，避免設定錯誤的 session_state 引發崩潰
+menu = st.sidebar.radio("導覽", menu_options)
 
-menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
-
-if 'last_menu' not in st.session_state:
-    st.session_state.last_menu = st.session_state.menu_radio
-if st.session_state.last_menu != st.session_state.menu_radio:
+# 偵測頁面切換以清除預覽，不會干擾元件
+if 'current_menu' not in st.session_state:
+    st.session_state.current_menu = menu
+if st.session_state.current_menu != menu:
     st.session_state.view_id = None
-    st.session_state.last_menu = st.session_state.menu_radio
+    st.session_state.current_menu = menu
 
 def get_filtered_db():
     db = load_data()
@@ -487,10 +479,9 @@ if menu == "1. 填寫申請單":
                     db.at[idx, "帳戶影像Base64"] = b_acc; db.at[idx, "影像Base64"] = b_ims
                     st.session_state.edit_id = None
                 else:
-                    # [指令1 - 終極修復] 單號每日從 01 開始
+                    # [指令1 - 終極修復] 單號每日從 01 開始計算 (只計算前綴為今日的數量)
                     today_str = datetime.date.today().strftime('%Y%m%d')
                     if not db.empty:
-                        # 計算單號前綴是今天的數量
                         today_count = len(db[db["單號"].astype(str).str.startswith(today_str)])
                         next_num = today_count + 1
                     else:
@@ -587,16 +578,20 @@ if menu == "1. 填寫申請單":
                 st.components.v1.html('<script>' + js_p + '</script>', height=0)
             if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.edit_id = r["單號"]; st.rerun()
             
-            with b5.popover("刪除", disabled=not can_edit):
-                reason = st.text_input("刪除原因", key=f"d_res_{i}")
-                if st.button("確認", key=f"d{i}"):
-                    if not reason: st.error("請輸入原因")
-                    else:
-                        fresh_db = load_data()
-                        idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                        fresh_db.at[idx, "狀態"] = "已刪除"; fresh_db.at[idx, "刪除人"] = curr_name
-                        fresh_db.at[idx, "刪除時間"] = get_taiwan_time(); fresh_db.at[idx, "刪除原因"] = reason
-                        save_data(fresh_db); st.rerun()
+            # [終極防崩潰] 移除 popover 中的 disabled，改用 if 判斷渲染，絕對不報錯
+            if can_edit:
+                with b5.popover("刪除"):
+                    reason = st.text_input("刪除原因", key=f"d_res_{i}")
+                    if st.button("確認", key=f"d{i}"):
+                        if not reason: st.error("請輸入原因")
+                        else:
+                            fresh_db = load_data()
+                            idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                            fresh_db.at[idx, "狀態"] = "已刪除"; fresh_db.at[idx, "刪除人"] = curr_name
+                            fresh_db.at[idx, "刪除時間"] = get_taiwan_time(); fresh_db.at[idx, "刪除原因"] = reason
+                            save_data(fresh_db); st.rerun()
+            else:
+                b5.button("刪除", disabled=True, key=f"fake_d_{i}")
 
 # --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
@@ -635,15 +630,19 @@ elif menu == "2. 專案執行長簽核":
                     fresh_db.at[idx, "初審時間"] = get_taiwan_time()
                     save_data(fresh_db); st.rerun()
                     
-                with b3.popover("❌ 駁回", disabled=not can_sign):
-                    reason = st.text_input("駁回原因", key=f"ceo_r_{i}")
-                    if st.button("確認", key=f"ceo_no_{i}"):
-                        fresh_db = load_data()
-                        idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                        fresh_db.at[idx, "狀態"] = "已駁回"; fresh_db.at[idx, "駁回原因"] = reason
-                        fresh_db.at[idx, "初審人"] = curr_name
-                        fresh_db.at[idx, "初審時間"] = get_taiwan_time()
-                        save_data(fresh_db); st.rerun()
+                # [終極防崩潰]
+                if can_sign:
+                    with b3.popover("❌ 駁回"):
+                        reason = st.text_input("駁回原因", key=f"ceo_r_{i}")
+                        if st.button("確認", key=f"ceo_no_{i}"):
+                            fresh_db = load_data()
+                            idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                            fresh_db.at[idx, "狀態"] = "已駁回"; fresh_db.at[idx, "駁回原因"] = reason
+                            fresh_db.at[idx, "初審人"] = curr_name
+                            fresh_db.at[idx, "初審時間"] = get_taiwan_time()
+                            save_data(fresh_db); st.rerun()
+                else:
+                    b3.button("❌ 駁回", disabled=True, key=f"fake_ceo_no_{i}")
     
     st.divider(); st.subheader("📜 歷史紀錄 (已核准/已駁回)")
     
@@ -673,34 +672,37 @@ elif menu == "2. 專案執行長簽核":
                     js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
                     st.components.v1.html('<script>' + js_p + '</script>', height=0)
                 
-                # [指令2 - 徹底修復不跳轉] 執行長歷史區的修改只允許「原地」改說明或駁回
+                # [指令2 - 徹底修復不跳轉] 執行長歷史區的修改只允許「原地」改說明或駁回，不跳轉，且絕對防崩潰
                 can_ceo_edit = (r["狀態"] == "待複審") and (r["專案負責人"] == curr_name) and is_active
-                with lb3.popover("✏️ 修改", disabled=not can_ceo_edit):
-                    st.write("**📝 僅限修改說明或直接駁回**")
-                    new_desc = st.text_area("修改說明內容", value=r["請款說明"], key=f"ceo_desc_{i}")
-                    if st.button("💾 儲存說明", key=f"ceo_save_desc_{i}"):
-                        fresh_db = load_data()
-                        idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                        fresh_db.at[idx, "請款說明"] = new_desc
-                        save_data(fresh_db)
-                        st.success("說明已成功更新！")
-                        time.sleep(0.5)
-                        st.rerun()
-                    
-                    st.divider()
-                    rej_reason = st.text_input("撤回並駁回之原因", key=f"ceo_rej_r_{i}")
-                    if st.button("❌ 撤回並駁回", key=f"ceo_rej_btn_{i}"):
-                        if not rej_reason:
-                            st.error("請填寫駁回原因")
-                        else:
+                if can_ceo_edit:
+                    with lb3.popover("✏️ 修改"):
+                        st.write("**📝 僅限修改說明或直接駁回**")
+                        new_desc = st.text_area("修改說明內容", value=r["請款說明"], key=f"ceo_desc_{i}")
+                        if st.button("💾 儲存說明", key=f"ceo_save_desc_{i}"):
                             fresh_db = load_data()
                             idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                            fresh_db.at[idx, "狀態"] = "已駁回"
-                            fresh_db.at[idx, "駁回原因"] = rej_reason
+                            fresh_db.at[idx, "請款說明"] = new_desc
                             save_data(fresh_db)
-                            st.success("已改為駁回！")
+                            st.success("說明已成功更新！")
                             time.sleep(0.5)
                             st.rerun()
+                        
+                        st.divider()
+                        rej_reason = st.text_input("撤回並駁回之原因", key=f"ceo_rej_r_{i}")
+                        if st.button("❌ 撤回並駁回", key=f"ceo_rej_btn_{i}"):
+                            if not rej_reason:
+                                st.error("請填寫駁回原因")
+                            else:
+                                fresh_db = load_data()
+                                idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                                fresh_db.at[idx, "狀態"] = "已駁回"
+                                fresh_db.at[idx, "駁回原因"] = rej_reason
+                                save_data(fresh_db)
+                                st.success("已改為駁回！")
+                                time.sleep(0.5)
+                                st.rerun()
+                else:
+                    lb3.button("✏️ 修改", disabled=True, key=f"fake_ceo_edit_{i}")
 
 # --- 頁面 3: 財務長簽核 ---
 elif menu == "3. 財務長簽核":
@@ -735,15 +737,20 @@ elif menu == "3. 財務長簽核":
                     fresh_db.at[idx, "狀態"] = "已核准"; fresh_db.at[idx, "複審人"] = curr_name
                     fresh_db.at[idx, "複審時間"] = get_taiwan_time()
                     save_data(fresh_db); st.rerun()
-                with b3.popover("❌ 駁回", disabled=not is_cfo_action):
-                    reason = st.text_input("原因", key=f"cr_{i}")
-                    if st.button("確認", key=f"cno_{i}"):
-                        fresh_db = load_data()
-                        idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                        fresh_db.at[idx, "狀態"] = "已駁回"; fresh_db.at[idx, "駁回原因"] = reason
-                        fresh_db.at[idx, "複審人"] = curr_name 
-                        fresh_db.at[idx, "複審時間"] = get_taiwan_time()
-                        save_data(fresh_db); st.rerun()
+                
+                # [終極防崩潰]
+                if is_cfo_action:
+                    with b3.popover("❌ 駁回"):
+                        reason = st.text_input("原因", key=f"cr_{i}")
+                        if st.button("確認", key=f"cno_{i}"):
+                            fresh_db = load_data()
+                            idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                            fresh_db.at[idx, "狀態"] = "已駁回"; fresh_db.at[idx, "駁回原因"] = reason
+                            fresh_db.at[idx, "複審人"] = curr_name 
+                            fresh_db.at[idx, "複審時間"] = get_taiwan_time()
+                            save_data(fresh_db); st.rerun()
+                else:
+                    b3.button("❌ 駁回", disabled=True, key=f"fake_cfo_no_{i}")
 
     st.divider()
     st.subheader("📜 歷史紀錄 (已核准/已駁回)")
@@ -798,6 +805,7 @@ elif menu == "4. 表單狀態總覽":
 elif menu == "5. 請款狀態":
     render_header()
     
+    # [指令3] 解決隔天重置問題的終極方案 - 提供資料庫與大頭貼雙重備份還原
     st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料（包含表單、密碼與大頭貼）。請管理員務必在下班前下載備份！")
     
     with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
@@ -816,7 +824,6 @@ elif menu == "5. 請款狀態":
                 time.sleep(1)
                 st.rerun()
 
-    # [指令3] 大頭貼與人員密碼備份還原
     with st.expander("👥 2. 人員與大頭貼資料備份與還原"):
         col_down2, col_up2 = st.columns(2)
         with col_down2:
