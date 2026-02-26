@@ -37,6 +37,11 @@ def clean_name(val):
     if pd.isna(val) or str(val).strip() == "": return ""
     return str(val).strip().split(" ")[0]
 
+# [工具] 跳轉至修改頁面 (Callback - 解決 StreamlitAPIException)
+def navigate_to_edit(eid):
+    st.session_state.edit_id = eid
+    st.session_state.menu_radio = "1. 填寫申請單"
+
 # [工具] 追蹤在線人數
 def get_online_users(curr_user):
     try:
@@ -175,7 +180,8 @@ if 'edit_id' not in st.session_state: st.session_state.edit_id = None
 if 'last_id' not in st.session_state: st.session_state.last_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
 if 'form_key' not in st.session_state: st.session_state.form_key = 0 
-if 'sys_choice' not in st.session_state: st.session_state.sys_choice = "請購單系統"
+if 'sys_choice' not in st.session_state: st.session_state.sys_choice = "請款單系統"
+if 'menu_radio' not in st.session_state: st.session_state.menu_radio = "1. 填寫申請單"
 
 # --- 4. 登入 ---
 if st.session_state.user_id is None:
@@ -195,7 +201,7 @@ if st.session_state.user_id is None:
     with st.form("login"):
         u = st.selectbox("身分", staff_df["name"].tolist())
         p = st.text_input("密碼", type="password")
-        sys_choice = st.selectbox("登入系統", ["請購單系統", "採購單系統"])
+        sys_choice = st.selectbox("登入系統", ["請款單系統", "採購單系統"])
         
         if st.form_submit_button("登入"):
             row = staff_df[staff_df["name"] == u].iloc[0]
@@ -350,7 +356,7 @@ if st.session_state.last_menu != st.session_state.menu_radio:
 
 def get_filtered_db():
     db = load_data()
-    sys_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else ("請購單", "請款單")
+    sys_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else ("請款單", "請購單")
     if isinstance(sys_type, tuple):
         return db[db["類型"].isin(sys_type)]
     else:
@@ -361,7 +367,6 @@ def render_html(row):
     amt = clean_amount(row['總金額'])
     fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0
     
-    # [指令2] 加入姓名與時間判斷邏輯
     sub_time_val = row.get("提交時間", "")
     sub_time_str = str(sub_time_val) if pd.notna(sub_time_val) and str(sub_time_val).strip().lower() != "nan" and str(sub_time_val).strip() else get_taiwan_time()
     
@@ -379,8 +384,8 @@ def render_html(row):
     chu_info = f"{chu_name} {chu_time_str}".strip()
     fu_info = f"{fu_name} {fu_time_str}".strip()
     
-    t = row.get("類型", "請購單")
-    sys_type_title = "請購單" if t == "請款單" else t
+    t = row.get("類型", "請款單")
+    sys_type_title = "請款單" if t == "請購單" else t
     
     logo_b64 = get_b64_logo()
     lg_html = f'<img src="data:image/png;base64,{logo_b64}" style="height:50px;">' if logo_b64 else ''
@@ -412,7 +417,6 @@ def render_html(row):
     if row["狀態"] == "已駁回" and str(row.get("駁回原因", "")) != "":
         h += f'<div style="color:red;border:1px solid red;padding:5px;margin-top:5px;"><b>❌ 駁回原因：</b>{row["駁回原因"]}</div>'
         
-    # [指令2] 更新底部的姓名與時間輸出格式
     h += f'<p>提交: {app_info} | 初審: {chu_info} | 複審: {fu_info}</p></div>'
     
     v = ""
@@ -490,7 +494,7 @@ if menu == "1. 填寫申請單":
                 b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else ("" if del_acc else dv["ab64"])
                 b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else ("" if del_ims else dv["ib64"])
                 
-                sys_save_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else "請購單"
+                sys_save_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else "請款單"
                 
                 if st.session_state.edit_id:
                     idx = db[db["單號"]==st.session_state.edit_id].index[0]
@@ -584,6 +588,7 @@ if menu == "1. 填寫申請單":
         
         with c6:
             b1, b2, b3, b4, b5 = st.columns(5)
+            
             is_own = (str(r["申請人"]).strip() == curr_name)
             can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
             
@@ -629,7 +634,6 @@ elif menu == "2. 專案執行長簽核":
     if p_df.empty: 
         st.info("目前無待簽核單據")
     else: 
-        # [指令1] 新增負責執行長
         h1, h2, hx, h3, h4, h5, h6 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 2.5])
         h1.write("**單號**"); h2.write("**專案名稱**"); hx.write("**負責執行長**"); h3.write("**申請人**")
         h4.write("**總金額**"); h5.write("**提交時間**"); h6.write("**操作**")
@@ -660,7 +664,6 @@ elif menu == "2. 專案執行長簽核":
                             idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                             fresh_db.at[idx, "狀態"] = "已駁回"
                             fresh_db.at[idx, "駁回原因"] = reason
-                            # [關鍵] 更新初審資訊，讓預覽底部能顯示駁回者
                             fresh_db.at[idx, "初審人"] = curr_name
                             fresh_db.at[idx, "初審時間"] = get_taiwan_time()
                             save_data(fresh_db); st.rerun()
@@ -676,7 +679,6 @@ elif menu == "2. 專案執行長簽核":
         
     if h_df.empty: st.info("尚無紀錄")
     else: 
-        # [指令1] 新增負責執行長
         lh1, lh2, lnx, lh3, lh4, lh5, lh6 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1, 3.5])
         lh1.write("**單號**"); lh2.write("**專案名稱**"); lnx.write("**負責執行長**"); lh3.write("**申請人**")
         lh4.write("**總金額**"); lh5.write("**狀態**"); lh6.write("**操作**")
@@ -720,7 +722,6 @@ elif menu == "2. 專案執行長簽核":
                                 idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                                 fresh_db.at[idx, "狀態"] = "已駁回"
                                 fresh_db.at[idx, "駁回原因"] = rej_reason
-                                # [關鍵] 更新初審資訊，標記駁回者
                                 fresh_db.at[idx, "初審人"] = curr_name
                                 fresh_db.at[idx, "初審時間"] = get_taiwan_time()
                                 save_data(fresh_db)
@@ -745,7 +746,6 @@ elif menu == "3. 財務長簽核":
         
     if p_df.empty: st.info("無待審單據")
     else: 
-        # [指令1] 新增負責執行長
         h1, h2, hx, h3, h4, h5 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 2.5])
         h1.write("**單號**"); h2.write("**專案名稱**"); hx.write("**負責執行長**")
         h3.write("**申請人**"); h4.write("**總金額**"); h5.write("**操作**")
@@ -776,7 +776,6 @@ elif menu == "3. 財務長簽核":
                             idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                             fresh_db.at[idx, "狀態"] = "已駁回"
                             fresh_db.at[idx, "駁回原因"] = reason
-                            # [關鍵] 更新複審資訊，標記駁回者
                             fresh_db.at[idx, "複審人"] = curr_name 
                             fresh_db.at[idx, "複審時間"] = get_taiwan_time()
                             save_data(fresh_db); st.rerun()
@@ -793,7 +792,6 @@ elif menu == "3. 財務長簽核":
         
     if f_df.empty: st.info("尚無紀錄")
     else: 
-        # [指令1] 新增負責執行長
         lh1, lh2, lnx, lh3, lh4, lh5, lh6 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1, 3.5])
         lh1.write("**單號**"); lh2.write("**專案名稱**"); lnx.write("**負責執行長**"); lh3.write("**申請人**")
         lh4.write("**總金額**"); lh5.write("**狀態**"); lh6.write("**操作**")
