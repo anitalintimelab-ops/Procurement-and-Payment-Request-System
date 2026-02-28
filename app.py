@@ -5,6 +5,7 @@ import os
 import base64
 import re
 import time
+import requests  # [新增] 用於發送 LINE 通知
 
 # --- 1. 系統設定 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide", page_icon="🏢")
@@ -12,6 +13,7 @@ B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "online.csv")
+L_FILE = os.path.join(B_DIR, "line_token.txt") # [新增] LINE Token 儲存檔
 
 # 定義核心角色
 ADMINS = ["Anita"]
@@ -37,7 +39,7 @@ def clean_name(val):
     if pd.isna(val) or str(val).strip() == "": return ""
     return str(val).strip().split(" ")[0]
 
-# [工具] 跳轉至修改頁面 (Callback)
+# [工具] 跳轉至修改頁面 (Callback - 解決 StreamlitAPIException)
 def navigate_to_edit(eid):
     st.session_state.edit_id = eid
     st.session_state.menu_radio = "1. 填寫申請單"
@@ -65,6 +67,32 @@ def get_online_users(curr_user):
         return len(df["user"].unique())
     except:
         return 1
+
+# [新增工具] LINE Notify 通知功能
+def get_line_token():
+    if os.path.exists(L_FILE):
+        try:
+            with open(L_FILE, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except: pass
+    return ""
+
+def save_line_token(token):
+    try:
+        with open(L_FILE, "w", encoding="utf-8") as f:
+            f.write(token.strip())
+    except: pass
+
+def send_line_notify(msg):
+    token = get_line_token()
+    if not token: return  # 若未設定 Token 則安靜跳過
+    url = "https://notify-api.line.me/api/notify"
+    headers = {"Authorization": f"Bearer {token}"}
+    data = {"message": msg}
+    try:
+        requests.post(url, headers=headers, data=data, timeout=5)
+    except:
+        pass
 
 # --- 2. 自動救援資料 ---
 def init_rescue_data():
@@ -355,7 +383,6 @@ if st.session_state.last_menu != st.session_state.menu_radio:
     st.session_state.view_id = None
     st.session_state.last_menu = st.session_state.menu_radio
 
-# [防護網] 強制過濾空值與型別轉換，絕對防止空白當機
 def get_filtered_db():
     db = load_data()
     db["類型"] = db["類型"].astype(str).str.strip()
@@ -381,7 +408,6 @@ def render_html(row):
 
     app_name = clean_name(row.get("申請人", ""))
     proxy_name = clean_name(row.get("代申請人", ""))
-    
     display_app = f"{app_name} ({proxy_name} 代申請)" if proxy_name else app_name
     
     chu_name = clean_name(row.get("初審人", ""))
@@ -414,7 +440,6 @@ def render_html(row):
     h += f'<tr><td bgcolor="#eee">匯款帳戶</td><td colspan="3">{row.get("匯款帳戶", "")}</td></tr>'
     h += f'<tr><td bgcolor="#eee">說明</td><td colspan="3">{row["請款說明"]}</td></tr>'
     
-    # [防護] 安全取得幣別字串
     c_cur = str(row.get("幣別", "TWD")).replace("nan", "TWD")
     h += f'<tr><td colspan="3" align="right">金額</td><td align="right">{c_cur} {amt:,.0f}</td></tr>'
     h += f'<tr><td colspan="3" align="right">實付</td><td align="right">{c_cur} {amt-fee:,.0f}</td></tr></table>'
@@ -514,7 +539,6 @@ if menu == "1. 填寫申請單":
                 b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else ("" if del_ims else dv["ib64"])
                 
                 sys_save_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else "請款單"
-                
                 proxy_val = curr_name if app_val != curr_name else ""
                 
                 if st.session_state.edit_id:
@@ -566,6 +590,11 @@ if menu == "1. 填寫申請單":
             temp_db.at[idx, "狀態"] = "待簽核"
             temp_db.at[idx, "提交時間"] = get_taiwan_time()
             save_data(temp_db)
+            
+            # [新增] LINE Notify - 提交給執行長
+            exe_name = clean_name(temp_db.at[idx, "專案負責人"])
+            send_line_notify(f"\n🔔 【待簽核提醒】\n單號：{st.session_state.last_id}\n有一筆新的表單需要負責執行長 ({exe_name}) 進行簽核！")
+            
             st.success("已成功提交，等待主管簽核！")
             st.rerun()
             
@@ -623,7 +652,12 @@ if menu == "1. 填寫申請單":
                 idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                 fresh_db.at[idx, "狀態"] = "待簽核" 
                 fresh_db.at[idx, "提交時間"] = get_taiwan_time()
-                save_data(fresh_db); st.rerun()
+                save_data(fresh_db)
+                
+                # [新增] LINE Notify - 清單中提交給執行長
+                send_line_notify(f"\n🔔 【待簽核提醒】\n單號：{r['單號']}\n有一筆新的表單需要負責執行長 ({clean_name(r['專案負責人'])}) 進行簽核！")
+                
+                st.rerun()
             if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
             if b3.button("列印", key=f"p{i}"):
                 js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
@@ -684,7 +718,12 @@ elif menu == "2. 專案執行長簽核":
                         fresh_db.at[idx, "狀態"] = "待複審"
                         fresh_db.at[idx, "初審人"] = curr_name
                         fresh_db.at[idx, "初審時間"] = get_taiwan_time()
-                        save_data(fresh_db); st.rerun()
+                        save_data(fresh_db)
+                        
+                        # [新增] LINE Notify - 執行長核准後發送給財務長
+                        send_line_notify(f"\n🔔 【待複審提醒】\n單號：{r['單號']}\n執行長已核准！需要財務長 ({CFO_NAME}) 進行最終複審！")
+                        
+                        st.rerun()
                         
                     if can_sign:
                         with b3.popover("❌ 駁回"):
@@ -865,7 +904,6 @@ elif menu == "4. 表單狀態總覽":
         display_df = sys_db.copy()
         if not display_df.empty:
             display_df["負責執行長"] = display_df["專案負責人"]
-            # [防護] 安全格式化字串
             display_df["總金額"] = display_df.apply(lambda x: f"{str(x.get('幣別','TWD')).replace('nan','TWD')} ${clean_amount(x['總金額']):,.0f}", axis=1)
             display_df = display_df.rename(columns={"單號": "申請單號"})
             
@@ -880,7 +918,7 @@ elif menu == "4. 表單狀態總覽":
 elif menu == "5. 請款狀態":
     render_header()
     
-    st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料（包含表單、密碼與大頭貼）。請管理員務必在下班前下載備份！")
+    st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
     
     with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
         col_down, col_up = st.columns(2)
@@ -916,6 +954,17 @@ elif menu == "5. 請款狀態":
                 st.success("人員與大頭貼資料已還原！")
                 time.sleep(1)
                 st.rerun()
+
+    # [新增] LINE Notify 設定 UI (僅管理員可見)
+    with st.expander("🔔 3. LINE Notify 提醒通知設定"):
+        st.write("設定完成後，系統將自動於「人員提交」與「執行長核准」時發送 LINE 提醒！")
+        curr_token = get_line_token()
+        new_token = st.text_input("LINE Notify Token (權杖)", value=curr_token, type="password")
+        if st.button("💾 儲存 LINE Token"):
+            save_line_token(new_token)
+            st.success("LINE Token 已成功儲存並啟用！")
+            time.sleep(1)
+            st.rerun()
 
     st.divider()
     st.subheader("💰 請款狀態 (Admin)")
