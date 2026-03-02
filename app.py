@@ -69,7 +69,7 @@ def get_online_users(curr_user):
     except:
         return 1
 
-# [更新工具] LINE Messaging API 精準推播與同步副本功能
+# [更新工具] LINE 精準推播功能 (包含同步發送給 Anita 的機制)
 def get_line_credentials():
     if os.path.exists(L_FILE):
         try:
@@ -100,7 +100,7 @@ def send_line_message(msg, target_name):
     
     # 1. 發送給主要目標 (如：負責執行長 或 財務長)
     target_uid = ""
-    if target_name == "Anita" and admin_uid:
+    if target_name == "Anita" and admin_uid and admin_uid.startswith("U"):
         target_uid = admin_uid
     else:
         target_row = staff_df[staff_df["name"] == target_name]
@@ -119,7 +119,7 @@ def send_line_message(msg, target_name):
             
     # 2. 發送副本給 Anita (若主要目標不是 Anita 的話)
     if target_name != "Anita":
-        anita_uid = admin_uid # 優先使用管理員後台設定的全局 User ID
+        anita_uid = admin_uid if admin_uid and admin_uid.startswith("U") else ""
         if not anita_uid:
             anita_row = staff_df[staff_df["name"] == "Anita"]
             if not anita_row.empty:
@@ -654,7 +654,7 @@ if menu == "1. 填寫申請單":
             temp_db.at[idx, "提交時間"] = get_taiwan_time()
             save_data(temp_db)
             
-            # [精準推播] 提交給負責執行長，並副本給 Anita
+            # [精準推播 + 副本] 提交給負責執行長，系統自動副本給 Anita
             exe_name = clean_name(temp_db.at[idx, "專案負責人"])
             send_line_message(f"🔔 【待簽核提醒】\n單號：{st.session_state.last_id}\n您有一筆新的表單需要進行簽核！", target_name=exe_name)
             
@@ -717,7 +717,7 @@ if menu == "1. 填寫申請單":
                 fresh_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(fresh_db)
                 
-                # [精準推播] 清單中提交，傳送給負責執行長，並副本給 Anita
+                # [精準推播 + 副本] 清單中提交，傳送給負責執行長，並副本給 Anita
                 exe_name = clean_name(r['專案負責人'])
                 send_line_message(f"🔔 【待簽核提醒】\n單號：{r['單號']}\n您有一筆新的表單需要進行簽核！", target_name=exe_name)
                 
@@ -784,7 +784,7 @@ elif menu == "2. 專案執行長簽核":
                         fresh_db.at[idx, "初審時間"] = get_taiwan_time()
                         save_data(fresh_db)
                         
-                        # [精準推播] 執行長核准後發送給財務長 Charles，並副本給 Anita
+                        # [精準推播 + 副本] 執行長核准後發送給財務長 Charles，並副本給 Anita
                         send_line_message(f"🔔 【待複審提醒】\n單號：{r['單號']}\n執行長已核准，需要財務長進行最終複審！", target_name=CFO_NAME)
                         
                         st.rerun()
@@ -1019,13 +1019,14 @@ elif menu == "5. 請款狀態":
                 time.sleep(1)
                 st.rerun()
 
-    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token)"):
-        st.write("請填寫從 LINE Developers 取得的 Channel Access Token (只要填一次即可)：")
-        curr_token, _ = get_line_credentials() # 只需 Token，UID 放棄，改由 staff_df 管理
+    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政專屬 ID)"):
+        st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
+        curr_token, curr_uid = get_line_credentials()
         new_token = st.text_input("Channel Access Token (長字串)", value=curr_token, type="password")
-        if st.button("💾 儲存 LINE Token"):
-            save_line_credentials(new_token, "Global") # User ID 不再需要，給個佔位符
-            st.success("LINE Token 已成功儲存！")
+        new_uid = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=curr_uid)
+        if st.button("💾 儲存 LINE 設定"):
+            save_line_credentials(new_token, new_uid)
+            st.success("LINE 推播設定已成功儲存並啟用！")
             time.sleep(1)
             st.rerun()
 
