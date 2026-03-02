@@ -6,7 +6,7 @@ import base64
 import re
 import time
 import requests  
-import json # [新增] 用於 LINE Messaging API
+import json 
 
 # --- 1. 系統設定 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide", page_icon="🏢")
@@ -14,7 +14,7 @@ B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "online.csv")
-L_FILE = os.path.join(B_DIR, "line_credentials.txt") # [修改] 儲存 LINE Messaging API 雙憑證
+L_FILE = os.path.join(B_DIR, "line_credentials.txt") # 儲存 LINE Messaging API 雙憑證
 
 # 定義核心角色
 ADMINS = ["Anita"]
@@ -69,7 +69,7 @@ def get_online_users(curr_user):
     except:
         return 1
 
-# [更新工具] LINE Messaging API 推播功能
+# [更新工具] LINE Messaging API 精準推播與同步副本功能
 def get_line_credentials():
     if os.path.exists(L_FILE):
         try:
@@ -86,23 +86,55 @@ def save_line_credentials(token, user_id):
             f.write(f"{token.strip()}\n{user_id.strip()}")
     except: pass
 
-def send_line_message(msg):
-    token, user_id = get_line_credentials()
-    if not token or not user_id: return  # 未設定則安靜跳過
+def send_line_message(msg, target_name):
+    """精準發送 LINE 訊息給特定人員，並同步發送副本給 Anita"""
+    token, admin_uid = get_line_credentials()
+    if not token: return  
     
+    staff_df = load_staff()
     url = "https://api.line.me/v2/bot/message/push"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
-    data = {
-        "to": user_id,
-        "messages": [{"type": "text", "text": msg}]
-    }
-    try:
-        requests.post(url, headers=headers, json=data, timeout=5)
-    except:
-        pass
+    
+    # 1. 發送給主要目標 (如：負責執行長 或 財務長)
+    target_uid = ""
+    if target_name == "Anita" and admin_uid:
+        target_uid = admin_uid
+    else:
+        target_row = staff_df[staff_df["name"] == target_name]
+        if not target_row.empty:
+            target_uid = str(target_row.iloc[0].get("line_uid", "")).strip()
+            
+    if target_uid and target_uid.startswith("U"):
+        data = {
+            "to": target_uid,
+            "messages": [{"type": "text", "text": msg}]
+        }
+        try:
+            requests.post(url, headers=headers, json=data, timeout=5)
+        except:
+            pass
+            
+    # 2. 發送副本給 Anita (若主要目標不是 Anita 的話)
+    if target_name != "Anita":
+        anita_uid = admin_uid # 優先使用管理員後台設定的全局 User ID
+        if not anita_uid:
+            anita_row = staff_df[staff_df["name"] == "Anita"]
+            if not anita_row.empty:
+                anita_uid = str(anita_row.iloc[0].get("line_uid", "")).strip()
+                
+        if anita_uid and anita_uid.startswith("U"):
+            cc_msg = f"👀 [系統同步副本給行政 - 原送給 {target_name}]\n{msg}"
+            data_cc = {
+                "to": anita_uid,
+                "messages": [{"type": "text", "text": cc_msg}]
+            }
+            try:
+                requests.post(url, headers=headers, json=data_cc, timeout=5)
+            except:
+                pass
 
 # --- 2. 自動救援資料 ---
 def init_rescue_data():
@@ -164,7 +196,13 @@ def save_data(df):
         st.stop()
 
 def load_staff():
-    default_df = pd.DataFrame({"name": DEFAULT_STAFF, "status": ["在職"]*5, "password": ["0000"]*5, "avatar": [""]*5})
+    default_df = pd.DataFrame({
+        "name": DEFAULT_STAFF, 
+        "status": ["在職"]*5, 
+        "password": ["0000"]*5, 
+        "avatar": [""]*5,
+        "line_uid": [""]*5 
+    })
     df = read_csv_robust(S_FILE)
     if df is None or df.empty:
         df = default_df.copy()
@@ -172,8 +210,10 @@ def load_staff():
         return df
     if "status" not in df.columns: df["status"] = "在職"
     if "avatar" not in df.columns: df["avatar"] = ""
+    if "line_uid" not in df.columns: df["line_uid"] = ""
     df["name"] = df["name"].str.strip()
     df["avatar"] = df["avatar"].fillna("")
+    df["line_uid"] = df["line_uid"].fillna("")
     return df
 
 def save_staff(df):
@@ -353,23 +393,36 @@ if is_admin:
         if st.button("新增"):
             staff_df = st.session_state.staff_df
             if n not in staff_df["name"].values:
-                staff_df = pd.concat([staff_df, pd.DataFrame({"name":[n], "status":["在職"], "password":["0000"], "avatar":[""]})])
+                staff_df = pd.concat([staff_df, pd.DataFrame({"name":[n], "status":["在職"], "password":["0000"], "avatar":[""], "line_uid":[""]})])
                 save_staff(staff_df)
                 st.session_state.staff_df = staff_df
                 st.success("成功")
                 st.rerun()
             else: st.error("已存在")
     
-    with st.sidebar.expander("⚙️ 人員狀態管理"):
+    with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
+        st.write("請在此填寫各員工查到的 U 開頭代碼，以便他們接收專屬通知：")
         staff_df = st.session_state.staff_df
-        for i, r in staff_df.iterrows():
-            c1, c2 = st.columns([2, 1])
-            c1.write(r["name"])
-            nst = c2.selectbox("", ["在職", "離職"], index=["在職", "離職"].index(r["status"]), key=f"st_{i}", label_visibility="collapsed")
-            if nst != r["status"]:
-                staff_df.at[i, "status"] = nst
-                save_staff(staff_df)
-                st.rerun()
+        edited_staff = st.data_editor(
+            staff_df[["name", "status", "line_uid"]],
+            column_config={
+                "name": st.column_config.TextColumn("姓名", disabled=True),
+                "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"]),
+                "line_uid": st.column_config.TextColumn("LINE User ID (U開頭)")
+            },
+            hide_index=True,
+            use_container_width=True,
+            key="staff_editor"
+        )
+        if st.button("💾 儲存人員設定", key="save_staff_btn"):
+            for idx, row in edited_staff.iterrows():
+                staff_df.at[idx, "status"] = row["status"]
+                staff_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
+            save_staff(staff_df)
+            st.session_state.staff_df = staff_df
+            st.success("人員設定已更新！")
+            time.sleep(1)
+            st.rerun()
 
 if st.sidebar.button("登出"):
     st.session_state.user_id = None
@@ -601,9 +654,9 @@ if menu == "1. 填寫申請單":
             temp_db.at[idx, "提交時間"] = get_taiwan_time()
             save_data(temp_db)
             
-            # [新增] LINE Messaging API - 提交給執行長
+            # [精準推播] 提交給負責執行長，並副本給 Anita
             exe_name = clean_name(temp_db.at[idx, "專案負責人"])
-            send_line_message(f"🔔 【待簽核提醒】\n單號：{st.session_state.last_id}\n有一筆新的表單需要負責執行長 ({exe_name}) 進行簽核！")
+            send_line_message(f"🔔 【待簽核提醒】\n單號：{st.session_state.last_id}\n您有一筆新的表單需要進行簽核！", target_name=exe_name)
             
             st.success("已成功提交，等待主管簽核！")
             st.rerun()
@@ -664,8 +717,9 @@ if menu == "1. 填寫申請單":
                 fresh_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(fresh_db)
                 
-                # [新增] LINE Messaging API - 清單中提交給執行長
-                send_line_message(f"🔔 【待簽核提醒】\n單號：{r['單號']}\n有一筆新的表單需要負責執行長 ({clean_name(r['專案負責人'])}) 進行簽核！")
+                # [精準推播] 清單中提交，傳送給負責執行長，並副本給 Anita
+                exe_name = clean_name(r['專案負責人'])
+                send_line_message(f"🔔 【待簽核提醒】\n單號：{r['單號']}\n您有一筆新的表單需要進行簽核！", target_name=exe_name)
                 
                 st.rerun()
             if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
@@ -730,8 +784,8 @@ elif menu == "2. 專案執行長簽核":
                         fresh_db.at[idx, "初審時間"] = get_taiwan_time()
                         save_data(fresh_db)
                         
-                        # [新增] LINE Messaging API - 執行長核准後發送給財務長
-                        send_line_message(f"🔔 【待複審提醒】\n單號：{r['單號']}\n執行長已核准！需要財務長 ({CFO_NAME}) 進行最終複審！")
+                        # [精準推播] 執行長核准後發送給財務長 Charles，並副本給 Anita
+                        send_line_message(f"🔔 【待複審提醒】\n單號：{r['單號']}\n執行長已核准，需要財務長進行最終複審！", target_name=CFO_NAME)
                         
                         st.rerun()
                         
@@ -950,7 +1004,7 @@ elif menu == "5. 請款狀態":
     with st.expander("👥 2. 人員與大頭貼資料備份與還原"):
         col_down2, col_up2 = st.columns(2)
         with col_down2:
-            st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼)**")
+            st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
             if os.path.exists(S_FILE):
                 with open(S_FILE, "rb") as f:
                     st.download_button("下載人員備份檔", f, file_name=f"時研系統人員備份_{datetime.date.today()}.csv", mime="text/csv")
@@ -961,19 +1015,17 @@ elif menu == "5. 請款狀態":
                 with open(S_FILE, "wb") as f:
                     f.write(uploaded_staff.getbuffer())
                 st.session_state.staff_df = load_staff()
-                st.success("人員與大頭貼資料已還原！")
+                st.success("人員資料已還原！")
                 time.sleep(1)
                 st.rerun()
 
-    # [修改] LINE Messaging API 設定 UI (僅管理員可見)
-    with st.expander("🔔 3. LINE 官方帳號推播設定"):
-        st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
-        curr_token, curr_uid = get_line_credentials()
+    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token)"):
+        st.write("請填寫從 LINE Developers 取得的 Channel Access Token (只要填一次即可)：")
+        curr_token, _ = get_line_credentials() # 只需 Token，UID 放棄，改由 staff_df 管理
         new_token = st.text_input("Channel Access Token (長字串)", value=curr_token, type="password")
-        new_uid = st.text_input("User ID (U開頭)", value=curr_uid)
-        if st.button("💾 儲存 LINE 設定"):
-            save_line_credentials(new_token, new_uid)
-            st.success("LINE 推播設定已成功儲存並啟用！")
+        if st.button("💾 儲存 LINE Token"):
+            save_line_credentials(new_token, "Global") # User ID 不再需要，給個佔位符
+            st.success("LINE Token 已成功儲存！")
             time.sleep(1)
             st.rerun()
 
