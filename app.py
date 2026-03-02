@@ -5,7 +5,8 @@ import os
 import base64
 import re
 import time
-import requests  # [新增] 用於發送 LINE 通知
+import requests  
+import json # [新增] 用於 LINE Messaging API
 
 # --- 1. 系統設定 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide", page_icon="🏢")
@@ -13,7 +14,7 @@ B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "online.csv")
-L_FILE = os.path.join(B_DIR, "line_token.txt") # [新增] LINE Token 儲存檔
+L_FILE = os.path.join(B_DIR, "line_credentials.txt") # [修改] 儲存 LINE Messaging API 雙憑證
 
 # 定義核心角色
 ADMINS = ["Anita"]
@@ -39,7 +40,7 @@ def clean_name(val):
     if pd.isna(val) or str(val).strip() == "": return ""
     return str(val).strip().split(" ")[0]
 
-# [工具] 跳轉至修改頁面 (Callback - 解決 StreamlitAPIException)
+# [工具] 跳轉至修改頁面
 def navigate_to_edit(eid):
     st.session_state.edit_id = eid
     st.session_state.menu_radio = "1. 填寫申請單"
@@ -68,29 +69,38 @@ def get_online_users(curr_user):
     except:
         return 1
 
-# [新增工具] LINE Notify 通知功能
-def get_line_token():
+# [更新工具] LINE Messaging API 推播功能
+def get_line_credentials():
     if os.path.exists(L_FILE):
         try:
             with open(L_FILE, "r", encoding="utf-8") as f:
-                return f.read().strip()
+                lines = f.read().splitlines()
+                if len(lines) >= 2:
+                    return lines[0].strip(), lines[1].strip()
         except: pass
-    return ""
+    return "", ""
 
-def save_line_token(token):
+def save_line_credentials(token, user_id):
     try:
         with open(L_FILE, "w", encoding="utf-8") as f:
-            f.write(token.strip())
+            f.write(f"{token.strip()}\n{user_id.strip()}")
     except: pass
 
-def send_line_notify(msg):
-    token = get_line_token()
-    if not token: return  # 若未設定 Token 則安靜跳過
-    url = "https://notify-api.line.me/api/notify"
-    headers = {"Authorization": f"Bearer {token}"}
-    data = {"message": msg}
+def send_line_message(msg):
+    token, user_id = get_line_credentials()
+    if not token or not user_id: return  # 未設定則安靜跳過
+    
+    url = "https://api.line.me/v2/bot/message/push"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+    data = {
+        "to": user_id,
+        "messages": [{"type": "text", "text": msg}]
+    }
     try:
-        requests.post(url, headers=headers, data=data, timeout=5)
+        requests.post(url, headers=headers, json=data, timeout=5)
     except:
         pass
 
@@ -591,9 +601,9 @@ if menu == "1. 填寫申請單":
             temp_db.at[idx, "提交時間"] = get_taiwan_time()
             save_data(temp_db)
             
-            # [新增] LINE Notify - 提交給執行長
+            # [新增] LINE Messaging API - 提交給執行長
             exe_name = clean_name(temp_db.at[idx, "專案負責人"])
-            send_line_notify(f"\n🔔 【待簽核提醒】\n單號：{st.session_state.last_id}\n有一筆新的表單需要負責執行長 ({exe_name}) 進行簽核！")
+            send_line_message(f"🔔 【待簽核提醒】\n單號：{st.session_state.last_id}\n有一筆新的表單需要負責執行長 ({exe_name}) 進行簽核！")
             
             st.success("已成功提交，等待主管簽核！")
             st.rerun()
@@ -654,8 +664,8 @@ if menu == "1. 填寫申請單":
                 fresh_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(fresh_db)
                 
-                # [新增] LINE Notify - 清單中提交給執行長
-                send_line_notify(f"\n🔔 【待簽核提醒】\n單號：{r['單號']}\n有一筆新的表單需要負責執行長 ({clean_name(r['專案負責人'])}) 進行簽核！")
+                # [新增] LINE Messaging API - 清單中提交給執行長
+                send_line_message(f"🔔 【待簽核提醒】\n單號：{r['單號']}\n有一筆新的表單需要負責執行長 ({clean_name(r['專案負責人'])}) 進行簽核！")
                 
                 st.rerun()
             if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
@@ -720,8 +730,8 @@ elif menu == "2. 專案執行長簽核":
                         fresh_db.at[idx, "初審時間"] = get_taiwan_time()
                         save_data(fresh_db)
                         
-                        # [新增] LINE Notify - 執行長核准後發送給財務長
-                        send_line_notify(f"\n🔔 【待複審提醒】\n單號：{r['單號']}\n執行長已核准！需要財務長 ({CFO_NAME}) 進行最終複審！")
+                        # [新增] LINE Messaging API - 執行長核准後發送給財務長
+                        send_line_message(f"🔔 【待複審提醒】\n單號：{r['單號']}\n執行長已核准！需要財務長 ({CFO_NAME}) 進行最終複審！")
                         
                         st.rerun()
                         
@@ -955,14 +965,15 @@ elif menu == "5. 請款狀態":
                 time.sleep(1)
                 st.rerun()
 
-    # [新增] LINE Notify 設定 UI (僅管理員可見)
-    with st.expander("🔔 3. LINE Notify 提醒通知設定"):
-        st.write("設定完成後，系統將自動於「人員提交」與「執行長核准」時發送 LINE 提醒！")
-        curr_token = get_line_token()
-        new_token = st.text_input("LINE Notify Token (權杖)", value=curr_token, type="password")
-        if st.button("💾 儲存 LINE Token"):
-            save_line_token(new_token)
-            st.success("LINE Token 已成功儲存並啟用！")
+    # [修改] LINE Messaging API 設定 UI (僅管理員可見)
+    with st.expander("🔔 3. LINE 官方帳號推播設定"):
+        st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
+        curr_token, curr_uid = get_line_credentials()
+        new_token = st.text_input("Channel Access Token (長字串)", value=curr_token, type="password")
+        new_uid = st.text_input("User ID (U開頭)", value=curr_uid)
+        if st.button("💾 儲存 LINE 設定"):
+            save_line_credentials(new_token, new_uid)
+            st.success("LINE 推播設定已成功儲存並啟用！")
             time.sleep(1)
             st.rerun()
 
