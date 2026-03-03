@@ -55,8 +55,10 @@ def get_online_users(curr_user):
         now = time.time()
         df = pd.DataFrame(columns=["user", "time"])
         if os.path.exists(O_FILE):
-            try: df = pd.read_csv(O_FILE)
-            except Exception: pass
+            try: 
+                df = pd.read_csv(O_FILE)
+            except Exception: 
+                pass
             
         if "user" not in df.columns or "time" not in df.columns:
             df = pd.DataFrame(columns=["user", "time"])
@@ -66,13 +68,15 @@ def get_online_users(curr_user):
         df["time"] = pd.to_numeric(df["time"], errors='coerce').fillna(now)
         df = df[now - df["time"] <= 300]
         
-        try: df.to_csv(O_FILE, index=False)
-        except Exception: pass
+        try: 
+            df.to_csv(O_FILE, index=False)
+        except Exception: 
+            pass
         return len(df["user"].unique())
     except Exception:
         return 1
 
-# [工具] LINE 精準推播與副本功能
+# [更新工具] LINE 精準推播功能
 def get_line_credentials():
     if os.path.exists(L_FILE):
         try:
@@ -80,18 +84,21 @@ def get_line_credentials():
                 lines = f.read().splitlines()
                 if len(lines) >= 2:
                     return lines[0].strip(), lines[1].strip()
-        except Exception: pass
+        except Exception: 
+            pass
     return "", ""
 
 def save_line_credentials(token, user_id):
     try:
         with open(L_FILE, "w", encoding="utf-8") as f:
             f.write(f"{token.strip()}\n{user_id.strip()}")
-    except Exception: pass
+    except Exception: 
+        pass
 
 def send_line_message(msg, target_name):
     token, admin_uid = get_line_credentials()
-    if not token: return  
+    if not token: 
+        return  
     
     staff_df = load_staff()
     url = "https://api.line.me/v2/bot/message/push"
@@ -113,8 +120,10 @@ def send_line_message(msg, target_name):
             "to": target_uid,
             "messages": [{"type": "text", "text": msg}]
         }
-        try: requests.post(url, headers=headers, json=data, timeout=5)
-        except Exception: pass
+        try:
+            requests.post(url, headers=headers, json=data, timeout=5)
+        except Exception:
+            pass
             
     if target_name != "Anita":
         anita_uid = admin_uid if admin_uid and admin_uid.startswith("U") else ""
@@ -129,8 +138,10 @@ def send_line_message(msg, target_name):
                 "to": anita_uid,
                 "messages": [{"type": "text", "text": cc_msg}]
             }
-            try: requests.post(url, headers=headers, json=data_cc, timeout=5)
-            except Exception: pass
+            try:
+                requests.post(url, headers=headers, json=data_cc, timeout=5)
+            except Exception:
+                pass
 
 # --- 2. 自動救援資料 ---
 def init_rescue_data():
@@ -154,10 +165,13 @@ init_rescue_data()
 
 # --- 3. 資料處理 ---
 def read_csv_robust(filepath):
-    if not os.path.exists(filepath): return None
+    if not os.path.exists(filepath): 
+        return None
     for enc in ['utf-8-sig', 'utf-8', 'cp950', 'big5']:
-        try: return pd.read_csv(filepath, encoding=enc, dtype=str).fillna("")
-        except Exception: continue
+        try:
+            return pd.read_csv(filepath, encoding=enc, dtype=str).fillna("")
+        except Exception:
+            continue
     return pd.DataFrame()
 
 def load_data():
@@ -169,11 +183,15 @@ def load_data():
             "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     
     df = read_csv_robust(D_FILE)
-    if df is None or df.empty: return pd.DataFrame(columns=cols)
-    if "專案執行人" in df.columns: df = df.rename(columns={"專案執行人": "專案負責人"})
+    if df is None or df.empty: 
+        return pd.DataFrame(columns=cols)
+        
+    if "專案執行人" in df.columns: 
+        df = df.rename(columns={"專案執行人": "專案負責人"})
     
     for c in cols:
-        if c not in df.columns: df[c] = ""
+        if c not in df.columns: 
+            df[c] = ""
             
     df["總金額"] = df["總金額"].apply(clean_amount)
     df["已請款金額"] = df["已請款金額"].apply(clean_amount)
@@ -200,8 +218,11 @@ def save_data(df):
 
 def load_staff():
     default_df = pd.DataFrame({
-        "name": DEFAULT_STAFF, "status": ["在職"]*5, "password": ["0000"]*5, 
-        "avatar": [""]*5, "line_uid": [""]*5 
+        "name": DEFAULT_STAFF, 
+        "status": ["在職"]*5, 
+        "password": ["0000"]*5, 
+        "avatar": [""]*5,
+        "line_uid": [""]*5 
     })
     df = read_csv_robust(S_FILE)
     if df is None or df.empty:
@@ -225,7 +246,8 @@ def get_b64_logo():
             if any(x in f.lower() for x in ["logo", "timelab"]) and f.lower().endswith(('.png', '.jpg', '.jpeg')):
                 with open(os.path.join(B_DIR, f), "rb") as img:
                     return base64.b64encode(img.read()).decode()
-    except Exception: pass
+    except Exception: 
+        pass
     return ""
 
 def render_header():
@@ -304,7 +326,8 @@ avatar_b64 = ""
 try:
     curr_user_row = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0]
     avatar_b64 = curr_user_row.get("avatar", "")
-except Exception: pass
+except Exception: 
+    pass
 
 # --- 5. 側邊欄 ---
 logo_b64 = get_b64_logo()
@@ -322,6 +345,7 @@ else:
     st.sidebar.title("時研國際設計股份有限公司")
 
 st.sidebar.divider()
+
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 
 if avatar_b64:
@@ -337,7 +361,8 @@ else:
 online_count = get_online_users(curr_name)
 st.sidebar.info(f"🟢 目前在線人數：**{online_count}** 人")
 
-if not is_active: st.sidebar.error("⛔ 已離職")
+if not is_active: 
+    st.sidebar.error("⛔ 已離職")
 
 with st.sidebar.expander("📸 修改大頭貼"):
     new_avatar = st.file_uploader("上傳您的圖片", type=["jpg", "jpeg", "png"])
@@ -359,8 +384,10 @@ with st.sidebar.expander("🔐 修改我的密碼"):
     new_pw = st.text_input("新密碼", type="password")
     confirm_pw = st.text_input("確認新密碼", type="password")
     if st.button("更新密碼", disabled=not is_active):
-        if new_pw != confirm_pw: st.error("兩次輸入不符")
-        elif len(str(new_pw)) < 4: st.error("密碼過短")
+        if new_pw != confirm_pw: 
+            st.error("兩次輸入不符")
+        elif len(str(new_pw)) < 4: 
+            st.error("密碼過短")
         else:
             staff_df = st.session_state.staff_df
             idx = staff_df[staff_df["name"] == curr_name].index[0]
@@ -371,9 +398,11 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 
 if is_admin:
     st.sidebar.success("管理員模式")
+    
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         staff_df = st.session_state.staff_df
         st.dataframe(staff_df[["name", "password"]], hide_index=True)
+        
         st.markdown("---")
         st.write("**恢復預設密碼 (0000)**")
         reset_target = st.selectbox("選擇人員", staff_df["name"].tolist(), key="rst_sel")
@@ -428,16 +457,17 @@ if st.sidebar.button("登出"):
     st.rerun()
 
 # 導覽選單
-# [指令3] 更名為「請款狀態/系統設定」
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
-if is_admin: menu_options.append("5. 請款狀態/系統設定")
+if is_admin:
+    menu_options.append("5. 請款狀態/系統設定")
 
 if 'menu_radio' in st.session_state and st.session_state.menu_radio not in menu_options:
     st.session_state.menu_radio = "1. 填寫申請單"
 
 menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
 
-if 'last_menu' not in st.session_state: st.session_state.last_menu = st.session_state.menu_radio
+if 'last_menu' not in st.session_state:
+    st.session_state.last_menu = st.session_state.menu_radio
 if st.session_state.last_menu != st.session_state.menu_radio:
     st.session_state.view_id = None
     st.session_state.last_menu = st.session_state.menu_radio
@@ -446,8 +476,10 @@ def get_filtered_db():
     db = load_data()
     db["類型"] = db["類型"].astype(str).str.strip()
     sys_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else ("請款單", "請購單")
-    if isinstance(sys_type, tuple): return db[db["類型"].isin(sys_type)]
-    else: return db[db["類型"] == sys_type]
+    if isinstance(sys_type, tuple): 
+        return db[db["類型"].isin(sys_type)]
+    else: 
+        return db[db["類型"] == sys_type]
 
 # --- HTML 渲染 ---
 def render_html(row):
@@ -483,7 +515,8 @@ def render_html(row):
     h = f'<div style="padding:20px;border:2px solid #000;width:680px;margin:auto;background:#fff;color:#000;">'
     h += f'<div style="text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px;">'
     h += f'<div style="display:flex; justify-content:center; align-items:center; gap:15px;">'
-    if lg_html: h += f'{lg_html}'
+    if lg_html: 
+        h += f'{lg_html}'
     h += f'<h2 style="margin:0; white-space:nowrap;">時研國際設計股份有限公司</h2></div>'
     h += f'<h3 style="margin:10px 0 0 0; letter-spacing:5px;">{sys_type_title}</h3></div>'
     
@@ -508,8 +541,10 @@ def render_html(row):
     
     if row['帳戶影像Base64']:
         h += '<br><b>存摺：</b><br>'
-        if is_pdf(row['帳戶影像Base64']): h += f'<embed src="data:application/pdf;base64,{row["帳戶影像Base64"]}" width="100%" height="300px" />'
-        else: h += f'<img src="data:image/jpeg;base64,{row["帳戶影像Base64"]}" width="100%">'
+        if is_pdf(row['帳戶影像Base64']): 
+            h += f'<embed src="data:application/pdf;base64,{row["帳戶影像Base64"]}" width="100%" height="300px" />'
+        else: 
+            h += f'<img src="data:image/jpeg;base64,{row["帳戶影像Base64"]}" width="100%">'
         
     if row["狀態"] == "已駁回" and str(row.get("駁回原因", "")) != "":
         h += f'<div style="color:red;border:1px solid red;padding:5px;margin-top:5px;"><b>❌ 駁回原因：</b>{row["駁回原因"]}</div>'
@@ -521,12 +556,14 @@ def render_html(row):
         imgs = row['影像Base64'].split('|')
         for i, img in enumerate(imgs):
             v += '<div style="page-break-before:always;padding:20px;">'
-            if is_pdf(img): v += f'<embed src="data:application/pdf;base64,{img}" width="100%" height="800px" />'
-            else: v += f'<img src="data:image/jpeg;base64,{img}" width="100%">'
+            if is_pdf(img): 
+                v += f'<embed src="data:application/pdf;base64,{img}" width="100%" height="800px" />'
+            else: 
+                v += f'<img src="data:image/jpeg;base64,{img}" width="100%">'
             v += '</div>'
     return h + v
 
-# [新增工具] 提交後或簽核後 仍可以上傳存摺及上傳憑證
+# [工具] 共用附件補件功能
 def render_upload_popover(container, r, prefix):
     with container.popover("📎 附件"):
         st.write("**上傳存摺及憑證 (將覆蓋原檔)**")
@@ -838,7 +875,7 @@ if menu == "1. 填寫申請單":
                     else:
                         b5.button("刪除", disabled=True, key=f"fake_d_{i}")
 
-                # [指令2] 無論請款單或採購單，皆可隨時上傳附件
+                # [雙系統全解鎖] 皆可隨時上傳附件補件
                 render_upload_popover(b6, r, f"m1_up_{i}")
 
     except Exception as e:
@@ -1001,7 +1038,6 @@ elif menu == "2. 專案執行長簽核":
                     else:
                         lb3.button("✏️ 修改", disabled=True, key=f"fake_ceo_edit_{i}")
 
-                    # [指令2] 無論請款單或採購單，皆可隨時上傳附件
                     render_upload_popover(lb4, r, f"ceo_h_up_{i}")
 
     except Exception as e:
@@ -1246,7 +1282,7 @@ elif menu == "5. 請款狀態/系統設定":
                 time.sleep(1)
                 st.rerun()
 
-    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token)"):
+    with st.expander("🔔 3. LINE 官方帳號推播設定"):
         st.write("請填寫從 LINE Developers 取得的 Channel Access Token：")
         curr_token, _ = get_line_credentials()
         new_token = st.text_input("Channel Access Token (長字串)", value=curr_token, type="password")
@@ -1256,7 +1292,7 @@ elif menu == "5. 請款狀態/系統設定":
             time.sleep(1)
             st.rerun()
 
-    # [指令1] 恢復請款狀態(Admin) 表格，並給予備份安全感提示
+    # [尋回並保留] 請款狀態(Admin) 表格，與備份連動
     st.divider()
     st.subheader("💰 請款狀態 (Admin)")
     st.info("💡 溫馨提醒：此處編輯的「匯款狀態」與「匯款日期」都已包含在上方的「表單資料庫備份」中，還原時會一併恢復，無須重新手動輸入！")
