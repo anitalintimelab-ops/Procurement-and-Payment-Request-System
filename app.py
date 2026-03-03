@@ -82,8 +82,9 @@ def get_line_credentials():
         try:
             with open(L_FILE, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
-                if len(lines) >= 2:
-                    return lines[0].strip(), lines[1].strip()
+                t = lines[0].strip() if len(lines) > 0 else ""
+                u = lines[1].strip() if len(lines) > 1 else ""
+                return t, u
         except Exception: 
             pass
     return "", ""
@@ -345,7 +346,6 @@ else:
     st.sidebar.title("時研國際設計股份有限公司")
 
 st.sidebar.divider()
-
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 
 if avatar_b64:
@@ -875,7 +875,7 @@ if menu == "1. 填寫申請單":
                     else:
                         b5.button("刪除", disabled=True, key=f"fake_d_{i}")
 
-                # [雙系統全解鎖] 皆可隨時上傳附件補件
+                # [附件上傳]
                 render_upload_popover(b6, r, f"m1_up_{i}")
 
     except Exception as e:
@@ -945,7 +945,8 @@ elif menu == "2. 專案執行長簽核":
                                 fresh_db.at[idx, "駁回原因"] = reason
                                 fresh_db.at[idx, "初審人"] = curr_name
                                 fresh_db.at[idx, "初審時間"] = get_taiwan_time()
-                                save_data(fresh_db); st.rerun()
+                                save_data(fresh_db)
+                                st.rerun()
                     else:
                         b3.button("❌ 駁回", disabled=True, key=f"fake_ceo_no_{i}")
                         
@@ -1282,17 +1283,18 @@ elif menu == "5. 請款狀態/系統設定":
                 time.sleep(1)
                 st.rerun()
 
-    with st.expander("🔔 3. LINE 官方帳號推播設定"):
-        st.write("請填寫從 LINE Developers 取得的 Channel Access Token：")
-        curr_token, _ = get_line_credentials()
+    # [修復] 將行政專屬 User ID 輸入框加回來
+    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)"):
+        st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
+        curr_token, curr_uid = get_line_credentials()
         new_token = st.text_input("Channel Access Token (長字串)", value=curr_token, type="password")
-        if st.button("💾 儲存 LINE Token"):
-            save_line_credentials(new_token, "Global_Not_Used") 
-            st.success("LINE Token 已成功儲存！")
+        new_uid = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=curr_uid)
+        if st.button("💾 儲存 LINE 設定"):
+            save_line_credentials(new_token, new_uid) 
+            st.success("LINE 推播設定已成功儲存並啟用！")
             time.sleep(1)
             st.rerun()
 
-    # [尋回並保留] 請款狀態(Admin) 表格，與備份連動
     st.divider()
     st.subheader("💰 請款狀態 (Admin)")
     st.info("💡 溫馨提醒：此處編輯的「匯款狀態」與「匯款日期」都已包含在上方的「表單資料庫備份」中，還原時會一併恢復，無須重新手動輸入！")
