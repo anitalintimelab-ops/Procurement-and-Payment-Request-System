@@ -752,6 +752,14 @@ if menu == "1. 填寫申請單":
                 idx = temp_db[temp_db["單號"]==st.session_state.last_id].index[0]
                 temp_db.at[idx, "狀態"] = "待簽核"
                 temp_db.at[idx, "提交時間"] = get_taiwan_time()
+                
+                # 清除舊的簽核痕跡避免列印時發生誤會
+                temp_db.at[idx, "初審人"] = ""
+                temp_db.at[idx, "初審時間"] = ""
+                temp_db.at[idx, "複審人"] = ""
+                temp_db.at[idx, "複審時間"] = ""
+                temp_db.at[idx, "駁回原因"] = ""
+                
                 save_data(temp_db)
                 
                 exe_name = clean_name(temp_db.at[idx, "專案負責人"])
@@ -821,6 +829,14 @@ if menu == "1. 填寫申請單":
                     idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                     fresh_db.at[idx, "狀態"] = "待簽核" 
                     fresh_db.at[idx, "提交時間"] = get_taiwan_time()
+                    
+                    # 清除舊的簽核痕跡避免列印時發生誤會
+                    fresh_db.at[idx, "初審人"] = ""
+                    fresh_db.at[idx, "初審時間"] = ""
+                    fresh_db.at[idx, "複審人"] = ""
+                    fresh_db.at[idx, "複審時間"] = ""
+                    fresh_db.at[idx, "駁回原因"] = ""
+                    
                     save_data(fresh_db)
                     
                     exe_name = clean_name(r['專案負責人'])
@@ -875,7 +891,7 @@ if menu == "1. 填寫申請單":
                     else:
                         b5.button("刪除", disabled=True, key=f"fake_d_{i}")
 
-                # [附件上傳]
+                # [指令1] 提供所有送出後的表單補傳附件
                 render_upload_popover(b6, r, f"m1_up_{i}")
 
     except Exception as e:
@@ -912,7 +928,8 @@ elif menu == "2. 專案執行長簽核":
                 c5.write(r["提交時間"])
                 
                 with c6:
-                    b1, b2, b3, b4 = st.columns(4)
+                    # 待簽核中，不顯示附件按鈕避免誤會
+                    b1, b2, b3 = st.columns(3)
                     can_sign = (r["專案負責人"] == curr_name) and is_active
                     
                     if b1.button("預覽", key=f"ceo_v_{i}"): 
@@ -945,12 +962,9 @@ elif menu == "2. 專案執行長簽核":
                                 fresh_db.at[idx, "駁回原因"] = reason
                                 fresh_db.at[idx, "初審人"] = curr_name
                                 fresh_db.at[idx, "初審時間"] = get_taiwan_time()
-                                save_data(fresh_db)
-                                st.rerun()
+                                save_data(fresh_db); st.rerun()
                     else:
                         b3.button("❌ 駁回", disabled=True, key=f"fake_ceo_no_{i}")
-                        
-                    render_upload_popover(b4, r, f"ceo_p_up_{i}")
         
         st.divider()
         st.subheader("📜 歷史紀錄 (已核准/已駁回)")
@@ -1073,7 +1087,8 @@ elif menu == "3. 財務長簽核":
                 c4.write(f"{c_cur} ${clean_amount(r['總金額']):,.0f}")
                 
                 with c5:
-                    b1, b2, b3, b4 = st.columns(4)
+                    # 待簽核中，不顯示附件按鈕避免誤會
+                    b1, b2, b3 = st.columns(3)
                     is_cfo_action = (curr_name == CFO_NAME) and is_active
                     
                     if b1.button("預覽", key=f"cfo_v_{i}"): 
@@ -1100,8 +1115,6 @@ elif menu == "3. 財務長簽核":
                                 save_data(fresh_db); st.rerun()
                     else:
                         b3.button("❌ 駁回", disabled=True, key=f"fake_cfo_no_{i}")
-
-                    render_upload_popover(b4, r, f"cfo_p_up_{i}")
 
         st.divider()
         st.subheader("📜 歷史紀錄 (已核准/已駁回)")
@@ -1283,7 +1296,6 @@ elif menu == "5. 請款狀態/系統設定":
                 time.sleep(1)
                 st.rerun()
 
-    # [修復] 將行政專屬 User ID 輸入框加回來
     with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)"):
         st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
         curr_token, curr_uid = get_line_credentials()
