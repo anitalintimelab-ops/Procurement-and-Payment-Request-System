@@ -14,7 +14,7 @@ B_DIR = os.path.dirname(os.path.abspath(__file__))
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "online.csv")
-L_FILE = os.path.join(B_DIR, "line_credentials.txt") 
+L_FILE = os.path.join(B_DIR, "line_credentials.txt") # 儲存 LINE Messaging API 雙憑證
 
 # 定義核心角色
 ADMINS = ["Anita"]
@@ -69,7 +69,7 @@ def get_online_users(curr_user):
     except:
         return 1
 
-# [更新工具] LINE 精準推播功能
+# [更新工具] LINE 精準推播功能 (包含同步發送給 Anita 的機制)
 def get_line_credentials():
     if os.path.exists(L_FILE):
         try:
@@ -87,6 +87,7 @@ def save_line_credentials(token, user_id):
     except: pass
 
 def send_line_message(msg, target_name):
+    """精準發送 LINE 訊息給特定人員，並同步發送副本給 Anita"""
     token, admin_uid = get_line_credentials()
     if not token: return  
     
@@ -97,6 +98,7 @@ def send_line_message(msg, target_name):
         "Authorization": f"Bearer {token}"
     }
     
+    # 1. 發送給主要目標 (如：負責執行長 或 財務長)
     target_uid = ""
     if target_name == "Anita" and admin_uid and admin_uid.startswith("U"):
         target_uid = admin_uid
@@ -115,6 +117,7 @@ def send_line_message(msg, target_name):
         except:
             pass
             
+    # 2. 發送副本給 Anita (若主要目標不是 Anita 的話)
     if target_name != "Anita":
         anita_uid = admin_uid if admin_uid and admin_uid.startswith("U") else ""
         if not anita_uid:
@@ -145,8 +148,7 @@ def init_rescue_data():
             "影像Base64": [""], "提交時間": ["2026-02-05 14:00"], "申請人信箱": ["Anita"],
             "初審人": [""], "初審時間": [""], "複審人": [""], "複審時間": [""],
             "刪除人": [""], "刪除時間": [""], "刪除原因": [""], "駁回原因": [""],
-            "匯款狀態": ["尚未匯款"], "匯款日期": [""],
-            "支付條件": [""], "支付期數": [""], "請款狀態": [""], "已請款金額": [0], "尚未請款金額": [0], "最後採購金額": [0]
+            "匯款狀態": ["尚未匯款"], "匯款日期": [""]
         }
         df = pd.DataFrame(data)
         df.to_csv(D_FILE, index=False, encoding='utf-8-sig')
@@ -168,8 +170,7 @@ def load_data():
             "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", 
             "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱",
             "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", 
-            "刪除原因", "駁回原因", "匯款狀態", "匯款日期",
-            "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
+            "刪除原因", "駁回原因", "匯款狀態", "匯款日期"]
     
     df = read_csv_robust(D_FILE)
     if df is None or df.empty: return pd.DataFrame(columns=cols)
@@ -179,10 +180,6 @@ def load_data():
         if c not in df.columns: df[c] = ""
             
     df["總金額"] = df["總金額"].apply(clean_amount)
-    df["已請款金額"] = df["已請款金額"].apply(clean_amount)
-    df["尚未請款金額"] = df["尚未請款金額"].apply(clean_amount)
-    df["最後採購金額"] = df["最後採購金額"].apply(clean_amount)
-    
     df["專案負責人"] = df["專案負責人"].astype(str).apply(clean_name)
     df["申請人"] = df["申請人"].astype(str).apply(clean_name)
     df["代申請人"] = df["代申請人"].astype(str).apply(clean_name)
@@ -192,9 +189,6 @@ def load_data():
 def save_data(df):
     try:
         df["總金額"] = df["總金額"].apply(clean_amount)
-        df["已請款金額"] = df["已請款金額"].apply(clean_amount)
-        df["尚未請款金額"] = df["尚未請款金額"].apply(clean_amount)
-        df["最後採購金額"] = df["最後採購金額"].apply(clean_amount)
         df["專案負責人"] = df["專案負責人"].astype(str).apply(clean_name)
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
     except PermissionError:
@@ -437,10 +431,9 @@ if st.sidebar.button("登出"):
     st.rerun()
 
 # 導覽選單
-# [指令4] 左側選單：請款狀態更改為「系統設定」
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
 if is_admin:
-    menu_options.append("5. 系統設定")
+    menu_options.append("5. 請款狀態")
 
 if 'menu_radio' in st.session_state and st.session_state.menu_radio not in menu_options:
     st.session_state.menu_radio = "1. 填寫申請單"
@@ -489,7 +482,6 @@ def render_html(row):
     
     t = row.get("類型", "請款單")
     sys_type_title = "請款單" if t == "請購單" else t
-    if t == "採購單": sys_type_title = "採購單"
     
     logo_b64 = get_b64_logo()
     lg_html = f'<img src="data:image/png;base64,{logo_b64}" style="height:50px;">' if logo_b64 else ''
@@ -511,16 +503,8 @@ def render_html(row):
     h += f'<tr><td bgcolor="#eee">匯款帳戶</td><td colspan="3">{row.get("匯款帳戶", "")}</td></tr>'
     h += f'<tr><td bgcolor="#eee">說明</td><td colspan="3">{row["請款說明"]}</td></tr>'
     
-    # [指令1] 針對採購單顯示額外欄位，總金額改為預計採購金額
     c_cur = str(row.get("幣別", "TWD")).replace("nan", "TWD")
-    if t == "採購單":
-        h += f'<tr><td bgcolor="#eee">支付條件</td><td>{row.get("支付條件","")}</td><td bgcolor="#eee">支付期數</td><td>{row.get("支付期數","")}</td></tr>'
-        h += f'<tr><td bgcolor="#eee">請款狀態</td><td>{row.get("請款狀態","")}</td><td bgcolor="#eee">最後採購金額</td><td>{c_cur} {clean_amount(row.get("最後採購金額",0)):,.0f}</td></tr>'
-        h += f'<tr><td bgcolor="#eee">已請款金額</td><td>{c_cur} {clean_amount(row.get("已請款金額",0)):,.0f}</td><td bgcolor="#eee">尚未請款金額</td><td>{c_cur} {clean_amount(row.get("尚未請款金額",0)):,.0f}</td></tr>'
-        h += f'<tr><td colspan="3" align="right">預計採購金額</td><td align="right">{c_cur} {amt:,.0f}</td></tr>'
-    else:
-        h += f'<tr><td colspan="3" align="right">金額</td><td align="right">{c_cur} {amt:,.0f}</td></tr>'
-        
+    h += f'<tr><td colspan="3" align="right">金額</td><td align="right">{c_cur} {amt:,.0f}</td></tr>'
     h += f'<tr><td colspan="3" align="right">實付</td><td align="right">{c_cur} {amt-fee:,.0f}</td></tr></table>'
     
     if row['帳戶影像Base64']:
@@ -552,11 +536,8 @@ if menu == "1. 填寫申請單":
     staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
     if curr_name not in staffs: staffs.append(curr_name)
     
-    sys_save_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else "請款單"
-    
     curr_options = ["TWD", "USD", "EUR", "JPY", "CNY", "HKD", "GBP", "AUD"]
-    dv = {"pn":"", "exe":staffs[0], "pi":"", "amt":0, "curr":"TWD", "pay":"現金", "vdr":"", "acc":"", "desc":"", "ab64":"", "ib64":"", "app": curr_name,
-          "pay_cond": "", "pay_inst": "", "final_amt": 0, "billed_amt": 0, "unbilled_amt": 0, "bill_stat": ""}
+    dv = {"pn":"", "exe":staffs[0], "pi":"", "amt":0, "curr":"TWD", "pay":"現金", "vdr":"", "acc":"", "desc":"", "ab64":"", "ib64":"", "app": curr_name}
     
     if st.session_state.edit_id:
         r = db[db["單號"]==st.session_state.edit_id]
@@ -575,13 +556,6 @@ if menu == "1. 填寫申請單":
             dv["desc"] = row["請款說明"]
             dv["ab64"] = row["帳戶影像Base64"]
             dv["ib64"] = row["影像Base64"]
-            
-            dv["pay_cond"] = row.get("支付條件", "")
-            dv["pay_inst"] = row.get("支付期數", "")
-            dv["final_amt"] = clean_amount(row.get("最後採購金額", 0))
-            dv["billed_amt"] = clean_amount(row.get("已請款金額", 0))
-            dv["unbilled_amt"] = clean_amount(row.get("尚未請款金額", 0))
-            dv["bill_stat"] = row.get("請款狀態", "")
 
     with st.form("form"):
         mode_suffix = f"{st.session_state.edit_id}_{st.session_state.form_key}" if st.session_state.edit_id else f"new_{st.session_state.form_key}"
@@ -597,28 +571,8 @@ if menu == "1. 填寫申請單":
         exe = c1.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]), key=f"exe_{mode_suffix}")
         
         pi = c2.text_input("專案編號", value=dv["pi"], key=f"pi_{mode_suffix}")
-        
-        # [指令1] 採購單總金額改稱
-        amt_label = "預計採購金額" if sys_save_type == "採購單" else "總金額"
-        amt = c2.number_input(amt_label, value=dv["amt"], min_value=0, key=f"amt_{mode_suffix}")
-        
+        amt = c2.number_input("總金額", value=dv["amt"], min_value=0, key=f"amt_{mode_suffix}")
         currency = c2.selectbox("幣別", curr_options, index=curr_options.index(dv["curr"]), key=f"curr_{mode_suffix}")
-        
-        # [指令1] 採購單專屬非必填欄位
-        pay_cond, pay_inst, final_amt, billed_amt, unbilled_amt, bill_stat = "", "", 0, 0, 0, ""
-        if sys_save_type == "採購單":
-            st.markdown("---")
-            st.markdown("**(採購單專屬欄位 - 皆為非必填)**")
-            cp1, cp2, cp3 = st.columns(3)
-            pay_cond = cp1.text_input("支付條件", value=dv["pay_cond"], key=f"pc_{mode_suffix}")
-            pay_inst = cp2.text_input("支付期數", value=dv["pay_inst"], key=f"pi_{mode_suffix}")
-            final_amt = cp3.number_input("最後採購金額", value=dv["final_amt"], min_value=0, key=f"fa_{mode_suffix}")
-            
-            cp4, cp5, cp6 = st.columns(3)
-            bill_stat = cp4.text_input("請款狀態", value=dv["bill_stat"], key=f"bs_{mode_suffix}")
-            billed_amt = cp5.number_input("已請款金額", value=dv["billed_amt"], min_value=0, key=f"ba_{mode_suffix}")
-            unbilled_amt = cp6.number_input("尚未請款金額", value=dv["unbilled_amt"], min_value=0, key=f"ua_{mode_suffix}")
-            st.markdown("---")
         
         pay = st.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]), horizontal=True, key=f"pay_{mode_suffix}")
         vdr = st.text_input("廠商", value=dv["vdr"], key=f"vdr_{mode_suffix}")
@@ -642,11 +596,12 @@ if menu == "1. 填寫申請單":
         if st.form_submit_button("💾 儲存", disabled=not is_active):
             db = load_data()
             if not (pn and pi and amt>0 and desc):
-                st.error("請確認必填欄位 (專案名稱、編號、金額、說明) 已填寫")
+                st.error("未填完")
             else:
                 b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else ("" if del_acc else dv["ab64"])
                 b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else ("" if del_ims else dv["ib64"])
                 
+                sys_save_type = "採購單" if st.session_state.get('sys_choice') == "採購單系統" else "請款單"
                 proxy_val = curr_name if app_val != curr_name else ""
                 
                 if st.session_state.edit_id:
@@ -658,10 +613,6 @@ if menu == "1. 填寫申請單":
                     db.at[idx, "幣別"] = currency 
                     db.at[idx, "付款方式"] = pay; db.at[idx, "請款廠商"] = vdr; db.at[idx, "匯款帳戶"] = acc
                     db.at[idx, "帳戶影像Base64"] = b_acc; db.at[idx, "影像Base64"] = b_ims
-                    if sys_save_type == "採購單":
-                        db.at[idx, "支付條件"] = pay_cond; db.at[idx, "支付期數"] = pay_inst
-                        db.at[idx, "最後採購金額"] = final_amt; db.at[idx, "請款狀態"] = bill_stat
-                        db.at[idx, "已請款金額"] = billed_amt; db.at[idx, "尚未請款金額"] = unbilled_amt
                     st.session_state.edit_id = None
                 else:
                     today_str = datetime.date.today().strftime('%Y%m%d')
@@ -677,8 +628,7 @@ if menu == "1. 填寫申請單":
                           "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":desc, "總金額":amt, 
                           "幣別":currency, "付款方式":pay, "請款廠商":vdr, "匯款帳戶":acc, 
                           "帳戶影像Base64":b_acc, "狀態":"已儲存", "影像Base64":b_ims, "提交時間":"",
-                          "申請人信箱":curr_name, "初審人":"", "初審時間":"", "複審人":"", "複審時間":"", "刪除人":"", "刪除時間":"", "刪除原因":"", "駁回原因":"",
-                          "支付條件": pay_cond, "支付期數": pay_inst, "請款狀態": bill_stat, "已請款金額": billed_amt, "尚未請款金額": unbilled_amt, "最後採購金額": final_amt}
+                          "申請人信箱":curr_name, "初審人":"", "初審時間":"", "複審人":"", "複審時間":"", "刪除人":"", "刪除時間":"", "刪除原因":"", "駁回原因":""}
                     db = pd.concat([db, pd.DataFrame([nr])], ignore_index=True)
                     st.session_state.last_id = tid
                     st.session_state.form_key += 1
@@ -704,7 +654,7 @@ if menu == "1. 填寫申請單":
             temp_db.at[idx, "提交時間"] = get_taiwan_time()
             save_data(temp_db)
             
-            # [精準推播 + 副本]
+            # [精準推播 + 副本] 提交給負責執行長，系統自動副本給 Anita
             exe_name = clean_name(temp_db.at[idx, "專案負責人"])
             send_line_message(f"🔔 【待簽核提醒】\n單號：{st.session_state.last_id}\n您有一筆新的表單需要進行簽核！", target_name=exe_name)
             
@@ -767,6 +717,7 @@ if menu == "1. 填寫申請單":
                 fresh_db.at[idx, "提交時間"] = get_taiwan_time()
                 save_data(fresh_db)
                 
+                # [精準推播 + 副本] 清單中提交，傳送給負責執行長，並副本給 Anita
                 exe_name = clean_name(r['專案負責人'])
                 send_line_message(f"🔔 【待簽核提醒】\n單號：{r['單號']}\n您有一筆新的表單需要進行簽核！", target_name=exe_name)
                 
@@ -828,19 +779,14 @@ elif menu == "2. 專案執行長簽核":
                     if b2.button("✅ 核准", key=f"ceo_ok_{i}", disabled=not can_sign):
                         fresh_db = load_data()
                         idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                        # [指令5] 採購單覆核到執行長就好
-                        if fresh_db.at[idx, "類型"] == "採購單":
-                            fresh_db.at[idx, "狀態"] = "已核准"
-                            fresh_db.at[idx, "初審人"] = curr_name
-                            fresh_db.at[idx, "初審時間"] = get_taiwan_time()
-                            send_line_message(f"🔔 【採購單核准】\n單號：{r['單號']}\n執行長已核准此採購單！", target_name=clean_name(r["申請人"]))
-                        else:
-                            fresh_db.at[idx, "狀態"] = "待複審"
-                            fresh_db.at[idx, "初審人"] = curr_name
-                            fresh_db.at[idx, "初審時間"] = get_taiwan_time()
-                            send_line_message(f"🔔 【待複審提醒】\n單號：{r['單號']}\n執行長已核准，需要財務長進行最終複審！", target_name=CFO_NAME)
-                        
+                        fresh_db.at[idx, "狀態"] = "待複審"
+                        fresh_db.at[idx, "初審人"] = curr_name
+                        fresh_db.at[idx, "初審時間"] = get_taiwan_time()
                         save_data(fresh_db)
+                        
+                        # [精準推播 + 副本] 執行長核准後發送給財務長 Charles，並副本給 Anita
+                        send_line_message(f"🔔 【待複審提醒】\n單號：{r['單號']}\n執行長已核准，需要財務長進行最終複審！", target_name=CFO_NAME)
+                        
                         st.rerun()
                         
                     if can_sign:
@@ -887,64 +833,36 @@ elif menu == "2. 專案執行長簽核":
                         js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
                         st.components.v1.html('<script>' + js_p + '</script>', height=0)
                     
-                    # [指令6] 執行長同意採購單後，可修改採購專屬內容。或是待複審的請款單修改。
-                    is_po = (r["類型"] == "採購單")
-                    can_ceo_edit = (r["專案負責人"] == curr_name) and is_active and ((is_po and r["狀態"] == "已核准") or (not is_po and r["狀態"] == "待複審"))
-                    
+                    can_ceo_edit = (r["狀態"] == "待複審") and (r["專案負責人"] == curr_name) and is_active
                     if can_ceo_edit:
                         with lb3.popover("✏️ 修改"):
-                            if is_po and r["狀態"] == "已核准":
-                                st.write("**📝 採購單後續修改**")
-                                new_bill_stat = st.text_input("請款狀態", value=r.get("請款狀態", ""), key=f"c_bs_{i}")
-                                new_billed = st.number_input("已請款金額", value=clean_amount(r.get("已請款金額", 0)), min_value=0, key=f"c_ba_{i}")
-                                new_unbilled = st.number_input("尚未請款金額", value=clean_amount(r.get("尚未請款金額", 0)), min_value=0, key=f"c_ua_{i}")
-                                new_desc = st.text_area("修改說明內容", value=r["請款說明"], key=f"c_desc_{i}")
-                                new_f_acc = st.file_uploader("上傳新存摺 (將覆蓋舊檔)", key=f"c_fa_{i}")
-                                new_f_ims = st.file_uploader("上傳新憑證 (將覆蓋舊檔)", accept_multiple_files=True, key=f"c_fi_{i}")
-                                
-                                if st.button("💾 儲存採購修改", key=f"ceo_save_pur_{i}"):
+                            st.write("**📝 僅限修改說明或直接駁回**")
+                            new_desc = st.text_area("修改說明內容", value=r["請款說明"], key=f"ceo_desc_{i}")
+                            if st.button("💾 儲存說明", key=f"ceo_save_desc_{i}"):
+                                fresh_db = load_data()
+                                idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                                fresh_db.at[idx, "請款說明"] = new_desc
+                                save_data(fresh_db)
+                                st.success("說明已成功更新！")
+                                time.sleep(0.5)
+                                st.rerun()
+                            
+                            st.divider()
+                            rej_reason = st.text_input("撤回並駁回之原因", key=f"ceo_rej_r_{i}")
+                            if st.button("❌ 撤回並駁回", key=f"ceo_rej_btn_{i}"):
+                                if not rej_reason:
+                                    st.error("請填寫駁回原因")
+                                else:
                                     fresh_db = load_data()
                                     idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                                    fresh_db.at[idx, "請款狀態"] = new_bill_stat
-                                    fresh_db.at[idx, "已請款金額"] = new_billed
-                                    fresh_db.at[idx, "尚未請款金額"] = new_unbilled
-                                    fresh_db.at[idx, "請款說明"] = new_desc
-                                    if new_f_acc:
-                                        fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(new_f_acc.getvalue()).decode()
-                                    if new_f_ims:
-                                        fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in new_f_ims])
+                                    fresh_db.at[idx, "狀態"] = "已駁回"
+                                    fresh_db.at[idx, "駁回原因"] = rej_reason
+                                    fresh_db.at[idx, "初審人"] = curr_name
+                                    fresh_db.at[idx, "初審時間"] = get_taiwan_time()
                                     save_data(fresh_db)
-                                    st.success("採購單資訊已更新！")
+                                    st.success("已改為駁回！")
                                     time.sleep(0.5)
                                     st.rerun()
-                            else:
-                                st.write("**📝 僅限修改說明或直接駁回**")
-                                new_desc = st.text_area("修改說明內容", value=r["請款說明"], key=f"ceo_desc_{i}")
-                                if st.button("💾 儲存說明", key=f"ceo_save_desc_{i}"):
-                                    fresh_db = load_data()
-                                    idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                                    fresh_db.at[idx, "請款說明"] = new_desc
-                                    save_data(fresh_db)
-                                    st.success("說明已成功更新！")
-                                    time.sleep(0.5)
-                                    st.rerun()
-                                
-                                st.divider()
-                                rej_reason = st.text_input("撤回並駁回之原因", key=f"ceo_rej_r_{i}")
-                                if st.button("❌ 撤回並駁回", key=f"ceo_rej_btn_{i}"):
-                                    if not rej_reason:
-                                        st.error("請填寫駁回原因")
-                                    else:
-                                        fresh_db = load_data()
-                                        idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                                        fresh_db.at[idx, "狀態"] = "已駁回"
-                                        fresh_db.at[idx, "駁回原因"] = rej_reason
-                                        fresh_db.at[idx, "初審人"] = curr_name
-                                        fresh_db.at[idx, "初審時間"] = get_taiwan_time()
-                                        save_data(fresh_db)
-                                        st.success("已改為駁回！")
-                                        time.sleep(0.5)
-                                        st.rerun()
                     else:
                         lb3.button("✏️ 修改", disabled=True, key=f"fake_ceo_edit_{i}")
     except Exception as e:
@@ -1049,94 +967,19 @@ elif menu == "4. 表單狀態總覽":
             
         display_df = sys_db.copy()
         if not display_df.empty:
-            
-            # [指令3] 採購單專屬：轉成請款單功能
-            is_po_sys = (st.session_state.get('sys_choice') == "採購單系統")
-            if is_po_sys:
-                st.info("💡 勾選採購單並輸入「本次請款金額」，即可一鍵為 Anita 建立新的請款單草稿！")
-                display_df["轉成請款單"] = False
-                display_df["本次請款金額"] = 0
-                
             display_df["負責執行長"] = display_df["專案負責人"]
-            display_df["預計採購/總金額"] = display_df.apply(lambda x: f"{str(x.get('幣別','TWD')).replace('nan','TWD')} ${clean_amount(x['總金額']):,.0f}", axis=1)
+            display_df["總金額"] = display_df.apply(lambda x: f"{str(x.get('幣別','TWD')).replace('nan','TWD')} ${clean_amount(x['總金額']):,.0f}", axis=1)
             display_df = display_df.rename(columns={"單號": "申請單號"})
             
-            if is_po_sys:
-                target_cols = ["轉成請款單", "本次請款金額", "申請單號", "專案名稱", "負責執行長", "申請人", "預計採購/總金額", "狀態", "請款狀態", "已請款金額", "尚未請款金額"]
-                edited_df = st.data_editor(
-                    display_df[target_cols],
-                    disabled=["申請單號", "專案名稱", "負責執行長", "申請人", "預計採購/總金額", "狀態", "請款狀態", "已請款金額", "尚未請款金額"],
-                    use_container_width=True,
-                    column_config={
-                        "轉成請款單": st.column_config.CheckboxColumn("勾選轉換"),
-                        "本次請款金額": st.column_config.NumberColumn("本次請款金額", min_value=0),
-                    }
-                )
-                
-                if st.button("🚀 確認將勾選項目轉成請款單"):
-                    fresh_db = load_data()
-                    converted_count = 0
-                    for i, row in edited_df.iterrows():
-                        if row["轉成請款單"] and row["本次請款金額"] > 0:
-                            orig_id = row["申請單號"]
-                            orig_idx = fresh_db[fresh_db["單號"]==orig_id].index[0]
-                            orig_row = fresh_db.iloc[orig_idx]
-                            
-                            conv_amt = int(row["本次請款金額"])
-                            
-                            # 更新原採購單金額
-                            current_billed = clean_amount(orig_row.get("已請款金額", 0))
-                            new_billed = current_billed + conv_amt
-                            
-                            final_amt = clean_amount(orig_row.get("最後採購金額", 0))
-                            if final_amt == 0: final_amt = clean_amount(orig_row["總金額"])
-                            
-                            new_unbilled = final_amt - new_billed
-                            if new_unbilled < 0: new_unbilled = 0
-                            
-                            fresh_db.at[orig_idx, "已請款金額"] = new_billed
-                            fresh_db.at[orig_idx, "尚未請款金額"] = new_unbilled
-                            fresh_db.at[orig_idx, "請款狀態"] = "已轉請款單"
-                            
-                            # 自動產生 Anita 的請款單草稿
-                            today_str = datetime.date.today().strftime('%Y%m%d')
-                            today_count = len(fresh_db[fresh_db["單號"].astype(str).str.startswith(today_str)])
-                            new_tid = f"{today_str}-{today_count+1:02d}"
-                            
-                            nr = {
-                                "單號": new_tid, "日期": str(datetime.date.today()), "類型": "請款單", 
-                                "申請人": "Anita", "代申請人": "", 
-                                "專案負責人": orig_row["專案負責人"], "專案名稱": orig_row["專案名稱"], 
-                                "專案編號": orig_row["專案編號"], 
-                                "請款說明": f"自採購單 {orig_id} 轉換", "總金額": conv_amt, 
-                                "幣別": orig_row["幣別"], "付款方式": orig_row["付款方式"], 
-                                "請款廠商": orig_row["請款廠商"], "匯款帳戶": orig_row["匯款帳戶"], 
-                                "帳戶影像Base64": orig_row["帳戶影像Base64"], "狀態": "已儲存", "影像Base64": orig_row["影像Base64"], "提交時間": "",
-                                "申請人信箱": "Anita", "初審人": "", "初審時間": "", "複審人": "", "複審時間": "", "刪除人": "", "刪除時間": "", "刪除原因": "", "駁回原因": "",
-                                "支付條件": "", "支付期數": "", "請款狀態": "", "已請款金額": 0, "尚未請款金額": 0, "最後採購金額": 0
-                            }
-                            fresh_db = pd.concat([fresh_db, pd.DataFrame([nr])], ignore_index=True)
-                            converted_count += 1
-                    
-                    if converted_count > 0:
-                        save_data(fresh_db)
-                        st.success(f"✅ 成功轉換 {converted_count} 筆！請切換至「請款單系統」由 Anita 進行後續提交。")
-                        time.sleep(1.5)
-                        st.rerun()
-                    else:
-                        st.warning("請確保有勾選項目，且輸入金額大於 0！")
-                        
-            else:
-                target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "預計採購/總金額", "狀態", "匯款狀態", "匯款日期"]
-                st.dataframe(display_df[target_cols], use_container_width=True)
+            target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
+            st.dataframe(display_df[target_cols], use_container_width=True)
         else:
             st.info("尚無您的表單狀態紀錄。")
     except Exception as e:
         st.error("載入頁面時發生異常，請聯絡管理員確認資料庫是否正確。")
 
-# --- 頁面 5: 系統設定 (原為請款狀態) ---
-# [指令4] 更改為系統設定
-elif menu == "5. 系統設定":
+# --- 頁面 5: 請款狀態 (Anita 專屬) ---
+elif menu == "5. 請款狀態":
     render_header()
     
     st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
@@ -1176,16 +1019,86 @@ elif menu == "5. 系統設定":
                 time.sleep(1)
                 st.rerun()
 
-    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token)"):
-        st.write("請填寫從 LINE Developers 取得的 Channel Access Token：")
-        curr_token, _ = get_line_credentials()
+    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政專屬 ID)"):
+        st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
+        curr_token, curr_uid = get_line_credentials()
         new_token = st.text_input("Channel Access Token (長字串)", value=curr_token, type="password")
-        # User ID 移至左側人員設定，這裡只需存 Token 即可。
-        if st.button("💾 儲存 LINE Token"):
-            save_line_credentials(new_token, "Global_Not_Used") 
-            st.success("LINE Token 已成功儲存！")
+        new_uid = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=curr_uid)
+        if st.button("💾 儲存 LINE 設定"):
+            save_line_credentials(new_token, new_uid)
+            st.success("LINE 推播設定已成功儲存並啟用！")
             time.sleep(1)
             st.rerun()
+
+    st.divider()
+    st.subheader("💰 請款狀態 (Admin)")
+    
+    try:
+        sys_db = get_filtered_db()
+        
+        display_df = sys_db.copy()
+        if not display_df.empty:
+            display_df["負責執行長"] = display_df["專案負責人"]
+            display_df["總金額"] = display_df.apply(lambda x: f"{str(x.get('幣別','TWD')).replace('nan','TWD')} ${clean_amount(x['總金額']):,.0f}", axis=1)
+            display_df = display_df.rename(columns={"單號": "申請單號"})
+            
+            def parse_date(d_str):
+                if pd.isna(d_str) or str(d_str).strip() == "": return None
+                try: return datetime.datetime.strptime(str(d_str).strip(), "%Y-%m-%d").date()
+                except: return None
+                
+            display_df["匯款日期"] = display_df["匯款日期"].apply(parse_date)
+            
+            target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
+            
+            edited_df = st.data_editor(
+                display_df[target_cols],
+                disabled=["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態"],
+                use_container_width=True,
+                column_config={
+                    "匯款狀態": st.column_config.SelectboxColumn(
+                        "匯款狀態",
+                        options=["尚未匯款", "已匯款"],
+                        required=True,
+                        width="medium"
+                    ),
+                    "匯款日期": st.column_config.DateColumn(
+                        "匯款日期",
+                        format="YYYY-MM-DD",
+                        width="medium",
+                        min_value=datetime.date(2020, 1, 1),
+                        max_value=datetime.date(2030, 12, 31)
+                    )
+                }
+            )
+            
+            if st.button("💾 儲存匯款資訊"):
+                valid = True
+                for i, row in edited_df.iterrows():
+                    if row["匯款狀態"] == "已匯款" and (pd.isna(row["匯款日期"]) or str(row["匯款日期"]) == "NaT"):
+                        st.error(f"❌ 申請單號 {row['申請單號']}：選擇「已匯款」時，必須填寫匯款日期！")
+                        valid = False
+                
+                if valid:
+                    fresh_db = load_data()
+                    for i, row in edited_df.iterrows():
+                        orig_idx = fresh_db[fresh_db["單號"]==row["申請單號"]].index[0]
+                        fresh_db.at[orig_idx, "匯款狀態"] = str(row["匯款狀態"]) if row["匯款狀態"] else "尚未匯款"
+                        
+                        date_val = row["匯款日期"]
+                        if pd.notna(date_val) and str(date_val) != "NaT":
+                            fresh_db.at[orig_idx, "匯款日期"] = str(date_val)
+                        else:
+                            fresh_db.at[orig_idx, "匯款日期"] = ""
+                    
+                    save_data(fresh_db)
+                    st.success("✅ 匯款資訊已成功更新！")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            st.info("尚無請款單/採購單資料。")
+    except Exception as e:
+        st.error("載入頁面時發生異常，請聯絡管理員確認資料庫是否正確。")
 
 # [全域預覽] 放在最底下確保渲染
 if st.session_state.view_id:
