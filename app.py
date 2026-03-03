@@ -501,10 +501,21 @@ def render_html(row):
     
     chu_name = clean_name(row.get("初審人", ""))
     fu_name = clean_name(row.get("複審人", ""))
+    
+    stt = str(row.get("狀態", "")).strip()
 
     app_info = f"{display_app} {sub_time_str}".strip()
-    chu_info = f"{chu_name} {chu_time_str}".strip()
-    fu_info = f"{fu_name} {fu_time_str}".strip()
+    
+    # [精準修正] 強制隱藏未簽核時殘留的舊備份資料，解決截圖中「尚未初審卻顯示名字」的問題
+    if stt in ["已儲存", "草稿", "待簽核"]:
+        chu_info = ""
+        fu_info = ""
+    elif stt == "待複審":
+        chu_info = f"{chu_name} {chu_time_str}".strip()
+        fu_info = ""
+    else:
+        chu_info = f"{chu_name} {chu_time_str}".strip()
+        fu_info = f"{fu_name} {fu_time_str}".strip()
     
     t = str(row.get("類型", "請款單")).strip()
     sys_type_title = "採購單" if t == "採購單" else "請款單"
@@ -753,7 +764,7 @@ if menu == "1. 填寫申請單":
                 temp_db.at[idx, "狀態"] = "待簽核"
                 temp_db.at[idx, "提交時間"] = get_taiwan_time()
                 
-                # 清除舊的簽核痕跡避免列印時發生誤會
+                # [精準修正] 強制清空舊的簽核紀錄，避免還原舊資料時列印出幽靈簽名
                 temp_db.at[idx, "初審人"] = ""
                 temp_db.at[idx, "初審時間"] = ""
                 temp_db.at[idx, "複審人"] = ""
@@ -830,7 +841,7 @@ if menu == "1. 填寫申請單":
                     fresh_db.at[idx, "狀態"] = "待簽核" 
                     fresh_db.at[idx, "提交時間"] = get_taiwan_time()
                     
-                    # 清除舊的簽核痕跡避免列印時發生誤會
+                    # [精準修正] 強制清空舊的簽核紀錄
                     fresh_db.at[idx, "初審人"] = ""
                     fresh_db.at[idx, "初審時間"] = ""
                     fresh_db.at[idx, "複審人"] = ""
@@ -891,7 +902,6 @@ if menu == "1. 填寫申請單":
                     else:
                         b5.button("刪除", disabled=True, key=f"fake_d_{i}")
 
-                # [指令1] 提供所有送出後的表單補傳附件
                 render_upload_popover(b6, r, f"m1_up_{i}")
 
     except Exception as e:
@@ -928,7 +938,7 @@ elif menu == "2. 專案執行長簽核":
                 c5.write(r["提交時間"])
                 
                 with c6:
-                    # 待簽核中，不顯示附件按鈕避免誤會
+                    # [精準修正] 將待簽核區的附件按鈕拿掉，避免執行長誤會
                     b1, b2, b3 = st.columns(3)
                     can_sign = (r["專案負責人"] == curr_name) and is_active
                     
@@ -990,6 +1000,7 @@ elif menu == "2. 專案執行長簽核":
                 lc5.write(r["狀態"])
                 
                 with lc6:
+                    # 歷史紀錄區保留附件按鈕，允許事後補件
                     lb1, lb2, lb3, lb4 = st.columns(4)
                     if lb1.button("🔍 預覽", key=f"h_ceo_v_{i}"): 
                         st.session_state.view_id = r["單號"]
@@ -1087,7 +1098,7 @@ elif menu == "3. 財務長簽核":
                 c4.write(f"{c_cur} ${clean_amount(r['總金額']):,.0f}")
                 
                 with c5:
-                    # 待簽核中，不顯示附件按鈕避免誤會
+                    # [精準修正] 將待簽核區的附件按鈕拿掉，避免財務長誤會
                     b1, b2, b3 = st.columns(3)
                     is_cfo_action = (curr_name == CFO_NAME) and is_active
                     
@@ -1140,6 +1151,7 @@ elif menu == "3. 財務長簽核":
                 lc5.write(r["狀態"])
                 
                 with lc6:
+                    # 歷史紀錄區保留附件按鈕，允許事後補件
                     lb1, lb2, lb3 = st.columns(3)
                     if lb1.button("🔍 預覽", key=f"h_cfo_v_{i}"): 
                         st.session_state.view_id = r["單號"]
