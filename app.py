@@ -506,7 +506,7 @@ def render_html(row):
 
     app_info = f"{display_app} {sub_time_str}".strip()
     
-    # [精準修正] 強制隱藏未簽核時殘留的舊備份資料，解決截圖中「尚未初審卻顯示名字」的問題
+    # 隱藏未簽核時殘留的舊備份資料
     if stt in ["已儲存", "草稿", "待簽核"]:
         chu_info = ""
         fu_info = ""
@@ -764,7 +764,6 @@ if menu == "1. 填寫申請單":
                 temp_db.at[idx, "狀態"] = "待簽核"
                 temp_db.at[idx, "提交時間"] = get_taiwan_time()
                 
-                # [精準修正] 強制清空舊的簽核紀錄，避免還原舊資料時列印出幽靈簽名
                 temp_db.at[idx, "初審人"] = ""
                 temp_db.at[idx, "初審時間"] = ""
                 temp_db.at[idx, "複審人"] = ""
@@ -841,7 +840,6 @@ if menu == "1. 填寫申請單":
                     fresh_db.at[idx, "狀態"] = "待簽核" 
                     fresh_db.at[idx, "提交時間"] = get_taiwan_time()
                     
-                    # [精準修正] 強制清空舊的簽核紀錄
                     fresh_db.at[idx, "初審人"] = ""
                     fresh_db.at[idx, "初審時間"] = ""
                     fresh_db.at[idx, "複審人"] = ""
@@ -938,7 +936,6 @@ elif menu == "2. 專案執行長簽核":
                 c5.write(r["提交時間"])
                 
                 with c6:
-                    # [精準修正] 將待簽核區的附件按鈕拿掉，避免執行長誤會
                     b1, b2, b3 = st.columns(3)
                     can_sign = (r["專案負責人"] == curr_name) and is_active
                     
@@ -979,10 +976,11 @@ elif menu == "2. 專案執行長簽核":
         st.divider()
         st.subheader("📜 歷史紀錄 (已核准/已駁回)")
         
+        # [精準修正] 歷史紀錄改用「狀態」來判斷，徹底解決備份還原後「初審人」空白導致紀錄消失的問題
         if is_admin: 
-            h_df = sys_db[sys_db["初審人"].notna() & (sys_db["初審人"] != "")]
+            h_df = sys_db[sys_db["狀態"].isin(["待複審", "已核准", "已駁回"])]
         else: 
-            h_df = sys_db[sys_db["初審人"] == curr_name]
+            h_df = sys_db[(sys_db["專案負責人"] == curr_name) & (sys_db["狀態"].isin(["待複審", "已核准", "已駁回"]))]
             
         if h_df.empty: 
             st.info("尚無紀錄")
@@ -1000,7 +998,6 @@ elif menu == "2. 專案執行長簽核":
                 lc5.write(r["狀態"])
                 
                 with lc6:
-                    # 歷史紀錄區保留附件按鈕，允許事後補件
                     lb1, lb2, lb3, lb4 = st.columns(4)
                     if lb1.button("🔍 預覽", key=f"h_ceo_v_{i}"): 
                         st.session_state.view_id = r["單號"]
@@ -1098,7 +1095,6 @@ elif menu == "3. 財務長簽核":
                 c4.write(f"{c_cur} ${clean_amount(r['總金額']):,.0f}")
                 
                 with c5:
-                    # [精準修正] 將待簽核區的附件按鈕拿掉，避免財務長誤會
                     b1, b2, b3 = st.columns(3)
                     is_cfo_action = (curr_name == CFO_NAME) and is_active
                     
@@ -1130,10 +1126,11 @@ elif menu == "3. 財務長簽核":
         st.divider()
         st.subheader("📜 歷史紀錄 (已核准/已駁回)")
         
+        # [精準修正] 歷史紀錄改用「狀態」來判斷，徹底解決備份還原後「複審人」空白導致紀錄消失的問題
         if is_admin or curr_name == CFO_NAME:
-            f_df = sys_db[sys_db["複審人"].notna() & (sys_db["複審人"] != "")]
+            f_df = sys_db[sys_db["狀態"].isin(["已核准", "已駁回"])]
         else:
-            f_df = sys_db[(sys_db["複審人"].notna() & (sys_db["複審人"] != "")) & (sys_db["專案負責人"] == curr_name)]
+            f_df = sys_db[(sys_db["專案負責人"] == curr_name) & (sys_db["狀態"].isin(["已核准", "已駁回"]))]
             
         if f_df.empty: 
             st.info("尚無紀錄")
@@ -1151,7 +1148,6 @@ elif menu == "3. 財務長簽核":
                 lc5.write(r["狀態"])
                 
                 with lc6:
-                    # 歷史紀錄區保留附件按鈕，允許事後補件
                     lb1, lb2, lb3 = st.columns(3)
                     if lb1.button("🔍 預覽", key=f"h_cfo_v_{i}"): 
                         st.session_state.view_id = r["單號"]
