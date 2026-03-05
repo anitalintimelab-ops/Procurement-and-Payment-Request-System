@@ -3,8 +3,10 @@ import pandas as pd
 import datetime
 import os
 import base64
+import re
 import time
 import requests  
+import json 
 
 # --- 1. 系統設定 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide", page_icon="🏢")
@@ -366,7 +368,6 @@ def render_html(row):
     logo_b64 = get_b64_logo()
     lg_html = f'<img src="data:image/png;base64,{logo_b64}" style="height:50px; max-width:100%;">' if logo_b64 else ''
     
-    # [RWD 修正] 取消寫死的 680px，改為 max-width 適應手機螢幕
     h = f'<div style="padding:20px;border:2px solid #000;max-width:680px;width:100%;box-sizing:border-box;margin:auto;background:#fff;color:#000;">'
     h += f'<div style="text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px;">'
     h += f'<div style="display:flex; justify-content:center; align-items:center; gap:15px; flex-wrap:wrap;">'
@@ -464,6 +465,8 @@ if menu == "1. 填寫申請單":
             pn = c1.text_input("專案名稱", value=dv["pn"], key=f"pn_{mode_suffix}")
             exe = c1.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]), key=f"exe_{mode_suffix}")
             pi = c2.text_input("專案編號", value=dv["pi"], key=f"pi_{mode_suffix}")
+            
+            # [修復防呆]
             amt_label = "預計採購金額" if sys_save_type == "採購單" else "總金額"
             amt = c2.number_input(amt_label, value=int(max(0, dv["amt"])), min_value=0, key=f"amt_{mode_suffix}")
             currency = c2.selectbox("幣別", curr_options, index=curr_options.index(dv["curr"]), key=f"curr_{mode_suffix}")
@@ -473,8 +476,8 @@ if menu == "1. 填寫申請單":
                 st.markdown("---"); st.markdown("**(採購單專屬欄位 - 皆為非必填)**")
                 cp1, cp2, cp3 = st.columns(3)
                 pay_cond = cp1.text_input("支付條件", value=dv["pay_cond"], key=f"pc_{mode_suffix}")
-                pay_inst = cp2.text_input("支付期數", value=dv["pay_inst"], key=f"pi_{mode_suffix}")
-                final_amt = cp3.number_input("最後採購金額", value=int(max(0, dv["final_amt"])), min_value=0, key=f"fa_{mode_suffix}")
+                pay_inst = cp2.text_input("支付期數", value=dv["pay_inst"], key=f"pinst_{mode_suffix}") # 防呆修改 key
+                final_amt = cp3.number_input("最後採購金額", value=int(max(0, dv["final_amt"])), min_value=0, key=f"famt_{mode_suffix}") # 防呆修改 key
                 cp4, cp5, cp6 = st.columns(3)
                 bill_stat = cp4.text_input("請款狀態", value=dv["bill_stat"], key=f"bs_{mode_suffix}")
                 billed_amt = cp5.number_input("已請款金額", value=int(max(0, dv["billed_amt"])), min_value=0, key=f"ba_{mode_suffix}")
@@ -599,8 +602,7 @@ if menu == "1. 填寫申請單":
                         if st.button("💾 儲存修改", key=f"m1_save_pur_{i}"):
                             fresh_db = load_data()
                             idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                            fresh_db.at[idx, "請款狀態"] = new_bill_stat; fresh_db.at[idx, "已請款金額"] = new_billed
-                            fresh_db.at[idx, "尚未請款金額"] = new_unbilled; fresh_db.at[idx, "請款說明"] = new_desc
+                            fresh_db.at[idx, "請款狀態"] = new_bill_stat; fresh_db.at[idx, "已請款金額"] = new_billed; fresh_db.at[idx, "尚未請款金額"] = new_unbilled; fresh_db.at[idx, "請款說明"] = new_desc
                             save_data(fresh_db); st.success("採購單資訊已更新！"); time.sleep(0.5); st.rerun()
                 else:
                     if can_edit:
