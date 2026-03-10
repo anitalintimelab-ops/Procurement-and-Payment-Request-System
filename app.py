@@ -83,30 +83,26 @@ def save_line_credentials(token, user_id):
             f.write(f"{token.strip()}\n{user_id.strip()}")
     except Exception: pass
 
-def send_line_message(msg, target_name):
-    token, admin_uid = get_line_credentials()
-    if not token: return  
-    staff_df = load_staff()
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+# [精準修正] 改用 LINE 原生「群發 API (Broadcast)」，確保加好友者全數收到
+def send_line_message(msg, target_name=""):
+    token, _ = get_line_credentials()
+    if not token: 
+        return  
     
-    target_uid = admin_uid if target_name == "Anita" and admin_uid and admin_uid.startswith("U") else ""
-    if not target_uid:
-        t_row = staff_df[staff_df["name"] == target_name]
-        if not t_row.empty: target_uid = str(t_row.iloc[0].get("line_uid", "")).strip()
-            
-    if target_uid and target_uid.startswith("U"):
-        try: requests.post(url, headers=headers, json={"to": target_uid, "messages": [{"type": "text", "text": msg}]}, timeout=5)
-        except Exception: pass
-            
-    if target_name != "Anita":
-        a_uid = admin_uid if admin_uid and admin_uid.startswith("U") else ""
-        if not a_uid:
-            a_row = staff_df[staff_df["name"] == "Anita"]
-            if not a_row.empty: a_uid = str(a_row.iloc[0].get("line_uid", "")).strip()
-        if a_uid and a_uid.startswith("U"):
-            try: requests.post(url, headers=headers, json={"to": a_uid, "messages": [{"type": "text", "text": f"👀 [系統同步副本給行政 - 原送給 {target_name}]\n{msg}"}]}, timeout=5)
-            except Exception: pass
+    url = "https://api.line.me/v2/bot/message/broadcast"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+    
+    data = {
+        "messages": [{"type": "text", "text": msg}]
+    }
+    
+    try: 
+        requests.post(url, headers=headers, json=data, timeout=5)
+    except Exception: 
+        pass
 
 def init_rescue_data():
     if not os.path.exists(D_FILE):
@@ -306,8 +302,9 @@ if is_admin:
                 st.success("成功"); st.rerun()
             else: st.error("已存在")
     
+    # [指令要求保留] 人員設定表格 100% 留存
     with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
-        st.write("請填寫各員工查到的 U 開頭代碼，以便他們接收專屬通知：")
+        st.write("請填寫各員工查到的 U 開頭代碼：")
         staff_df = st.session_state.staff_df
         edited_staff = st.data_editor(
             staff_df[["name", "status", "line_uid"]],
@@ -466,7 +463,6 @@ if menu == "1. 填寫申請單":
             exe = c1.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]), key=f"exe_{mode_suffix}")
             pi = c2.text_input("專案編號", value=dv["pi"], key=f"pi_{mode_suffix}")
             
-            # [修復防呆]
             amt_label = "預計採購金額" if sys_save_type == "採購單" else "總金額"
             amt = c2.number_input(amt_label, value=int(max(0, dv["amt"])), min_value=0, key=f"amt_{mode_suffix}")
             currency = c2.selectbox("幣別", curr_options, index=curr_options.index(dv["curr"]), key=f"curr_{mode_suffix}")
@@ -476,8 +472,8 @@ if menu == "1. 填寫申請單":
                 st.markdown("---"); st.markdown("**(採購單專屬欄位 - 皆為非必填)**")
                 cp1, cp2, cp3 = st.columns(3)
                 pay_cond = cp1.text_input("支付條件", value=dv["pay_cond"], key=f"pc_{mode_suffix}")
-                pay_inst = cp2.text_input("支付期數", value=dv["pay_inst"], key=f"pinst_{mode_suffix}") # 防呆修改 key
-                final_amt = cp3.number_input("最後採購金額", value=int(max(0, dv["final_amt"])), min_value=0, key=f"famt_{mode_suffix}") # 防呆修改 key
+                pay_inst = cp2.text_input("支付期數", value=dv["pay_inst"], key=f"pi_{mode_suffix}")
+                final_amt = cp3.number_input("最後採購金額", value=int(max(0, dv["final_amt"])), min_value=0, key=f"fa_{mode_suffix}")
                 cp4, cp5, cp6 = st.columns(3)
                 bill_stat = cp4.text_input("請款狀態", value=dv["bill_stat"], key=f"bs_{mode_suffix}")
                 billed_amt = cp5.number_input("已請款金額", value=int(max(0, dv["billed_amt"])), min_value=0, key=f"ba_{mode_suffix}")
@@ -852,7 +848,7 @@ elif menu == "5. 請款狀態/系統設定":
                 with open(S_FILE, "wb") as f: f.write(up_staff.getbuffer())
                 st.session_state.staff_df = load_staff(); st.success("人員資料已還原！"); time.sleep(1); st.rerun()
 
-    # [修復] 將行政專屬 User ID 輸入框完整加回來
+    # [修復] 將「行政專屬 User ID」輸入框加回來！
     with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)"):
         st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
         curr_token, curr_uid = get_line_credentials()
