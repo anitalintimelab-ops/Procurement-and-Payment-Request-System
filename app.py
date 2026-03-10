@@ -109,7 +109,7 @@ def save_line_credentials(token, user_id):
     except Exception: 
         pass
 
-# [精準修正] 全面改用 LINE 官方群發 (Broadcast) 機制
+# 全面改用 LINE 官方群發 (Broadcast) 機制
 def send_line_message(msg, target_name=""):
     token, _ = get_line_credentials()
     if not token: 
@@ -492,7 +492,6 @@ def render_html(row):
 
     app_info = f"{display_app} {sub_time_str}".strip()
     
-    # 隱藏未簽核時殘留的舊備份資料
     if stt in ["已儲存", "草稿", "待簽核"]:
         chu_info = ""
         fu_info = ""
@@ -758,7 +757,6 @@ if menu == "1. 填寫申請單":
                 
                 save_data(temp_db)
                 
-                # [精準修正] 套用指定提醒格式
                 exe_name = clean_name(temp_db.at[idx, "專案負責人"])
                 proj_name = temp_db.at[idx, "專案名稱"]
                 msg = f"🔔【待簽核提醒】\n單號：{st.session_state.last_id}\n專案名稱：{proj_name}\n有一筆新的表單需要負責執行長 ({exe_name}) 進行簽核！"
@@ -837,7 +835,6 @@ if menu == "1. 填寫申請單":
                     
                     save_data(fresh_db)
                     
-                    # [精準修正] 套用指定提醒格式
                     exe_name = clean_name(r['專案負責人'])
                     proj_name = r['專案名稱']
                     msg = f"🔔【待簽核提醒】\n單號：{r['單號']}\n專案名稱：{proj_name}\n有一筆新的表單需要負責執行長 ({exe_name}) 進行簽核！"
@@ -938,6 +935,8 @@ elif menu == "2. 專案執行長簽核":
                         fresh_db = load_data()
                         idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                         proj_name = r['專案名稱']
+                        exe_name = clean_name(r["專案負責人"])
+                        
                         if str(fresh_db.at[idx, "類型"]).strip() == "採購單":
                             fresh_db.at[idx, "狀態"] = "已核准"
                             fresh_db.at[idx, "初審人"] = curr_name
@@ -947,8 +946,8 @@ elif menu == "2. 專案執行長簽核":
                             fresh_db.at[idx, "狀態"] = "待複審"
                             fresh_db.at[idx, "初審人"] = curr_name
                             fresh_db.at[idx, "初審時間"] = get_taiwan_time()
-                            # [精準修正] 套用指定提醒格式
-                            msg = f"🔔【待簽核提醒】\n單號：{r['單號']}\n專案名稱：{proj_name}\n有一筆新的表單需要財務長 ({CFO_NAME}) 進行簽核！"
+                            # [精準套用指定的送財務長提醒格式]
+                            msg = f"🔔【待簽核提醒】\n單號：{r['單號']}\n專案名稱：{proj_name}\n有一筆新的表單，負責執行長 ({exe_name})已核准，需要財務長 ({CFO_NAME})進行最終複審！"
                             send_line_message(msg)
                         
                         save_data(fresh_db)
