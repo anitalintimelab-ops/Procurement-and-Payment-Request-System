@@ -638,14 +638,15 @@ if menu == "1. 填寫申請單":
             
             currency = c2.selectbox("幣別", curr_options, index=curr_options.index(dv["curr"]), key=f"curr_{mode_suffix}")
             
+            # [指令] 修正專案編號與支付期數代號撞名的 Bug，採購單專屬欄位。
             pay_cond, pay_inst, final_amt, billed_amt, unbilled_amt, bill_stat = "", "", 0, 0, 0, ""
             if sys_save_type == "採購單":
                 st.markdown("---")
                 st.markdown("**(採購單專屬欄位 - 皆為非必填)**")
                 cp1, cp2, cp3 = st.columns(3)
                 pay_cond = cp1.text_input("支付條件", value=dv["pay_cond"], key=f"pc_{mode_suffix}")
-                pay_inst = cp2.text_input("支付期數", value=dv["pay_inst"], key=f"pi_{mode_suffix}")
-                final_amt = cp3.number_input("最後採購金額", value=int(max(0, dv["final_amt"])), min_value=0, key=f"fa_{mode_suffix}")
+                pay_inst = cp2.text_input("支付期數", value=dv["pay_inst"], key=f"pinst_{mode_suffix}")
+                final_amt = cp3.number_input("最後採購金額", value=int(max(0, dv["final_amt"])), min_value=0, key=f"famt_{mode_suffix}")
                 
                 cp4, cp5, cp6 = st.columns(3)
                 bill_stat = cp4.text_input("請款狀態", value=dv["bill_stat"], key=f"bs_{mode_suffix}")
@@ -946,7 +947,7 @@ elif menu == "2. 專案執行長簽核":
                             fresh_db.at[idx, "狀態"] = "待複審"
                             fresh_db.at[idx, "初審人"] = curr_name
                             fresh_db.at[idx, "初審時間"] = get_taiwan_time()
-                            # [精準套用指定的送財務長提醒格式]
+                            # [套用指定提醒格式] 執行長核准後通知財務長
                             msg = f"🔔【待簽核提醒】\n單號：{r['單號']}\n專案名稱：{proj_name}\n有一筆新的表單，負責執行長 ({exe_name})已核准，需要財務長 ({CFO_NAME})進行最終複審！"
                             send_line_message(msg)
                         
@@ -1296,6 +1297,7 @@ elif menu == "5. 請款狀態/系統設定":
                 time.sleep(1)
                 st.rerun()
 
+    # 行政專屬 User ID 輸入框完整保留
     with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)"):
         st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
         curr_token, curr_uid = get_line_credentials()
