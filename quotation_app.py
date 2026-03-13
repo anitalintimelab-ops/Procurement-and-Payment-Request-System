@@ -3,60 +3,72 @@ import pandas as pd
 import os
 from datetime import datetime
 
-# 設定網頁標題
-st.set_page_config(page_title="時研設計-報價系統", layout="wide")
+# --- 獨立資料庫定義 ---
+QUOTE_MAIN = 'quote_main.csv'
+QUOTE_DETAIL = 'quote_detail.csv'
 
-# 定義報價單專屬資料庫
-QUOTE_MAIN = 'quotes_main.csv'
-QUOTE_DETAIL = 'quotes_detail.csv'
-
-# 自動初始化資料庫
-for db, cols in {QUOTE_MAIN: ['id', 'date', 'project', 'client', 'total', 'status'], 
-                 QUOTE_DETAIL: ['id', 'item', 'spec', 'qty', 'unit', 'price', 'subtotal']}.items():
+# 初始化 CSV 檔案 (如果不存在)
+for db, cols in {
+    QUOTE_MAIN: ['quote_id', 'date', 'project', 'client', 'total', 'status'],
+    QUOTE_DETAIL: ['quote_id', 'item', 'spec', 'qty', 'unit', 'price', 'subtotal']
+}.items():
     if not os.path.exists(db):
         pd.DataFrame(columns=cols).to_csv(db, index=False)
 
-st.title("📋 獨立報價單管理系統")
-st.info("本系統與請款/採購單完全分開，獨立運行。")
+st.set_page_config(page_title="時研設計-報價系統", layout="wide")
 
-# --- 介面設計 ---
-tab1, tab2 = st.tabs(["🆕 建立報價單", "📁 歷史紀錄"])
+# --- 側邊欄：功能切換 ---
+mode = st.sidebar.radio("系統選單", ["建立報價單", "報價單紀錄", "執行長核准頁面"])
 
-with tab1:
+# 1. 建立報價單
+if mode == "建立報價單":
+    st.header("📝 建立新報價單")
     with st.form("new_quote"):
-        p_name = st.text_input("專案名稱 (例如：元大方圓)")
-        c_name = st.text_input("業主名稱")
+        col1, col2 = st.columns(2)
+        project = col1.text_input("工程名稱", placeholder="例如：元大方圓")
+        client = col2.text_input("客戶名稱")
         q_id = f"Q{datetime.now().strftime('%Y%m%d%H%M')}"
         
         st.write("--- 工項明細 ---")
-        # 範例：預設提供 5 列供填寫 (之後可優化為動態增加)
-        items_list = []
+        # 提供 5 欄位填寫，多填可再增加
+        items_data = []
         for i in range(5):
             c1, c2, c3, c4, c5 = st.columns([3, 2, 1, 1, 2])
-            item = c1.text_input(f"品名 {i+1}", key=f"i{i}")
-            spec = c2.text_input(f"規格", key=f"s{i}")
-            qty = c3.number_input(f"數量", min_value=0.0, key=f"q{i}")
-            unit = c4.text_input(f"單位", key=f"u{i}")
-            price = c5.number_input(f"單價", min_value=0, key=f"p{i}")
+            item = c1.text_input(f"品名/規格 {i+1}", key=f"it{i}")
+            qty = c3.number_input(f"數量", min_value=0.0, key=f"qt{i}")
+            unit = c4.text_input(f"單位", key=f"un{i}")
+            price = c5.number_input(f"單價", min_value=0, key=f"pr{i}")
             if item:
-                items_list.append([q_id, item, spec, qty, unit, price, qty*price])
+                items_data.append([q_id, item, "", qty, unit, price, qty*price])
         
-        if st.form_submit_button("儲存報價單並產生連結"):
-            if p_name and items_list:
-                total_amount = sum(row[6] for row in items_list)
+        if st.form_submit_button("儲存並產生審核連結"):
+            if project and items_data:
+                total_sum = sum(row[6] for row in items_data)
                 # 存入主表
-                main_df = pd.DataFrame([[q_id, datetime.now().strftime('%Y-%m-%d'), p_name, c_name, total_amount, "待審核"]], columns=pd.read_csv(QUOTE_MAIN).columns)
+                main_df = pd.DataFrame([[q_id, datetime.now().strftime('%Y-%m-%d'), project, client, total_sum, "待審核"]], columns=pd.read_csv(QUOTE_MAIN).columns)
                 main_df.to_csv(QUOTE_MAIN, mode='a', header=False, index=False)
                 # 存入明細
-                detail_df = pd.DataFrame(items_list, columns=pd.read_csv(QUOTE_DETAIL).columns)
-                detail_df.to_csv(QUOTE_DETAIL, mode='a', header=False, index=False)
+                pd.DataFrame(items_data, columns=pd.read_csv(QUOTE_DETAIL).columns).to_csv(QUOTE_DETAIL, mode='a', header=False, index=False)
                 
-                st.success(f"✅ 報價單 {q_id} 已建立！總金額：{total_amount}")
-                st.code(f"請複製網址傳給執行長：\n https://your-app-url.streamlit.app/?id={q_id}")
+                st.success(f"✅ 報價單 {q_id} 已建立！")
+                st.info(f"🔗 請複製此網址傳給執行長：\n https://your-app-url.streamlit.app/?id={q_id}")
             else:
-                st.error("請填寫專案名稱與至少一項工項")
+                st.warning("請填寫必要資訊")
 
-with tab2:
-    st.subheader("報價單總覽")
-    if os.path.exists(QUOTE_MAIN):
-        st.dataframe(pd.read_csv(QUOTE_MAIN))
+# 2. 報價單紀錄
+elif mode == "報價單紀錄":
+    st.header("📁 報價歷史紀錄")
+    st.dataframe(pd.read_csv(QUOTE_MAIN))
+
+# 3. 執行長核准頁面 (模擬傳網址後的畫面)
+elif mode == "執行長核准頁面":
+    st.header("📑 報價單審核 (執行長專用)")
+    # 此處邏輯可改為從 URL params 抓取 ID
+    search_id = st.text_input("請輸入報價單號進行審核")
+    if search_id:
+        detail_df = pd.read_csv(QUOTE_DETAIL)
+        this_quote = detail_df[detail_df['quote_id'] == search_id]
+        if not this_quote.empty:
+            st.table(this_quote)
+            if st.button("✅ 核准此報價單"):
+                st.success("報價單已核准！")
