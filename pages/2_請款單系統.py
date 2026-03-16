@@ -8,6 +8,9 @@ import time
 import requests  
 import json 
 
+# --- 加入這行，將此分頁強制鎖定為請款單系統 ---
+st.session_state['sys_choice'] = "請款單系統"
+
 # --- 1. 系統設定 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide", page_icon="🏢")
 
