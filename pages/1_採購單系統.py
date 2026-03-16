@@ -8,6 +8,9 @@ import time
 import requests  
 import json 
 
+# --- 加入這行，將此分頁強制鎖定為採購單系統 ---
+st.session_state['sys_choice'] = "採購單系統"
+
 # --- 1. 系統設定 ---
 st.set_page_config(page_title="時研-管理系統", layout="wide", page_icon="🏢")
 
@@ -1393,4 +1396,3 @@ if st.session_state.view_id:
             st.markdown(render_html(r.iloc[0]), unsafe_allow_html=True)
     except Exception as e:
         st.error(f"預覽發生錯誤：{str(e)}")
-
