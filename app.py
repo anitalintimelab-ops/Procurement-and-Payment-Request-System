@@ -4,16 +4,16 @@ import os
 import base64
 
 # --- 1. 系統大門設定 ---
-st.set_page_config(page_title="時研-系統大門", layout="wide", page_icon="🏢")
+st.set_page_config(page_title="時研-系統入口", layout="wide", page_icon="🏢", initial_sidebar_state="collapsed")
 
-st.markdown("""
-<style>
-.stApp { overflow-x: hidden; }
-@media screen and (max-width: 768px) {
-    .block-container { padding-top: 1.5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
-}
-</style>
-""", unsafe_allow_html=True)
+# [隱藏側邊欄 CSS] - 當 user_id 為空時，強制隱藏左側選單
+if st.session_state.get("user_id") is None:
+    st.markdown("""
+    <style>
+        [data-testid="stSidebarNav"] {display: none;}
+        [data-testid="stSidebar"] {display: none;}
+    </style>
+    """, unsafe_allow_html=True)
 
 B_DIR = os.path.dirname(os.path.abspath(__file__))
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
@@ -55,42 +55,41 @@ def get_b64_logo():
 # Session Init
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 if 'user_id' not in st.session_state: st.session_state.user_id = None
-if 'user_status' not in st.session_state: st.session_state.user_status = "在職"
 
 # --- 登入介面 ---
 if st.session_state.user_id is None:
     logo_b64 = get_b64_logo()
     if logo_b64:
-        st.markdown(f'<div style="text-align: center; margin-bottom: 30px;"><img src="data:image/png;base64,{logo_b64}" style="height: 100px; max-width: 100%;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="text-align: center; margin-bottom: 30px;"><img src="data:image/png;base64,{logo_b64}" style="height: 100px;"></div>', unsafe_allow_html=True)
+    
     st.markdown("<h1 style='text-align: center;'>🏢 時研國際設計股份有限公司<br>管理系統入口</h1>", unsafe_allow_html=True)
     
     staff_df = load_staff()
-    with st.form("login"):
-        u = st.selectbox("身分", staff_df["name"].tolist())
-        p = st.text_input("密碼", type="password")
-        
-        if st.form_submit_button("登入系統"):
-            row = staff_df[staff_df["name"] == u].iloc[0]
-            stored_p = str(row["password"]).strip().replace(".0", "")
-            if str(p).strip() == stored_p or (str(p).strip() == "0000" and stored_p in ["nan", ""]):
-                st.session_state.user_id = u
-                st.session_state.user_status = row["status"] if pd.notna(row["status"]) else "在職"
-                st.session_state.staff_df = staff_df
-                st.rerun()
-            else:
-                st.error("密碼錯誤")
+    
+    # 登入表單置中優化
+    _, col_mid, _ = st.columns([1, 2, 1])
+    with col_mid:
+        with st.form("login_form"):
+            u = st.selectbox("身分", staff_df["name"].tolist())
+            p = st.text_input("密碼", type="password")
+            # 在下面直接增加系統選擇
+            target_sys = st.selectbox("進入系統", ["1_採購單系統", "2_請款單系統", "3_報價單系統"])
+            
+            if st.form_submit_button("登入系統", use_container_width=True):
+                row = staff_df[staff_df["name"] == u].iloc[0]
+                stored_p = str(row["password"]).strip().replace(".0", "")
+                if str(p).strip() == stored_p or (str(p).strip() == "0000" and stored_p in ["nan", ""]):
+                    st.session_state.user_id = u
+                    st.session_state.user_status = row["status"] if pd.notna(row["status"]) else "在職"
+                    # 登入成功後直接跳轉至所選系統
+                    st.switch_page(f"pages/{target_sys}.py")
+                else:
+                    st.error("密碼錯誤")
     st.stop()
 
-# --- 登入成功大廳 ---
-logo_b64 = get_b64_logo()
-if logo_b64:
-    st.markdown(f'<div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 20px;"><img src="data:image/png;base64,{logo_b64}" style="height: 60px;"></div>', unsafe_allow_html=True)
-
-st.success(f"🎉 登入成功！歡迎回來，{st.session_state.user_id}。")
-st.markdown("### 👈 請點擊畫面左邊的選單，進入對應的系統：")
-st.markdown("- 📂 **1_採購單系統**\n- 📂 **2_請款單系統**\n- 📂 **3_報價單系統**")
-
-st.divider()
+# --- 登入後頁面 (如果使用者直接連到 app.py) ---
+st.title(f"🎉 您已登入為：{st.session_state.user_id}")
+st.write("請使用左側選單切換功能，或點擊下方按鈕登出。")
 if st.button("登出系統"):
     st.session_state.user_id = None
     st.rerun()
