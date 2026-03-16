@@ -6,7 +6,7 @@ import base64
 # --- 1. 系統大門設定 ---
 st.set_page_config(page_title="時研-系統入口", layout="wide", page_icon="🏢", initial_sidebar_state="collapsed")
 
-# [隱藏側邊欄 CSS] - 當 user_id 為空時，強制隱藏左側選單
+# [隱藏側邊欄 CSS]
 if st.session_state.get("user_id") is None:
     st.markdown("""
     <style>
@@ -15,6 +15,7 @@ if st.session_state.get("user_id") is None:
     </style>
     """, unsafe_allow_html=True)
 
+# 強制定位到根目錄
 B_DIR = os.path.dirname(os.path.abspath(__file__))
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 
@@ -66,30 +67,28 @@ if st.session_state.user_id is None:
     
     staff_df = load_staff()
     
-    # 登入表單置中優化
     _, col_mid, _ = st.columns([1, 2, 1])
     with col_mid:
         with st.form("login_form"):
             u = st.selectbox("身分", staff_df["name"].tolist())
-            p = st.text_input("密碼", type="password")
-            # 在下面直接增加系統選擇
+            p = st.text_input("密密碼", type="password")
             target_sys = st.selectbox("進入系統", ["1_採購單系統", "2_請款單系統", "3_報價單系統"])
             
             if st.form_submit_button("登入系統", use_container_width=True):
-                row = staff_df[staff_df["name"] == u].iloc[0]
+                # 登入前重新讀取最新檔案
+                current_staff = load_staff()
+                row = current_staff[current_staff["name"] == u].iloc[0]
                 stored_p = str(row["password"]).strip().replace(".0", "")
+                
                 if str(p).strip() == stored_p or (str(p).strip() == "0000" and stored_p in ["nan", ""]):
                     st.session_state.user_id = u
                     st.session_state.user_status = row["status"] if pd.notna(row["status"]) else "在職"
-                    # 登入成功後直接跳轉至所選系統
                     st.switch_page(f"pages/{target_sys}.py")
                 else:
                     st.error("密碼錯誤")
     st.stop()
 
-# --- 登入後頁面 (如果使用者直接連到 app.py) ---
 st.title(f"🎉 您已登入為：{st.session_state.user_id}")
-st.write("請使用左側選單切換功能，或點擊下方按鈕登出。")
 if st.button("登出系統"):
     st.session_state.user_id = None
     st.rerun()
