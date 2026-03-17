@@ -33,19 +33,39 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- [資料預設] 依照上傳檔案製作的細項下拉清單資料庫 ---
-QUOTE_ITEMS_DB = {
-    "保護工程": {"unit": "式", "price": 245000, "spec": "室內地坪三層保護(防潮布+瓦楞板+夾板)"},
-    "拆除工程": {"unit": "式", "price": 22000, "spec": "原廚房與主浴輕隔間拆除清運"},
-    "放樣工程": {"unit": "式", "price": 10000, "spec": "現場水平放樣工程"},
-    "大樓清潔費": {"unit": "天", "price": 200, "spec": "管理員代收大樓清潔管理費"},
-    "水電工程": {"unit": "式", "price": 150000, "spec": "全室開關插座與迴路更新"},
-    "木作裝修": {"unit": "式", "price": 300000, "spec": "天花板平釘與造型木作"},
-    "油漆裝修": {"unit": "式", "price": 120000, "spec": "全室水泥漆/乳膠漆粉刷"},
-    "清潔工程": {"unit": "式", "price": 55000, "spec": "施工中粗清與竣工細清"},
-    "追加水泥板": {"unit": "式", "price": 28000, "spec": "牆面局部追加水泥板裝飾"},
-    "其他自填": {"unit": "式", "price": 0, "spec": "手動輸入規格內容"}
+# --- [資料庫] 依照上傳檔案提取的工程、細項、單位資料 ---
+# 包含：假設工程, 泥作與防水工程, 木作裝修工程, 塗裝裝修工程, 水電弱電工程, 清潔工程等
+QUOTE_ENGINEERING_DB = {
+    "假設工程": [
+        {"name": "保護工程", "unit": "式", "price": 245000, "spec": "依管委會標準"},
+        {"name": "原廚房與主浴輕隔間拆除清運", "unit": "式", "price": 22000, "spec": "原隔間拆除"},
+        {"name": "放樣工程", "unit": "式", "price": 10000, "spec": "現場放樣"}
+    ],
+    "泥作與防水工程": [
+        {"name": "玄關花磚", "unit": "片", "price": 550, "spec": "進口花磚"},
+        {"name": "浴室壁磚/地磚鋪設", "unit": "坪", "price": 8500, "spec": "含水泥沙料"},
+        {"name": "全室地面找平工程", "unit": "坪", "price": 2500, "spec": "厚度3-5cm"},
+        {"name": "防水工程(三道施作)", "unit": "式", "price": 35000, "spec": "浴室專用"}
+    ],
+    "木作裝修工程": [
+        {"name": "天花板平釘", "unit": "坪", "price": 3800, "spec": "矽酸鈣板"},
+        {"name": "造型木作電視牆", "unit": "式", "price": 65000, "spec": "含底板結構"},
+        {"name": "更衣室拉門", "unit": "才", "price": 950, "spec": "木工訂製"}
+    ],
+    "塗裝裝修工程": [
+        {"name": "全室乳膠漆粉刷", "unit": "坪", "price": 1200, "spec": "得利乳膠漆"},
+        {"name": "木作表面噴漆", "unit": "式", "price": 45000, "spec": "白色冷烤漆"}
+    ],
+    "清潔工程": [
+        {"name": "施工中粗清", "unit": "式", "price": 55000, "spec": "廢棄物搬運"},
+        {"name": "竣工後細清", "unit": "式", "price": 120000, "spec": "全室除塵窗溝"}
+    ],
+    "其他工程": [
+        {"name": "現場代辦費", "unit": "式", "price": 0, "spec": "其他雜項"}
+    ]
 }
+
+ALL_UNITS = ["式", "片", "坪", "才", "個", "組", "天", "米", "尺", "工", "台", "處", "車", "迴", "開", "包", "樘", "盞"]
 
 # --- 基礎工具 ---
 def get_taiwan_time(): 
@@ -112,7 +132,7 @@ def save_data(df):
     try:
         for col in ["總金額", "已請款金額", "尚未請款金額", "最後採購金額"]: df[col] = df[col].apply(clean_amount)
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
-    except PermissionError: st.error("⚠️ 警告：無法寫入檔案！請關閉 Excel。"); st.stop()
+    except PermissionError: st.error("⚠️ 無法寫入檔案！"); st.stop()
 
 def load_staff():
     df = read_csv_robust(S_FILE)
@@ -148,13 +168,13 @@ if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 for key in ['edit_id', 'last_id', 'view_id']:
     if key not in st.session_state: st.session_state[key] = None
 if 'form_key' not in st.session_state: st.session_state.form_key = 0 
+if 'quote_items' not in st.session_state: st.session_state.quote_items = []
 
 curr_name, is_active, is_admin = st.session_state.user_id, (st.session_state.user_status == "在職"), (st.session_state.user_id in ADMINS)
 
 # --- 側邊欄 ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
-
 avatar_b64 = ""
 try: avatar_b64 = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0].get("avatar", "")
 except: pass
@@ -195,25 +215,21 @@ menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
 
 def get_filtered_db(): return load_data()[load_data()["類型"] == "報價單"]
 
-# --- HTML 報價單渲染 (專業工程格式) ---
+# --- HTML 報價單渲染 ---
 def render_html(row):
     data = parse_quote_json(row.get("請款說明", ""))
     logo_b64 = get_b64_logo()
     lg_html = f'<img src="data:image/png;base64,{logo_b64}" style="height:50px;">' if logo_b64 else ''
-    
     h = f'<div style="padding:20px;border:2px solid #000;background:#fff;color:#000;font-family:sans-serif;">'
-    h += f'<div style="text-align:center;">{lg_html}<h2>時研國際設計股份有限公司</h2><h3>工程報價單</h3></div>'
-    h += f'<p>客戶名稱：{data.get("c_name")} &nbsp;&nbsp; 報價單號：{row["單號"]}<br>客戶電話：{data.get("c_phone")} &nbsp;&nbsp; 專案名稱：{row["專案名稱"]}<br>統一編號：{data.get("tax_id")} &nbsp;&nbsp; 施工地址：{data.get("address")}</p>'
+    h += f'<div style="text-align:center;">{lg_html}<h2>工程報價單</h2></div>'
+    h += f'<p>客戶名稱：{data.get("c_name")} &nbsp;&nbsp; 報價單號：{row["單號"]}<br>專案名稱：{row["專案名稱"]}<br>施工地址：{data.get("address")}</p>'
     h += '<table style="width:100%;border-collapse:collapse;font-size:13px;text-align:center;" border="1">'
-    h += '<tr bgcolor="#eee"><th>品名與規格</th><th>數量</th><th>單位</th><th>單價</th><th>複價</th></tr>'
-    
+    h += '<tr bgcolor="#eee"><th>工程類別</th><th>品名與規格</th><th>數量</th><th>單位</th><th>單價</th><th>複價</th></tr>'
     for item in data.get("items", []):
         qty, price = clean_amount(item.get("qty")), clean_amount(item.get("price"))
-        h += f'<tr><td align="left">{item.get("name")} ({item.get("spec")})</td><td>{qty}</td><td>{item.get("unit")}</td><td align="right">{price:,}</td><td align="right">{qty*price:,}</td></tr>'
-    
-    h += f'<tr><td colspan="4" align="right"><b>總計金額 (TWD)</b></td><td align="right"><b>{clean_amount(row["總金額"]):,}</b></td></tr></table>'
-    h += f'<p>備註說明：{data.get("desc")}</p>'
-    h += f'<p style="font-size:11px;">填單人：{row["申請人"]} &nbsp;&nbsp; 日期：{row["日期"]}</p></div>'
+        h += f'<tr><td>{item.get("eng")}</td><td align="left">{item.get("name")}</td><td>{qty}</td><td>{item.get("unit")}</td><td align="right">{price:,}</td><td align="right">{qty*price:,}</td></tr>'
+    h += f'<tr><td colspan="5" align="right"><b>總計金額 (TWD)</b></td><td align="right"><b>{clean_amount(row["總金額"]):,}</b></td></tr></table>'
+    h += f'<p>備註：{data.get("desc")}</p></div>'
     return h
 
 # ================= 頁面邏輯 =================
@@ -222,100 +238,69 @@ if menu == "1. 填寫申請單":
     st.subheader("📝 填寫工程報價單")
     db = load_data(); staffs = st.session_state.staff_df["name"].tolist()
     
-    init_data = parse_quote_json("")
-    init_pn, init_exe, init_pi = "", staffs[0], ""
     if st.session_state.edit_id:
         r = db[db["單號"]==st.session_state.edit_id].iloc[0]
         init_data = parse_quote_json(r["請款說明"])
-        init_pn, init_exe, init_pi = r["專案名稱"], r["專案負責人"], r["專案編號"]
-
-    with st.form("quote_form"):
-        c1, c2 = st.columns(2)
-        pn = c1.text_input("專案名稱", value=init_pn)
-        exe = c1.selectbox("負責執行長", staffs, index=staffs.index(init_exe) if init_exe in staffs else 0)
-        pi = c2.text_input("專案編號", value=init_pi)
-        
-        st.markdown("---")
+        st.session_state.quote_items = init_data.get("items", [])
+    
+    with st.expander("👤 1. 基本資料輸入", expanded=True):
         cx1, cx2 = st.columns(2)
-        c_name = cx1.text_input("客戶名稱", value=init_data["c_name"])
-        c_phone = cx2.text_input("客戶電話", value=init_data["c_phone"])
-        tax_id = cx1.text_input("統一編號", value=init_data["tax_id"])
-        address = cx2.text_input("施工地址", value=init_data["address"])
-        
-        st.write("**📐 工程細項編輯 (點擊下拉選單選擇品名)**")
-        # 建立預設細項表格
-        items_df = pd.DataFrame(init_data["items"] if init_data["items"] else [{"name":"保護工程", "spec":"", "unit":"式", "qty":1, "price":0}])
-        
-        # 使用 data_editor 並加上下拉選單
-        item_names = list(QUOTE_ITEMS_DB.keys())
-        edited_items = st.data_editor(items_df, num_rows="dynamic", use_container_width=True, column_config={
-            "name": st.column_config.SelectboxColumn("品名工程項目", options=item_names, required=True),
-            "spec": "規格描述",
-            "unit": "單位",
-            "qty": st.column_config.NumberColumn("數量", min_value=0, format="%d"),
-            "price": st.column_config.NumberColumn("單價", min_value=0)
-        })
-        
-        # [自動填充邏輯] 這裡在後端處理，若使用者沒填，則抓取預設值
-        for idx, row in edited_items.iterrows():
-            if row['name'] in QUOTE_ITEMS_DB:
-                if not row['spec']: edited_items.at[idx, 'spec'] = QUOTE_ITEMS_DB[row['name']]['spec']
-                if not row['unit']: edited_items.at[idx, 'unit'] = QUOTE_ITEMS_DB[row['name']]['unit']
-                if row['price'] == 0: edited_items.at[idx, 'price'] = QUOTE_ITEMS_DB[row['name']]['price']
+        pn = cx1.text_input("專案名稱")
+        c_name = cx2.text_input("客戶名稱")
+        address = st.text_input("施工地址")
 
-        desc = st.text_area("備註說明", value=init_data["desc"])
+    with st.expander("📐 2. 報價細項編輯 (下拉選單)", expanded=True):
+        st.write("請從下方選單選取工程類別與品名：")
+        sc1, sc2, sc3 = st.columns([1, 1.5, 1])
+        sel_eng = sc1.selectbox("工程類別", list(QUOTE_ENGINEERING_DB.keys()))
         
-        if st.form_submit_button("💾 儲存並計算總額"):
-            if pn and c_name:
-                total = sum(clean_amount(r["qty"]) * clean_amount(r["price"]) for _, r in edited_items.iterrows())
-                packed = "[報價單資料]\n" + json.dumps({
-                    "c_name": c_name, "c_phone": c_phone, "tax_id": tax_id, "address": address, "desc": desc,
-                    "items": edited_items.to_dict('records')
-                }, ensure_ascii=False)
-                
-                if st.session_state.edit_id:
-                    idx = db[db["單號"]==st.session_state.edit_id].index[0]
-                    db.loc[idx, ["專案名稱", "專案負責人", "專案編號", "請款說明", "總金額", "尚未請款金額"]] = [pn, exe, pi, packed, total, total]
-                    st.session_state.edit_id = None
-                else:
-                    tid = f"Q{datetime.date.today().strftime('%Y%m%d')}-{len(db[db['單號'].str.startswith('Q')])+1:02d}"
-                    nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"報價單", "申請人":curr_name, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed, "總金額":total, "狀態":"已儲存", "尚未請款金額":total, "已請款金額":0}
-                    db = pd.concat([db, pd.DataFrame([nr])], ignore_index=True)
-                    st.session_state.last_id = tid
-                save_data(db); st.success(f"儲存成功！總金額：${total:,}"); st.rerun()
+        # 根據工程類別過濾品名
+        item_options = [i['name'] for i in QUOTE_ENGINEERING_DB[sel_eng]]
+        sel_item_name = sc2.selectbox("品名與規格", item_options)
+        
+        # 抓取預設資料
+        default_info = next(i for i in QUOTE_ENGINEERING_DB[sel_eng] if i['name'] == sel_item_name)
+        
+        sc4, sc5, sc6 = st.columns([1, 1, 1])
+        sel_unit = sc4.selectbox("單位", ALL_UNITS, index=ALL_UNITS.index(default_info['unit']) if default_info['unit'] in ALL_UNITS else 0)
+        sel_qty = sc5.number_input("數量", min_value=1, value=1)
+        sel_price = sc6.number_input("單價", min_value=0, value=default_info['price'])
+        
+        if st.button("➕ 新增至清單"):
+            st.session_state.quote_items.append({
+                "eng": sel_eng, "name": sel_item_name, "unit": sel_unit, "qty": sel_qty, "price": sel_price
+            })
+            st.rerun()
+
+    if st.session_state.quote_items:
+        st.write("**📋 目前已加入細項**")
+        temp_df = pd.DataFrame(st.session_state.quote_items)
+        st.table(temp_df)
+        if st.button("🗑️ 清空所有細項"):
+            st.session_state.quote_items = []; st.rerun()
+
+    if st.button("💾 儲存並產生報價單", type="primary"):
+        if pn and c_name and st.session_state.quote_items:
+            total = sum(i['qty'] * i['price'] for i in st.session_state.quote_items)
+            packed = "[報價單資料]\n" + json.dumps({"c_name": c_name, "address": address, "items": st.session_state.quote_items}, ensure_ascii=False)
+            tid = f"Q{datetime.date.today().strftime('%Y%m%d')}-{len(db[db['單號'].str.startswith('Q')])+1:02d}"
+            nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"報價單", "申請人":curr_name, "專案名稱":pn, "請款說明":packed, "總金額":total, "狀態":"已核准", "尚未請款金額":total, "已請款金額":0}
+            save_data(pd.concat([db, pd.DataFrame([nr])], ignore_index=True)); st.success("儲存成功！"); st.session_state.last_id = tid; st.rerun()
+        else: st.error("請填寫專案名稱、客戶名稱並至少新增一項細項")
 
     if st.session_state.last_id:
-        c1, c2, c3 = st.columns(3)
-        if c1.button("🚀 提交審核 (直接核准)"):
-            fdb = load_data(); idx = fdb[fdb["單號"]==st.session_state.last_id].index[0]
-            fdb.at[idx, "狀態"] = "已核准"; save_data(fdb); st.session_state.last_id = None; st.success("已完成"); st.rerun()
-        if c2.button("🔍 線上預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
-        if c3.button("🆕 下一筆"): st.session_state.last_id = None; st.rerun()
-
-    st.divider(); st.subheader("📋 報價追蹤清單")
-    my_db = get_filtered_db()
-    if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
-    for i, r in my_db.iterrows():
-        c1, c2, c3, c4, c5 = st.columns([1.5, 2, 1, 1, 3])
-        c1.write(r["單號"]); c2.write(r["專案名稱"]); c3.write(f"${clean_amount(r['總金額']):,}"); c4.write(r["狀態"])
-        with c5:
-            b1, b2, b3 = st.columns(3)
-            if b1.button("預覽", key=f"v_{i}"): st.session_state.view_id = r["單號"]; st.rerun()
-            if b2.button("修改", key=f"e_{i}"): st.session_state.edit_id = r["單號"]; st.rerun()
-            if b3.button("刪除", key=f"d_{i}"):
-                fdb = load_data(); fdb.at[fdb[fdb["單號"]==r["單號"]].index[0], "狀態"] = "已刪除"; save_data(fdb); st.rerun()
-
-elif menu == "2. 專案執行長簽核":
-    render_header(); st.info("報價單預設免簽核。此區供查閱已提交項目。")
+        c1, c2 = st.columns(2)
+        if c1.button("🔍 預覽"): st.session_state.view_id = st.session_state.last_id; st.rerun()
+        if c2.button("🆕 下一筆"): st.session_state.last_id = None; st.session_state.quote_items = []; st.rerun()
 
 elif menu == "4. 表單狀態總覽及轉採購單":
     render_header()
     st.subheader("📊 表單狀態總覽及轉採購單")
     sys_db = get_filtered_db()
     if not sys_db.empty:
-        st.info("💡 勾選左側框並填寫【本次轉採購金額】，點擊執行後系統將自動生成採購單草稿。")
+        st.info("💡 勾選報價單並填入「本次轉採購金額」，點擊按鈕即可一鍵生成採購單草稿。")
         df = sys_db.copy(); df.insert(0, "轉成採購單", False); df.insert(1, "本次轉採購金額", 0)
-        target_cols = ["轉成採購單", "本次轉採購金額", "單號", "專案名稱", "專案負責人", "申請人", "總金額", "狀態", "已請款金額", "尚未請款金額"]
+        target_cols = ["轉成採購單", "本次轉採購金額", "單號", "專案名稱", "總金額", "狀態", "已請款金額", "尚未請款金額"]
         edited = st.data_editor(df[target_cols], disabled=["單號","專案名稱","總金額","狀態","已請款金額","尚未請款金額"], hide_index=True, use_container_width=True, column_config={"轉成採購單": st.column_config.CheckboxColumn("勾選轉換"), "本次轉採購金額": st.column_config.NumberColumn("金額 (雙擊輸入)", min_value=0)})
         
         if st.button("🚀 執行轉換 (產生採購單草稿)"):
@@ -324,29 +309,21 @@ elif menu == "4. 表單狀態總覽及轉採購單":
                 amt = row["本次轉採購金額"]
                 if row["轉成採購單"] and amt > 0:
                     orig_idx = fdb[fdb["單號"]==row["單號"]].index[0]
-                    remain = clean_amount(fdb.at[orig_idx, "尚未請款金額"])
-                    if amt > remain: st.error(f"❌ {row['單號']} 失敗：金額超過剩餘報價餘額！"); continue
-                    
-                    fdb.at[orig_idx, "已請款金額"] += amt
-                    fdb.at[orig_idx, "尚未請款金額"] -= amt
-                    # 產生新採購單號
+                    if amt > clean_amount(fdb.at[orig_idx, "尚未請款金額"]): st.error("超額！"); continue
+                    fdb.at[orig_idx, "已請款金額"] += amt; fdb.at[orig_idx, "尚未請款金額"] -= amt
                     new_id = f"PO-FROM-{row['單號']}-{int(time.time())%1000}"
-                    nr = {"單號":new_id, "日期":str(datetime.date.today()), "類型":"採購單", "申請人":curr_name, "專案名稱":row["專案名稱"], "專案負責人":fdb.at[orig_idx, '專案負責人'], "總金額":amt, "狀態":"已儲存", "請款說明":f"由報價單 {row['單號']} 轉換生成"}
+                    nr = {"單號":new_id, "日期":str(datetime.date.today()), "類型":"採購單", "申請人":curr_name, "專案名稱":row["專案名稱"], "總金額":amt, "狀態":"已儲存", "請款說明":f"由報價單 {row['單號']} 轉換"}
                     fdb = pd.concat([fdb, pd.DataFrame([nr])], ignore_index=True); count += 1
-            if count > 0: save_data(fdb); st.success(f"✅ 成功轉換 {count} 筆！請至採購單系統處理發包。"); st.rerun()
+            if count > 0: save_data(fdb); st.success(f"成功轉換 {count} 筆！"); st.rerun()
 
 elif menu == "5. 請款狀態/系統設定":
-    render_header()
-    st.subheader("⚙️ 系統設定 (與各系統同步)")
-    col1, col2 = st.columns(2)
-    with col1:
-        if os.path.exists(D_FILE):
-            with open(D_FILE, "rb") as f: st.download_button("⬇️ 下載資料庫備份", f, file_name="時研系統備份.csv")
-    with col2:
-        up = st.file_uploader("⬆️ 還原資料庫", type=["csv"])
-        if up and st.button("確認還原"):
-            with open(D_FILE, "wb") as f: f.write(up.getbuffer())
-            st.success("還原成功！"); st.rerun()
+    render_header(); st.subheader("⚙️ 系統設定與資料備份")
+    if os.path.exists(D_FILE):
+        with open(D_FILE, "rb") as f: st.download_button("⬇️ 下載資料庫備份", f, file_name="系統備份.csv")
+    up = st.file_uploader("⬆️ 上傳備份還原")
+    if up and st.button("確認還原"):
+        with open(D_FILE, "wb") as f: f.write(up.getbuffer())
+        st.success("還原成功！"); st.rerun()
 
 # --- 全域預覽 ---
 if st.session_state.view_id:
