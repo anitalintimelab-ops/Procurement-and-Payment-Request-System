@@ -6,26 +6,21 @@ import base64
 import time
 import requests  
 
-# --- 強制系統身分鎖定 ---
+# --- 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "採購單系統"
-
-# --- 1. 系統設定 ---
 st.set_page_config(page_title="時研-採購單系統", layout="wide", page_icon="🏢")
 
-# [手機版 RWD 響應式優化 CSS & 隱藏左側 app 選單]
 st.markdown("""
 <style>
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
 @media screen and (max-width: 768px) {
     .block-container { padding-top: 1.5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
-    table { word-wrap: break-word !important; font-size: 13px !important; }
-    th, td { padding: 5px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 絕對路徑定位 ---
+# --- 路徑定位 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
 D_FILE = os.path.join(B_DIR, "database.csv")
@@ -112,7 +107,6 @@ def load_staff():
     if "status" not in df.columns: df["status"] = "在職"
     if "avatar" not in df.columns: df["avatar"] = ""
     if "line_uid" not in df.columns: df["line_uid"] = ""
-    df["name"] = df["name"].astype(str).str.strip()
     return df
 
 def save_staff(df): df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
@@ -134,26 +128,38 @@ def render_header():
 def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 def is_pdf(b64_str): return str(b64_str).startswith("JVBERi")
 
-# --- 全新 PDF 預覽核心引擎 (徹底解決無法預覽與語法錯誤) ---
-def display_pdf(b64_str, height=650):
+# --- 全新安全 PDF 原生渲染引擎 (無下載按鈕、不崩潰) ---
+def display_pdf(b64_str, height=700):
     clean_b64 = str(b64_str).replace('\n', '').replace('\r', '')
     html_code = f"""
-    <script>
-        try {{
-            var pdfData = "{clean_b64}";
-            var byteCharacters = atob(pdfData);
-            var byteNumbers = new Array(byteCharacters.length);
-            for (var i = 0; i < byteCharacters.length; i++) {{ 
-                byteNumbers[i] = byteCharacters.charCodeAt(i); 
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ margin: 0; padding: 0; overflow: hidden; background-color: #f0f2f6; }}
+            iframe {{ width: 100%; height: {height}px; border: none; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }}
+        </style>
+    </head>
+    <body>
+        <iframe id="pdf-viewer"></iframe>
+        <script>
+            try {{
+                const b64Data = "{clean_b64}";
+                const byteCharacters = atob(b64Data);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {{
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }}
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], {{type: 'application/pdf'}});
+                const url = URL.createObjectURL(blob);
+                document.getElementById('pdf-viewer').src = url;
+            }} catch (e) {{
+                document.write('<div style="padding: 20px; text-align: center; color: red; font-family: sans-serif;"><h3>⚠️ PDF 預覽載入失敗</h3><p>檔案格式可能損壞或瀏覽器阻擋執行。</p></div>');
             }}
-            var byteArray = new Uint8Array(byteNumbers);
-            var blob = new Blob([byteArray], {{type: "application/pdf"}});
-            var url = URL.createObjectURL(blob);
-            document.write('<iframe src="' + url + '" width="100%" height="{height}px" style="border:none;"></iframe>');
-        }} catch (e) {{
-            document.write('<p style="color:red; text-align:center;">❌ PDF 載入發生錯誤，請確認檔案格式是否正確。</p>');
-        }}
-    </script>
+        </script>
+    </body>
+    </html>
     """
     st.components.v1.html(html_code, height=height)
 
@@ -172,7 +178,7 @@ curr_name = st.session_state.user_id
 is_active = (st.session_state.user_status == "在職")
 is_admin = (curr_name in ADMINS)
 
-# --- 左側側邊欄 ---
+# --- 左側側邊欄 (嚴格與請款單一致) ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
 
@@ -245,7 +251,13 @@ def render_html(row):
     c_cur = str(row.get("幣別", "TWD")).replace("nan", "TWD")
     h += f'<tr><td colspan="3" align="right">預計採購金額</td><td align="right">{c_cur} {amt:,.0f}</td></tr></table>'
     if row["狀態"] == "已駁回": h += f'<p style="color:red;"><b>❌ 駁回原因：</b>{row["駁回原因"]}</p>'
-    h += f'<p>提交: {row.get("提交時間","")} | 初審: {row.get("初審人","")} {row.get("初審時間","")}</p></div>'
+    h += f'<p>提交: {row.get("提交時間","")} | 初審: {row.get("初審人","")} {row.get("初審時間","")}</p>'
+    
+    # 列印模式下隱藏巨大且容易崩潰的 PDF 原始碼，改為提示字元
+    if row.get('影像Base64') and is_pdf(row['影像Base64'].split('|')[0]):
+        h += '<br><p style="color:blue;"><b>[PDF 附件檔案請於系統預覽介面中查看]</b></p></div>'
+    else:
+        h += '</div>'
     return h
 
 def render_upload_popover(container, r, prefix):
@@ -263,7 +275,6 @@ def render_upload_popover(container, r, prefix):
 if menu == "1. 填寫申請單":
     render_header()
     st.subheader("填寫申請單")
-    
     try:
         db = load_data()
         staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
@@ -318,13 +329,13 @@ if menu == "1. 填寫申請單":
                 if is_pdf(dv["ab64"]): display_pdf(dv["ab64"], height=250)
                 else: st.image(base64.b64decode(dv["ab64"]), width=200)
                 del_acc = st.checkbox("❌ 刪除此存摺", key=f"da_{mode_suffix}")
-            f_acc = st.file_uploader("上傳存摺 (支援圖片與PDF)", type=["png", "jpg", "jpeg", "pdf"], key=f"fa_{mode_suffix}")
+            f_acc = st.file_uploader("上傳存摺 (支援圖/PDF)", type=["png", "jpg", "jpeg", "pdf"], key=f"fa_{mode_suffix}")
             
             del_ims = False
             if dv["ib64"]:
                 st.write("✅ 已有憑證")
                 del_ims = st.checkbox("❌ 刪除所有憑證", key=f"di_{mode_suffix}")
-            f_ims = st.file_uploader("上傳憑證 (支援圖片與PDF)", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True, key=f"fi_{mode_suffix}")
+            f_ims = st.file_uploader("上傳憑證 (支援圖/PDF)", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True, key=f"fi_{mode_suffix}")
             
             if st.form_submit_button("💾 儲存", disabled=not is_active):
                 db = load_data()
@@ -379,7 +390,8 @@ if menu == "1. 填寫申請單":
             c1, c2, cx, c3, c4, c5, c6 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
             c1.write(r["單號"]); c2.write(r["專案名稱"]); cx.write(clean_name(r["專案負責人"])); c3.write(r["申請人"]); c4.write(f"{str(r.get('幣別','TWD')).replace('nan','TWD')} ${clean_amount(r['總金額']):,.0f}")
             stt = r["狀態"]
-            c5.markdown(f":{'blue' if stt in ['已儲存', '草稿'] else 'orange' if '待' in stt else 'green' if stt == '已核准' else 'red' if stt == '已駁回' else 'gray'}[**{stt}**]")
+            color = "blue" if stt in ["已儲存", "草稿"] else "orange" if "待" in stt else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
+            c5.markdown(f":{color}[**{stt}**]")
             
             with c6:
                 b1, b2, b3, b4, b5, b6 = st.columns(6)
@@ -418,9 +430,8 @@ if menu == "1. 填寫申請單":
                                     save_data(fresh_db); st.rerun()
                                 else: st.error("請輸入原因")
                     else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
-                render_upload_popover(b6, r, f"m1_up_{i}")
 
-    except Exception as e: st.error(f"錯誤：{e}")
+                render_upload_popover(b6, r, f"m1_up_{i}")
 
 # --- 頁面 2: 執行長簽核 ---
 elif menu == "2. 專案執行長簽核":
@@ -473,7 +484,6 @@ elif menu == "2. 專案執行長簽核":
                 
                 if (r["專案負責人"] == curr_name) and is_active and (r["狀態"] == "已核准"):
                     with lb3.popover("📝 更新"):
-                        st.write("**📝 採購單後續修改**")
                         new_bill_stat = st.text_input("請款狀態", value=str(r.get("請款狀態", "")), key=f"c_bs_{i}")
                         new_billed = st.number_input("已請款金額", value=int(clean_amount(r.get("已請款金額", 0))), min_value=0, key=f"c_ba_{i}")
                         new_unbilled = st.number_input("尚未請款金額", value=int(clean_amount(r.get("尚未請款金額", 0))), min_value=0, key=f"c_ua_{i}")
@@ -588,14 +598,15 @@ elif menu == "4. 表單狀態總覽及轉請款單":
                     fresh_db = pd.concat([fresh_db, pd.DataFrame([nr])], ignore_index=True)
                     converted_count += 1
             if converted_count > 0:
-                save_data(fresh_db); st.success(f"✅ 成功轉換 {converted_count} 筆！請切換至「請款單系統」進行後續提交。")
+                save_data(fresh_db); st.success(f"✅ 成功轉換 {converted_count} 筆！原始採購單餘額已更新，請切換至「請款單系統」進行後續提交。")
                 time.sleep(1.5); st.rerun()
             elif not has_error: st.warning("請確保有勾選項目，且輸入金額大於 0！")
     else: st.info("尚無您的表單狀態紀錄。")
 
-# --- 頁面 5: 請款狀態/系統設定 ---
+# --- 頁面 5: 請款狀態/系統設定 (名稱及畫面嚴格一致) ---
 elif menu == "5. 請款狀態/系統設定":
     render_header()
+    
     st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
     
     with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
