@@ -243,7 +243,7 @@ if 'last_id' not in st.session_state: st.session_state.last_id = None
 if 'view_id' not in st.session_state: st.session_state.view_id = None
 if 'form_key' not in st.session_state: st.session_state.form_key = 0 
 
-# --- 登入狀態檢查 ---
+# --- 登入檢查 ---
 if st.session_state.user_id is None:
     st.switch_page("app.py")
 
@@ -383,7 +383,7 @@ def get_filtered_db():
     db["類型"] = db["類型"].astype(str).str.strip()
     return db[db["類型"] == "採購單"]
 
-# --- HTML 渲染 ---
+# --- HTML 渲染 (已修復 PDF 預覽，改為 iframe 確保顯示) ---
 def render_html(row):
     amt = clean_amount(row['總金額'])
     fee = 30 if row['付款方式'] == "匯款(扣30手續費)" else 0
@@ -449,7 +449,7 @@ def render_html(row):
     if row['帳戶影像Base64']:
         h += '<br><b>存摺：</b><br>'
         if is_pdf(row['帳戶影像Base64']): 
-            h += f'<embed src="data:application/pdf;base64,{row["帳戶影像Base64"]}" width="100%" height="300px" />'
+            h += f'<iframe src="data:application/pdf;base64,{row["帳戶影像Base64"]}" width="100%" height="400px" style="border: none;"></iframe>'
         else: 
             h += f'<img src="data:image/jpeg;base64,{row["帳戶影像Base64"]}" width="100%">'
         
@@ -464,7 +464,7 @@ def render_html(row):
         for i, img in enumerate(imgs):
             v += '<div style="page-break-before:always;padding:20px;">'
             if is_pdf(img): 
-                v += f'<embed src="data:application/pdf;base64,{img}" width="100%" height="800px" />'
+                v += f'<iframe src="data:application/pdf;base64,{img}" width="100%" height="800px" style="border: none;"></iframe>'
             else: 
                 v += f'<img src="data:image/jpeg;base64,{img}" width="100%">'
             v += '</div>'
@@ -543,7 +543,8 @@ if menu == "1. 填寫申請單":
             
             pi = c2.text_input("專案編號", value=dv["pi"], key=f"pi_{mode_suffix}")
             
-            amt = c2.number_input("預計採購金額", value=int(max(0, dv["amt"])), min_value=0, key=f"amt_{mode_suffix}")
+            amt_label = "預計採購金額"
+            amt = c2.number_input(amt_label, value=int(max(0, dv["amt"])), min_value=0, key=f"amt_{mode_suffix}")
             
             currency = c2.selectbox("幣別", curr_options, index=curr_options.index(dv["curr"]), key=f"curr_{mode_suffix}")
             
@@ -569,18 +570,19 @@ if menu == "1. 填寫申請單":
             del_acc = False
             if dv["ab64"]:
                 st.write("✅ 已有存摺")
+                # 修復填寫表單中的 PDF 預覽
                 if is_pdf(dv["ab64"]): 
-                    st.markdown(f'<embed src="data:application/pdf;base64,{dv["ab64"]}" width="100%" height="200px" />', unsafe_allow_html=True)
+                    st.components.v1.html(f'<iframe src="data:application/pdf;base64,{dv["ab64"]}" width="100%" height="250px" style="border:none;"></iframe>', height=250)
                 else: 
                     st.image(base64.b64decode(dv["ab64"]), width=200)
                 del_acc = st.checkbox("❌ 刪除此存摺", key=f"da_{mode_suffix}")
-            f_acc = st.file_uploader("上傳存摺 (支援圖片/PDF)", type=["png", "jpg", "jpeg", "pdf"], key=f"fa_{mode_suffix}")
+            f_acc = st.file_uploader("上傳存摺 (支援圖片與PDF)", type=["png", "jpg", "jpeg", "pdf"], key=f"fa_{mode_suffix}")
             
             del_ims = False
             if dv["ib64"]:
                 st.write("✅ 已有憑證")
                 del_ims = st.checkbox("❌ 刪除所有憑證", key=f"di_{mode_suffix}")
-            f_ims = st.file_uploader("上傳憑證 (支援圖片/PDF)", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True, key=f"fi_{mode_suffix}")
+            f_ims = st.file_uploader("上傳憑證 (支援圖片與PDF)", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True, key=f"fi_{mode_suffix}")
             
             if st.form_submit_button("💾 儲存", disabled=not is_active):
                 db = load_data()
@@ -721,8 +723,8 @@ if menu == "1. 填寫申請單":
                 is_own = (str(r["申請人"]).strip() == curr_name) or (str(r.get("代申請人", "")).strip() == curr_name)
                 can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
                 
-                # 更新功能：採購單已核准即可更新後續請款狀況
-                can_po_post_edit = (stt == "已核准" and is_active)
+                is_po = True
+                can_po_post_edit = (is_po and stt == "已核准" and is_active)
                 
                 if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                     fresh_db = load_data()
@@ -811,7 +813,7 @@ elif menu == "2. 專案執行長簽核":
         if p_df.empty: 
             st.info("目前無待簽核單據")
         else: 
-            sys_type_display = "預計採購金額"
+            sys_type_display = "預計採購金額" 
             h1, h2, hx, h3, h4, h5, h6 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.0])
             h1.write("**單號**"); h2.write("**專案名稱**"); hx.write("**負責執行長**"); h3.write("**申請人**")
             h4.write(f"**{sys_type_display}**"); h5.write("**提交時間**"); h6.write("**操作**")
@@ -836,7 +838,7 @@ elif menu == "2. 專案執行長簽核":
                         idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                         proj_name = r['專案名稱']
                         
-                        # --- [修改] 採購單審核到執行長即可，直接標示為「已核准」 ---
+                        # --- 採購單審核到執行長即可，直接標示為「已核准」 ---
                         fresh_db.at[idx, "狀態"] = "已核准"
                         fresh_db.at[idx, "初審人"] = curr_name
                         fresh_db.at[idx, "初審時間"] = get_taiwan_time()
@@ -863,9 +865,9 @@ elif menu == "2. 專案執行長簽核":
         st.subheader("📜 歷史紀錄 (已核准/已駁回)")
         
         if is_admin: 
-            h_df = sys_db[sys_db["狀態"].isin(["已核准", "已駁回"])]
+            h_df = sys_db[sys_db["狀態"].isin(["待複審", "已核准", "已駁回"])]
         else: 
-            h_df = sys_db[(sys_db["專案負責人"] == curr_name) & (sys_db["狀態"].isin(["已核准", "已駁回"]))]
+            h_df = sys_db[(sys_db["專案負責人"] == curr_name) & (sys_db["狀態"].isin(["待複審", "已核准", "已駁回"]))]
             
         if h_df.empty: 
             st.info("尚無紀錄")
@@ -919,7 +921,7 @@ elif menu == "2. 專案執行長簽核":
     except Exception as e:
         st.error(f"載入頁面時發生異常，請聯絡管理員確認資料庫是否正確。錯誤訊息：{str(e)}")
 
-# --- 頁面 3: 財務長簽核 ---
+# --- 頁面 3: 財務長簽核 (功能保留) ---
 elif menu == "3. 財務長簽核":
     render_header()
     st.subheader("🏁 財務長簽核 (功能保留)")
@@ -1026,10 +1028,11 @@ elif menu == "4. 表單狀態總覽":
         display_df = sys_db.copy()
         if not display_df.empty:
             
-            # --- [新增/修改] 一鍵轉請款單邏輯，支援金額驗證 ---
-            st.info("💡 勾選採購單並輸入「本次請款金額」，即可一鍵建立新的請款單草稿！(請注意：請款金額不得超過尚未請款金額)")
+            st.info("💡 勾選採購單並「雙擊」下方輸入框填寫【本次請款金額】，確認無誤後點擊送出，即可一鍵建立新的請款單草稿！(請注意：請款金額不得超過尚未請款金額)")
+            
+            # --- [修改] 金額欄位名稱，提示雙擊編輯 ---
             display_df.insert(0, "轉成請款單", False)
-            display_df.insert(1, "本次請款金額", 0)
+            display_df.insert(1, "本次請款金額(點擊輸入)", 0)
             
             display_df["負責執行長"] = display_df["專案負責人"]
             display_df["預計採購金額"] = display_df.apply(lambda x: f"{str(x.get('幣別','TWD')).replace('nan','TWD')} ${clean_amount(x.get('總金額',0)):,.0f}", axis=1)
@@ -1040,14 +1043,15 @@ elif menu == "4. 表單狀態總覽":
             
             display_df = display_df.rename(columns={"單號": "申請單號"})
             
-            target_cols = ["轉成請款單", "本次請款金額", "申請單號", "專案名稱", "負責執行長", "申請人", "預計採購金額", "狀態", "請款狀態", "已請款金額", "尚未請款金額"]
+            target_cols = ["轉成請款單", "本次請款金額(點擊輸入)", "申請單號", "專案名稱", "負責執行長", "申請人", "預計採購金額", "狀態", "請款狀態", "已請款金額", "尚未請款金額"]
             edited_df = st.data_editor(
                 display_df[target_cols],
                 disabled=["申請單號", "專案名稱", "負責執行長", "申請人", "預計採購金額", "狀態", "請款狀態", "已請款金額", "尚未請款金額"],
+                hide_index=True,
                 use_container_width=True,
                 column_config={
                     "轉成請款單": st.column_config.CheckboxColumn("勾選轉換"),
-                    "本次請款金額": st.column_config.NumberColumn("本次請款金額", min_value=0, step=1),
+                    "本次請款金額(點擊輸入)": st.column_config.NumberColumn("本次請款金額 (雙擊輸入)", min_value=0, step=1),
                 }
             )
             
@@ -1057,7 +1061,7 @@ elif menu == "4. 表單狀態總覽":
                 has_error = False
                 
                 for i, row in edited_df.iterrows():
-                    conv_amt = row.get("本次請款金額")
+                    conv_amt = row.get("本次請款金額(點擊輸入)")
                     if bool(row.get("轉成請款單")) and pd.notna(conv_amt) and int(float(conv_amt)) > 0:
                         orig_id = row["申請單號"]
                         orig_idx = fresh_db[fresh_db["單號"]==orig_id].index[0]
@@ -1065,7 +1069,7 @@ elif menu == "4. 表單狀態總覽":
                         
                         real_conv_amt = int(float(conv_amt))
                         
-                        # 驗證邏輯
+                        # 驗證邏輯：確保請款金額不超過尚未請款金額
                         final_amt = clean_amount(orig_row.get("最後採購金額", 0))
                         if final_amt == 0: 
                             final_amt = clean_amount(orig_row.get("總金額", 0))
@@ -1076,9 +1080,9 @@ elif menu == "4. 表單狀態總覽":
                         if real_conv_amt > current_unbilled:
                             st.error(f"❌ 單號 {orig_id} 失敗：本次請款金額 ({real_conv_amt:,}) 超過尚未請款金額 ({current_unbilled:,})！")
                             has_error = True
-                            continue # 跳過這筆，繼續處理下一筆
+                            continue 
                         
-                        # 金額正確，執行更新
+                        # 金額正確，執行採購單餘額更新
                         new_billed = current_billed + real_conv_amt
                         new_unbilled = current_unbilled - real_conv_amt
                         
@@ -1086,7 +1090,7 @@ elif menu == "4. 表單狀態總覽":
                         fresh_db.at[orig_idx, "尚未請款金額"] = new_unbilled
                         fresh_db.at[orig_idx, "請款狀態"] = "已轉請款單"
                         
-                        # 新增一筆全新的請款單紀錄 (保留歷史)
+                        # 自動產生請款單草稿
                         today_str = datetime.date.today().strftime('%Y%m%d')
                         today_count = len(fresh_db[fresh_db["單號"].astype(str).str.startswith(today_str)])
                         new_tid = f"{today_str}-{today_count+1:02d}"
@@ -1241,7 +1245,7 @@ elif menu == "5. 請款狀態/系統設定":
     except Exception as e:
         st.error(f"載入頁面時發生異常，請聯絡管理員確認資料庫是否正確。錯誤訊息：{str(e)}")
 
-# [全域預覽] 放在最底下確保渲染
+# --- [修改] 全域預覽使用 components 支援 PDF 渲染 ---
 if st.session_state.view_id:
     st.markdown("---")
     try:
@@ -1252,6 +1256,7 @@ if st.session_state.view_id:
             if c2.button("❌ 關閉預覽", key="close_view"): 
                 st.session_state.view_id = None
                 st.rerun()
-            st.markdown(render_html(r.iloc[0]), unsafe_allow_html=True)
+            # 支援 PDF iframe 顯示
+            st.components.v1.html(render_html(r.iloc[0]), height=800, scrolling=True)
     except Exception as e:
         st.error(f"預覽發生錯誤：{str(e)}")
