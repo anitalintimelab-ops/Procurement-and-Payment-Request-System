@@ -75,7 +75,6 @@ def get_online_users(curr_user):
     except Exception: 
         return 1
 
-# [核心修復] 明確定義 LINE 憑證讀取
 def get_line_credentials():
     if os.path.exists(L_FILE):
         try:
@@ -196,44 +195,6 @@ def render_header():
 
 def clean_for_js(h_str): 
     return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
-
-def is_pdf(b64_str): 
-    return str(b64_str).startswith("JVBERi")
-
-# --- 無下載按鈕 PDF 原生預覽 (Blob) ---
-def display_pdf(b64_str, height=700):
-    clean_b64 = str(b64_str).replace('\n', '').replace('\r', '')
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body {{ margin: 0; padding: 0; overflow: hidden; background-color: #f0f2f6; }}
-            iframe {{ width: 100%; height: {height}px; border: none; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 5px; }}
-        </style>
-    </head>
-    <body>
-        <iframe id="pdf-viewer"></iframe>
-        <script>
-            try {{
-                const b64Data = "{clean_b64}";
-                const byteCharacters = atob(b64Data);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {{
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }}
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], {{type: 'application/pdf'}});
-                const url = URL.createObjectURL(blob);
-                document.getElementById('pdf-viewer').src = url;
-            }} catch (e) {{
-                document.write('<div style="padding: 20px; text-align: center; color: red; font-family: sans-serif;"><h3>⚠️ PDF 預覽載入失敗</h3><p>請確認檔案格式是否正確。</p></div>');
-            }}
-        </script>
-    </body>
-    </html>
-    """
-    st.components.v1.html(html_code, height=height)
 
 # --- Session 初始化 ---
 if 'db' not in st.session_state: st.session_state.db = load_data()
@@ -402,17 +363,27 @@ def render_html(row):
         
     h += f'<p style="margin-top:10px;">提交: {app_info} | 初審: {chu_info} | 複審: {fu_info}</p>'
     
-    if row.get('影像Base64') and is_pdf(row['影像Base64'].split('|')[0]):
-        h += '<br><p style="color:blue;"><b>[PDF 附件檔案請於系統預覽介面中查看]</b></p></div>'
-    else:
-        h += '</div>'
-    return h
+    if row.get('帳戶影像Base64'):
+        h += '<br><b>存摺：</b><br>'
+        h += f'<img src="data:image/jpeg;base64,{row["帳戶影像Base64"]}" width="100%">'
+
+    h += '</div>'
+    
+    v = ""
+    if row.get('影像Base64'):
+        imgs = row['影像Base64'].split('|')
+        for i, img in enumerate(imgs):
+            v += '<div style="page-break-before:always;padding:20px;">'
+            v += f'<img src="data:image/jpeg;base64,{img}" width="100%">'
+            v += '</div>'
+            
+    return h + v
 
 def render_upload_popover(container, r, prefix):
     with container.popover("📎 附件"):
-        st.write("**上傳新附件 (支援圖/PDF)**")
-        new_f_acc = st.file_uploader("存摺", type=["png", "jpg", "jpeg", "pdf"], key=f"{prefix}_a")
-        new_f_ims = st.file_uploader("憑證", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True, key=f"{prefix}_i")
+        st.write("**上傳新附件 (覆蓋原檔)**")
+        new_f_acc = st.file_uploader("存摺", type=["png", "jpg", "jpeg"], key=f"{prefix}_a")
+        new_f_ims = st.file_uploader("憑證", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key=f"{prefix}_i")
         if st.button("💾 儲存", key=f"{prefix}_b"):
             fresh_db = load_data()
             idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
@@ -502,18 +473,18 @@ if menu == "1. 填寫申請單":
             del_acc = False
             if dv["ab64"]:
                 st.write("✅ 已有存摺")
-                if is_pdf(dv["ab64"]): 
-                    display_pdf(dv["ab64"], height=250)
-                else: 
+                try: 
                     st.image(base64.b64decode(dv["ab64"]), width=200)
+                except Exception: 
+                    st.write("無法顯示圖片")
                 del_acc = st.checkbox("❌ 刪除此存摺", key=f"da_{mode_suffix}")
-            f_acc = st.file_uploader("上傳存摺 (支援圖/PDF)", type=["png", "jpg", "jpeg", "pdf"], key=f"fa_{mode_suffix}")
+            f_acc = st.file_uploader("上傳存摺", type=["png", "jpg", "jpeg"], key=f"fa_{mode_suffix}")
             
             del_ims = False
             if dv["ib64"]:
                 st.write("✅ 已有憑證")
                 del_ims = st.checkbox("❌ 刪除所有憑證", key=f"di_{mode_suffix}")
-            f_ims = st.file_uploader("上傳憑證 (支援圖/PDF)", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True, key=f"fi_{mode_suffix}")
+            f_ims = st.file_uploader("上傳憑證", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key=f"fi_{mode_suffix}")
             
             if st.form_submit_button("💾 儲存", disabled=not is_active):
                 db = load_data()
@@ -1096,9 +1067,9 @@ if st.session_state.view_id:
             if r.iloc[0].get("影像Base64"):
                 st.markdown("#### 📎 附件檔案")
                 for img in r.iloc[0]["影像Base64"].split('|'):
-                    if is_pdf(img): 
-                        display_pdf(img)
-                    else: 
+                    try: 
                         st.image(base64.b64decode(img), use_container_width=True)
+                    except Exception: 
+                        st.write("無法顯示圖片")
     except Exception as e: 
         st.error(f"預覽發生錯誤：{str(e)}")
