@@ -445,3 +445,250 @@ elif menu == "2. 專案執行長簽核":
                     fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                     fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["已核准", curr_name, get_taiwan_time()]
                     send_line_message(f"🔔 【採購單核准】\n單號：{r['單號']}\n專案：{r['專案名稱']}\n已核准此採購單！")
+                    save_data(fresh_db); st.rerun()
+                if can_sign:
+                    with b3.popover("❌ 駁回"):
+                        reason = st.text_input("駁回原因", key=f"ceo_r_{i}")
+                        if st.button("確認", key=f"ceo_no_{i}"):
+                            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                            fresh_db.loc[idx, ["狀態", "駁回原因", "初審人", "初審時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
+                            save_data(fresh_db); st.rerun()
+                else: b3.button("❌ 駁回", disabled=True, key=f"fake_ceo_no_{i}")
+    
+    st.divider(); st.subheader("📜 歷史紀錄 (已核准/已駁回)")
+    h_df = sys_db[sys_db["狀態"].isin(["待複審", "已核准", "已駁回"])] if is_admin else sys_db[(sys_db["專案負責人"] == curr_name) & (sys_db["狀態"].isin(["待複審", "已核准", "已駁回"]))]
+    if h_df.empty: st.info("尚無紀錄")
+    else: 
+        lh1, lh2, lnx, lh3, lh4, lh5, lh6 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1, 3.5])
+        lh1.write("**單號**"); lh2.write("**專案名稱**"); lnx.write("**負責執行長**"); lh3.write("**申請人**"); lh4.write("**總金額**"); lh5.write("**狀態**"); lh6.write("**操作**")
+        for i, r in h_df.iterrows():
+            lc1, lc2, lcx, lc3, lc4, lc5, lc6 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1, 3.5])
+            lc1.write(r["單號"]); lc2.write(r["專案名稱"]); lcx.write(clean_name(r["專案負責人"])); lc3.write(r["申請人"]); lc4.write(f"${clean_amount(r['總金額']):,.0f}"); lc5.write(r["狀態"])
+            with lc6:
+                lb1, lb2, lb3, lb4 = st.columns(4)
+                if lb1.button("🔍 預覽", key=f"h_ceo_v_{i}"): st.session_state.view_id = r["單號"]; st.rerun()
+                if lb2.button("🖨️ 列印", key=f"h_ceo_p_{i}"):
+                    js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
+                    st.components.v1.html('<script>' + js_p + '</script>', height=0)
+                
+                if (r["專案負責人"] == curr_name) and is_active and (r["狀態"] == "已核准"):
+                    with lb3.popover("📝 更新"):
+                        st.write("**📝 採購單後續修改**")
+                        new_bill_stat = st.text_input("請款狀態", value=str(r.get("請款狀態", "")), key=f"c_bs_{i}")
+                        new_billed = st.number_input("已請款金額", value=int(clean_amount(r.get("已請款金額", 0))), min_value=0, key=f"c_ba_{i}")
+                        new_unbilled = st.number_input("尚未請款金額", value=int(clean_amount(r.get("尚未請款金額", 0))), min_value=0, key=f"c_ua_{i}")
+                        new_desc = st.text_area("修改說明內容", value=str(r.get("請款說明", "")), key=f"c_desc_{i}")
+                        if st.button("💾 儲存修改", key=f"ceo_save_pur_{i}"):
+                            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                            fresh_db.loc[idx, ["請款狀態", "已請款金額", "尚未請款金額", "請款說明"]] = [new_bill_stat, new_billed, new_unbilled, new_desc]
+                            save_data(fresh_db); st.success("已更新！"); time.sleep(0.5); st.rerun()
+                else: lb3.button("✏️ 修改", disabled=True, key=f"fake_ceo_edit_{i}")
+                render_upload_popover(lb4, r, f"ceo_h_up_{i}")
+
+# --- 頁面 3: 財務長簽核 ---
+elif menu == "3. 財務長簽核":
+    render_header()
+    st.subheader("🏁 財務長簽核 (功能保留)")
+    sys_db = get_filtered_db()
+    st.subheader("⏳ 待財務長簽核")
+    p_df = sys_db[sys_db["狀態"] == "待複審"] if is_admin or curr_name == CFO_NAME else sys_db[(sys_db["狀態"] == "待複審") & (sys_db["專案負責人"] == curr_name)]
+        
+    if p_df.empty: st.info("無待審單據")
+    else: 
+        h1, h2, hx, h3, h4, h5 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 2.5])
+        h1.write("**單號**"); h2.write("**專案名稱**"); hx.write("**負責執行長**"); h3.write("**申請人**"); h4.write("**總金額**"); h5.write("**操作**")
+        for i, r in p_df.iterrows():
+            c1, c2, cx, c3, c4, c5 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 2.5])
+            c1.write(r["單號"]); c2.write(r["專案名稱"]); cx.write(clean_name(r["專案負責人"])); c3.write(r["申請人"]); c4.write(f"${clean_amount(r['總金額']):,.0f}")
+            with c5:
+                b1, b2, b3 = st.columns(3)
+                is_cfo_action = (curr_name == CFO_NAME) and is_active
+                if b1.button("預覽", key=f"cfo_v_{i}"): st.session_state.view_id = r["單號"]; st.rerun()
+                if b2.button("👑 核准", key=f"cok_{i}", disabled=not is_cfo_action):
+                    fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
+                    save_data(fresh_db); st.rerun()
+                if is_cfo_action:
+                    with b3.popover("❌ 駁回"):
+                        reason = st.text_input("原因", key=f"cr_{i}")
+                        if st.button("確認", key=f"cno_{i}"):
+                            fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "駁回原因", "複審人", "複審時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
+                            save_data(fresh_db); st.rerun()
+                else: b3.button("❌ 駁回", disabled=True, key=f"fake_cfo_no_{i}")
+    st.divider()
+    st.subheader("📜 歷史紀錄 (已核准/已駁回)")
+    f_df = sys_db[sys_db["狀態"].isin(["已核准", "已駁回"])] if is_admin or curr_name == CFO_NAME else sys_db[(sys_db["專案負責人"] == curr_name) & (sys_db["狀態"].isin(["已核准", "已駁回"]))]
+    if f_df.empty: st.info("尚無紀錄")
+    else: 
+        lh1, lh2, lnx, lh3, lh4, lh5, lh6 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1, 3.0])
+        lh1.write("**單號**"); lh2.write("**專案名稱**"); lnx.write("**負責執行長**"); lh3.write("**申請人**"); lh4.write("**總金額**"); lh5.write("**狀態**"); lh6.write("**操作**")
+        for i, r in f_df.iterrows():
+            lc1, lc2, lcx, lc3, lc4, lc5, lc6 = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1, 3.0])
+            lc1.write(r["單號"]); lc2.write(r["專案名稱"]); lcx.write(clean_name(r["專案負責人"])); lc3.write(r["申請人"]); lc4.write(f"${clean_amount(r['總金額']):,.0f}"); lc5.write(r["狀態"])
+            with lc6:
+                lb1, lb2, lb3 = st.columns(3)
+                if lb1.button("🔍 預覽", key=f"h_cfo_v_{i}"): st.session_state.view_id = r["單號"]; st.rerun()
+                if lb2.button("🖨️ 列印", key=f"h_cfo_p_{i}"):
+                    js_p = "var w=window.open();w.document.write('" + clean_for_js(render_html(r)) + "');w.print();w.close();"
+                    st.components.v1.html('<script>' + js_p + '</script>', height=0)
+                render_upload_popover(lb3, r, f"cfo_h_up_{i}")
+
+# --- 頁面 4: 表單狀態總覽及轉請款單 ---
+elif menu == "4. 表單狀態總覽及轉請款單":
+    render_header()
+    st.subheader("📊 表單狀態總覽及轉請款單")
+    sys_db = get_filtered_db()
+    if not is_admin: sys_db = sys_db[(sys_db["申請人"] == curr_name) | (sys_db["代申請人"] == curr_name) | (sys_db["專案負責人"] == curr_name)]
+    display_df = sys_db.copy()
+    
+    if not display_df.empty:
+        st.info("💡 勾選採購單並「雙擊」下方輸入框填寫【本次請款金額】，確認無誤後點擊送出，即可一鍵建立新的請款單草稿！(請款金額不得超過尚未請款金額)")
+        display_df.insert(0, "轉成請款單", False)
+        display_df.insert(1, "本次請款金額(點擊輸入)", 0)
+        display_df["負責執行長"] = display_df["專案負責人"]
+        display_df["預計採購金額"] = display_df.apply(lambda x: f"{str(x.get('幣別','TWD')).replace('nan','TWD')} ${clean_amount(x.get('總金額',0)):,.0f}", axis=1)
+        display_df["請款狀態"] = display_df["請款狀態"].fillna("").astype(str)
+        display_df["已請款金額"] = display_df["已請款金額"].apply(clean_amount)
+        display_df["尚未請款金額"] = display_df["尚未請款金額"].apply(clean_amount)
+        display_df = display_df.rename(columns={"單號": "申請單號"})
+        
+        target_cols = ["轉成請款單", "本次請款金額(點擊輸入)", "申請單號", "專案名稱", "負責執行長", "申請人", "預計採購金額", "狀態", "請款狀態", "已請款金額", "尚未請款金額"]
+        edited_df = st.data_editor(
+            display_df[target_cols], disabled=["申請單號", "專案名稱", "負責執行長", "申請人", "預計採購金額", "狀態", "請款狀態", "已請款金額", "尚未請款金額"], hide_index=True, use_container_width=True,
+            column_config={"轉成請款單": st.column_config.CheckboxColumn("勾選轉換"), "本次請款金額(點擊輸入)": st.column_config.NumberColumn("本次請款金額 (雙擊輸入)", min_value=0, step=1)}
+        )
+        
+        if st.button("🚀 確認將勾選項目轉成請款單"):
+            fresh_db = load_data()
+            converted_count = 0
+            has_error = False
+            for i, row in edited_df.iterrows():
+                conv_amt = row.get("本次請款金額(點擊輸入)")
+                if bool(row.get("轉成請款單")) and pd.notna(conv_amt) and int(float(conv_amt)) > 0:
+                    orig_id = row["申請單號"]
+                    orig_idx = fresh_db[fresh_db["單號"]==orig_id].index[0]
+                    orig_row = fresh_db.iloc[orig_idx]
+                    real_conv_amt = int(float(conv_amt))
+                    
+                    final_amt = clean_amount(orig_row.get("最後採購金額", 0))
+                    if final_amt == 0: final_amt = clean_amount(orig_row.get("總金額", 0))
+                    current_billed = clean_amount(orig_row.get("已請款金額", 0))
+                    current_unbilled = final_amt - current_billed
+                    
+                    if real_conv_amt > current_unbilled:
+                        st.error(f"❌ 單號 {orig_id} 失敗：本次請款金額 ({real_conv_amt:,}) 超過尚未請款金額 ({current_unbilled:,})！")
+                        has_error = True; continue 
+                    
+                    fresh_db.at[orig_idx, "已請款金額"] = current_billed + real_conv_amt
+                    fresh_db.at[orig_idx, "尚未請款金額"] = current_unbilled - real_conv_amt
+                    fresh_db.at[orig_idx, "請款狀態"] = "已轉請款單"
+                    
+                    today_str = datetime.date.today().strftime('%Y%m%d')
+                    new_tid = f"{today_str}-{len(fresh_db[fresh_db['單號'].astype(str).str.startswith(today_str)])+1:02d}"
+                    nr = {"單號": new_tid, "日期": str(datetime.date.today()), "類型": "請款單", "申請人": "Anita", "代申請人": "", "專案負責人": orig_row.get("專案負責人",""), "專案名稱": orig_row.get("專案名稱",""), "專案編號": orig_row.get("專案編號",""), "請款說明": f"自採購單 {orig_id} 轉換 (轉換金額: {real_conv_amt})", "總金額": real_conv_amt, "幣別": orig_row.get("幣別","TWD"), "付款方式": orig_row.get("付款方式",""), "請款廠商": orig_row.get("請款廠商",""), "匯款帳戶": orig_row.get("匯款帳戶",""), "帳戶影像Base64": orig_row.get("帳戶影像Base64",""), "狀態": "已儲存", "影像Base64": orig_row.get("影像Base64",""), "提交時間": "", "申請人信箱": "Anita", "初審人": "", "初審時間": "", "複審人": "", "複審時間": "", "刪除人": "", "刪除時間": "", "刪除原因": "", "駁回原因": "", "支付條件": "", "支付期數": "", "請款狀態": "", "已請款金額": 0, "尚未請款金額": 0, "最後採購金額": 0}
+                    fresh_db = pd.concat([fresh_db, pd.DataFrame([nr])], ignore_index=True)
+                    converted_count += 1
+            if converted_count > 0:
+                save_data(fresh_db); st.success(f"✅ 成功轉換 {converted_count} 筆！請切換至「請款單系統」進行後續提交。")
+                time.sleep(1.5); st.rerun()
+            elif not has_error: st.warning("請確保有勾選項目，且輸入金額大於 0！")
+    else: st.info("尚無您的表單狀態紀錄。")
+
+# --- 頁面 5: 請款狀態/系統設定 ---
+elif menu == "5. 請款狀態/系統設定":
+    render_header()
+    st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
+    
+    with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
+        col_down, col_up = st.columns(2)
+        with col_down:
+            st.write("⬇️ **步驟一：下載最新表單資料庫**")
+            if os.path.exists(D_FILE):
+                with open(D_FILE, "rb") as f: st.download_button("下載表單備份檔", f, file_name=f"時研系統表單備份_{datetime.date.today()}.csv", mime="text/csv")
+        with col_up:
+            st.write("⬆️ **步驟二：還原表單資料庫**")
+            uploaded_db = st.file_uploader("上傳表單 CSV 檔", type=["csv"], key="up_db", label_visibility="collapsed")
+            if uploaded_db and st.button("確認還原表單"):
+                with open(D_FILE, "wb") as f: f.write(uploaded_db.getbuffer())
+                st.success("表單資料庫已還原！"); time.sleep(1); st.rerun()
+
+    with st.expander("👥 2. 人員與大頭貼資料備份與還原"):
+        col_down2, col_up2 = st.columns(2)
+        with col_down2:
+            st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
+            if os.path.exists(S_FILE):
+                with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系統人員備份_{datetime.date.today()}.csv", mime="text/csv")
+        with col_up2:
+            st.write("⬆️ **步驟二：還原人員資料**")
+            uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
+            if uploaded_staff and st.button("確認還原人員資料"):
+                with open(S_FILE, "wb") as f: f.write(uploaded_staff.getbuffer())
+                st.session_state.staff_df = load_staff()
+                st.success("人員資料已還原！"); time.sleep(1); st.rerun()
+
+    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)"):
+        st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
+        curr_token, curr_uid = get_line_credentials()
+        new_token = st.text_input("Channel Access Token (長字串)", value=curr_token, type="password")
+        new_uid = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=curr_uid)
+        if st.button("💾 儲存 LINE 設定"):
+            save_line_credentials(new_token, new_uid) 
+            st.success("LINE 推播設定已成功儲存並啟用！"); time.sleep(1); st.rerun()
+
+    st.divider()
+    st.subheader("💰 請款狀態 (Admin)")
+    st.info("💡 溫馨提醒：此處編輯的「匯款狀態」與「匯款日期」都已包含在上方的「表單資料庫備份」中，還原時會一併恢復，無須重新手動輸入！")
+    try:
+        sys_db = get_filtered_db()
+        display_df = sys_db.copy()
+        if not display_df.empty:
+            display_df["負責執行長"] = display_df["專案負責人"]
+            display_df["總金額"] = display_df.apply(lambda x: f"{str(x.get('幣別','TWD')).replace('nan','TWD')} ${clean_amount(x.get('總金額',0)):,.0f}", axis=1)
+            display_df = display_df.rename(columns={"單號": "申請單號"})
+            
+            def parse_date(d_str):
+                if pd.isna(d_str) or str(d_str).strip() == "": return None
+                try: return datetime.datetime.strptime(str(d_str).strip(), "%Y-%m-%d").date()
+                except: return None
+                
+            display_df["匯款日期"] = display_df["匯款日期"].apply(parse_date)
+            target_cols = ["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "匯款狀態", "匯款日期"]
+            
+            edited_df = st.data_editor(
+                display_df[target_cols], disabled=["申請單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態"],
+                use_container_width=True,
+                column_config={"匯款狀態": st.column_config.SelectboxColumn("匯款狀態", options=["尚未匯款", "已匯款"], required=True, width="medium"), "匯款日期": st.column_config.DateColumn("匯款日期", format="YYYY-MM-DD", width="medium", min_value=datetime.date(2020, 1, 1), max_value=datetime.date(2030, 12, 31))}
+            )
+            
+            if st.button("💾 儲存匯款資訊"):
+                valid = True
+                for i, row in edited_df.iterrows():
+                    if row["匯款狀態"] == "已匯款" and (pd.isna(row["匯款日期"]) or str(row["匯款日期"]) == "NaT"):
+                        st.error(f"❌ 申請單號 {row['申請單號']}：選擇「已匯款」時，必須填寫匯款日期！"); valid = False
+                if valid:
+                    fresh_db = load_data()
+                    for i, row in edited_df.iterrows():
+                        orig_idx = fresh_db[fresh_db["單號"]==row["申請單號"]].index[0]
+                        fresh_db.at[orig_idx, "匯款狀態"] = str(row["匯款狀態"]) if row["匯款狀態"] else "尚未匯款"
+                        date_val = row["匯款日期"]
+                        fresh_db.at[orig_idx, "匯款日期"] = str(date_val) if pd.notna(date_val) and str(date_val) != "NaT" else ""
+                    save_data(fresh_db); st.success("✅ 匯款資訊已成功更新！"); time.sleep(1); st.rerun()
+        else: st.info("尚無資料。")
+    except Exception as e: st.error(f"錯誤：{str(e)}")
+
+# --- 全域預覽 ---
+if st.session_state.view_id:
+    st.markdown("---")
+    try:
+        r = load_data(); r = r[r["單號"]==st.session_state.view_id]
+        if not r.empty:
+            c1, c2 = st.columns([8, 2])
+            c1.markdown("### 🔍 表單預覽")
+            if c2.button("❌ 關閉預覽", key="close_view"): st.session_state.view_id = None; st.rerun()
+            st.markdown(render_html(r.iloc[0]), unsafe_allow_html=True)
+            
+            if r.iloc[0].get("影像Base64"):
+                st.markdown("#### 📎 附件檔案")
+                for img in r.iloc[0]["影像Base64"].split('|'):
+                    if is_pdf(img): display_pdf(img)
+                    else: st.image(base64.b64decode(img), use_container_width=True)
+    except Exception as e: st.error(f"預覽發生錯誤：{str(e)}")
