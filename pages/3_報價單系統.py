@@ -33,17 +33,6 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- [資料庫] 報價細項下拉選單資料 ---
-QUOTE_ENGINEERING_DB = {
-    "假設工程": [{"name": "保護工程", "unit": "式", "price": 245000}, {"name": "拆除工程", "unit": "式", "price": 22000}, {"name": "放樣工程", "unit": "式", "price": 10000}],
-    "泥作與防水工程": [{"name": "玄關花磚", "unit": "片", "price": 550}, {"name": "浴室地磚鋪設", "unit": "坪", "price": 8500}, {"name": "地面找平", "unit": "坪", "price": 2500}],
-    "木作裝修工程": [{"name": "天花板平釘", "unit": "坪", "price": 3800}, {"name": "造型木作", "unit": "式", "price": 65000}],
-    "塗裝裝修工程": [{"name": "乳膠漆粉刷", "unit": "坪", "price": 1200}],
-    "清潔工程": [{"name": "竣工細清", "unit": "式", "price": 120000}],
-    "其他工程": [{"name": "現場代辦費", "unit": "式", "price": 0}]
-}
-ALL_UNITS = ["式", "片", "坪", "才", "個", "組", "天", "米", "尺", "工", "樘"]
-
 # --- 基礎工具 ---
 def get_taiwan_time(): return (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')
 def clean_amount(val):
@@ -92,13 +81,13 @@ def render_html(row):
     amt = clean_amount(row['總金額'])
     h = f'<div style="padding:20px;border:2px solid #000;background:#fff;color:#000;">'
     h += f'<div style="text-align:center;"><h2>工程報價單</h2></div>'
-    h += f'<p>客戶：{data.get("c_name")} &nbsp;&nbsp; 單號：{row["單號"]}<br>地址：{data.get("address")} &nbsp;&nbsp; 執行長：{row["專案負責人"]}</p>'
+    h += f'<p>客戶：{data.get("c_name")} &nbsp;&nbsp; 單號：{row["單號"]}<br>專案編號：{row.get("專案編號","")} &nbsp;&nbsp; 專案名稱：{row.get("專案名稱","")}<br>地址：{data.get("address")} &nbsp;&nbsp; 執行長：{row["專案負責人"]}</p>'
     h += '<table style="width:100%;border-collapse:collapse;font-size:13px;" border="1">'
-    h += '<tr bgcolor="#eee"><th>品名</th><th>數量</th><th>單位</th><th>單價</th><th>複價</th><th>備註</th></tr>'
+    h += '<tr bgcolor="#eee"><th>類別</th><th>品名</th><th>數量</th><th>單位</th><th>單價</th><th>複價</th><th>備註</th></tr>'
     for item in data.get("items", []):
         q, p = clean_amount(item.get("qty")), clean_amount(item.get("price"))
-        h += f'<tr><td>{item.get("name")}</td><td>{q}</td><td>{item.get("unit")}</td><td align="right">{p:,}</td><td align="right">{q*p:,}</td><td>{item.get("note","")}</td></tr>'
-    h += f'<tr><td colspan="4" align="right"><b>總金額 ({row.get("幣別","TWD")})</b></td><td align="right"><b>{amt:,}</b></td><td></td></tr></table></div>'
+        h += f'<tr><td>{item.get("eng","")}</td><td>{item.get("name")}</td><td>{q}</td><td>{item.get("unit")}</td><td align="right">{p:,}</td><td align="right">{q*p:,}</td><td>{item.get("note","")}</td></tr>'
+    h += f'<tr><td colspan="5" align="right"><b>總金額 ({row.get("幣別","TWD")})</b></td><td align="right"><b>{amt:,}</b></td><td></td></tr></table></div>'
     return h
 
 # --- Session ---
@@ -132,39 +121,50 @@ if menu == "1. 填寫申請單":
         r = db[db["單號"]==st.session_state.edit_id].iloc[0]
         st.session_state.quote_items = parse_quote_json(r["請款說明"]).get("items", [])
 
-    with st.expander("👤 1. 基本與財務資料", expanded=True):
+    with st.expander("👤 1. 申請人與基本資料", expanded=True):
+        c_app, c_pi, c_pn = st.columns(3)
+        # 申請人邏輯 (同採購單)
+        if curr_name == "Anita":
+            app_val = c_app.selectbox("申請人 (可代申請)", staffs, index=staffs.index(curr_name))
+        else:
+            app_val = curr_name
+            c_app.text_input("申請人", value=app_val, disabled=True)
+            
+        pi = c_pi.text_input("專案編號") # 新增專案編號
+        pn = c_pn.text_input("專案名稱")
+        
         c1, c2, c3 = st.columns(3)
-        pn = c1.text_input("專案名稱")
-        exe = c2.selectbox("負責執行長", staffs, index=staffs.index(curr_name) if curr_name in staffs else 0)
-        curr = c3.selectbox("幣別", ["TWD", "USD", "JPY", "HKD"], index=0)
+        exe = c1.selectbox("負責執行長", staffs, index=staffs.index(curr_name) if curr_name in staffs else 0)
+        curr = c2.selectbox("幣別", ["TWD", "USD", "JPY", "HKD"], index=0)
+        c_name = c3.text_input("客戶名稱")
         
-        cx1, cx2 = st.columns(2)
-        c_name = cx1.text_input("客戶名稱")
-        address = cx2.text_input("施工地址")
+        address = st.text_input("施工地址")
         
-        f_acc = st.file_uploader("上傳存摺/帳戶圖片", type=["png", "jpg", "jpeg"])
+        f_acc = st.file_uploader("上傳憑證圖片", type=["png", "jpg", "jpeg"]) # 更名為憑證圖片
 
-    with st.expander("📐 2. 報價細項編輯", expanded=True):
-        sc1, sc2, sc3 = st.columns([1, 1.5, 1])
-        sel_eng = sc1.selectbox("工程類別", list(QUOTE_ENGINEERING_DB.keys()))
-        item_opts = [i['name'] for i in QUOTE_ENGINEERING_DB[sel_eng]]
-        sel_name = sc2.selectbox("品名項目", item_opts)
-        
-        def_info = next(i for i in QUOTE_ENGINEERING_DB[sel_eng] if i['name'] == sel_name)
+    with st.expander("📐 2. 報價細項編輯 (請直接打字輸入)", expanded=True):
+        sc1, sc2, sc3 = st.columns([1.5, 1.5, 1])
+        # 改為手動輸入可以直接打的文字框
+        sel_eng = sc1.text_input("工程類別 (例如：泥作工程)", key="typable_eng")
+        sel_name = sc2.text_input("品名項目 (例如：玄關花磚)", key="typable_item")
         
         sc4, sc5, sc6 = st.columns(3)
-        sel_unit = sc4.selectbox("單位", ALL_UNITS, index=ALL_UNITS.index(def_info['unit']) if def_info['unit'] in ALL_UNITS else 0)
-        sel_qty = sc5.number_input("數量", min_value=1, value=1)
-        sel_price = sc6.number_input("單價", min_value=0, value=def_info['price'])
-        sel_note = st.text_input("項目備註 (選填)")
+        sel_unit = sc4.text_input("單位 (例如：片/坪/式)", value="式")
+        sel_qty = sc5.number_input("數量", min_value=1.0, value=1.0, step=0.1)
+        sel_price = sc6.number_input("單價", min_value=0, value=0)
+        sel_note = st.text_input("細項備註 (選填)")
         
         if st.button("➕ 新增至細項"):
-            st.session_state.quote_items.append({"name": sel_name, "unit": sel_unit, "qty": sel_qty, "price": sel_price, "note": sel_note})
-            st.rerun()
+            if sel_eng and sel_name:
+                st.session_state.quote_items.append({
+                    "eng": sel_eng, "name": sel_name, "unit": sel_unit, "qty": sel_qty, "price": sel_price, "note": sel_note
+                })
+                st.rerun()
+            else:
+                st.error("請填寫工程類別與品名項目")
 
     if st.session_state.quote_items:
         st.write("---")
-        # 總金額即時顯示
         df_display = pd.DataFrame(st.session_state.quote_items)
         df_display['複價'] = df_display['qty'] * df_display['price']
         total_amt = df_display['複價'].sum()
@@ -176,11 +176,15 @@ if menu == "1. 填寫申請單":
 
     if st.button("💾 儲存並產生報價單", type="primary"):
         if pn and c_name and st.session_state.quote_items:
+            proxy_val = curr_name if app_val != curr_name else ""
             packed = "[報價單資料]\n" + json.dumps({"c_name": c_name, "address": address, "items": st.session_state.quote_items}, ensure_ascii=False)
             b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else ""
             tid = f"Q{datetime.date.today().strftime('%Y%m%d')}-{len(db[db['單號'].str.startswith('Q')])+1:02d}"
             
-            nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"報價單", "申請人":curr_name, "專案負責人":exe, "專案名稱":pn, "請款說明":packed, "總金額":total_amt, "幣別":curr, "狀態":"已核准", "帳戶影像Base64":b_acc, "尚未請款金額":total_amt, "已請款金額":0}
+            nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"報價單", 
+                  "申請人":app_val, "代申請人":proxy_val, "專案負責人":exe, "專案名稱":pn, "專案編號":pi,
+                  "請款說明":packed, "總金額":total_amt, "幣別":curr, "狀態":"已核准", 
+                  "帳戶影像Base64":b_acc, "尚未請款金額":total_amt, "已請款金額":0}
             save_data(pd.concat([db, pd.DataFrame([nr])], ignore_index=True))
             st.success(f"成功！單號：{tid}"); st.session_state.quote_items = []; time.sleep(1); st.rerun()
         else: st.error("請確認專案、客戶與細項已填寫")
@@ -190,7 +194,6 @@ if menu == "1. 填寫申請單":
     my_db = db[db["類型"] == "報價單"]
     if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
     
-    # 恢復寬度比例 [1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5]
     cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
     hdrs = ["報價單號", "專案名稱", "負責執行長", "申請人", "總金額", "狀態", "操作"]
     for c, h in zip(cols, hdrs): c.write(f"**{h}**")
@@ -224,7 +227,9 @@ elif menu == "4. 表單狀態總覽及轉採購單":
                     orig_idx = fdb[fdb["單號"]==row["單號"]].index[0]
                     if amt > clean_amount(fdb.at[orig_idx, "尚未請款金額"]): st.error("超額！"); continue
                     fdb.at[orig_idx, "已請款金額"] += amt; fdb.at[orig_idx, "尚未請款金額"] -= amt
-                    nr = {"單號":f"PO-FROM-{row['單號']}", "日期":str(datetime.date.today()), "類型":"採購單", "申請人":curr_name, "專案名稱":row["專案名稱"], "總金額":amt, "狀態":"已儲存", "請款說明":f"由報價單 {row['單號']} 轉換"}
+                    nr = {"單號":f"PO-FROM-{row['單號']}", "日期":str(datetime.date.today()), "類型":"採購單", 
+                          "申請人":curr_name, "專案名稱":row["專案名稱"], "總金額":amt, "狀態":"已儲存", 
+                          "請款說明":f"由報價單 {row['單號']} 轉換"}
                     fdb = pd.concat([fdb, pd.DataFrame([nr])], ignore_index=True); count += 1
             if count > 0: save_data(fdb); st.success(f"成功轉換 {count} 筆！"); st.rerun()
 
@@ -239,4 +244,4 @@ if st.session_state.view_id:
     st.divider(); r = load_data(); r = r[r["單號"]==st.session_state.view_id].iloc[0]
     if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()
     st.markdown(render_html(r), unsafe_allow_html=True)
-    if r.get("帳戶影像Base64"): st.image(base64.b64decode(r["帳戶影像Base64"]), caption="帳戶存摺")
+    if r.get("帳戶影像Base64"): st.image(base64.b64decode(r["帳戶影像Base64"]), caption="憑證圖片")
