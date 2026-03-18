@@ -149,15 +149,8 @@ for k in ['edit_id', 'last_id', 'view_id']:
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
-# --- 6. 左側側邊欄 ---
+# --- 6. 左側側邊欄 (與請款單完全一致的排版) ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
-st.sidebar.divider()
-
-# 動態產生導覽列 (非管理員看不到系統設定)
-menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
-if is_admin:
-    menu_options.append("5. 系統設定")
-menu = st.sidebar.radio("導覽", menu_options, key="po_menu_radio")
 st.sidebar.divider()
 
 avatar_b64 = ""
@@ -182,10 +175,10 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-# --- 管理員專屬區塊 (僅管理員可見) ---
+# --- 管理員專屬區塊 (非管理員完全隱藏) ---
 if is_admin:
     st.sidebar.markdown("---")
-    st.sidebar.success("管理員專屬區塊")
+    st.sidebar.success("管理員專屬區塊 (已解鎖)")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
@@ -215,8 +208,14 @@ if is_admin:
             for idx, row in edited_staff.iterrows(): s_df.at[idx, "status"] = row["status"]; s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
             save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
 
-st.sidebar.markdown("---")
 if st.sidebar.button("登出系統", key="po_logout"): st.session_state.user_id = None; st.switch_page("app.py")
+
+# 動態產生導覽列 (非管理員看不到系統設定)
+menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
+if is_admin:
+    menu_options.append("5. 系統設定")
+menu = st.sidebar.radio("導覽", menu_options, key="po_menu_radio")
+
 
 # --- 8. 簽核列表渲染模組 (採購單專用) ---
 def render_signing_table(df_list, sign_type, is_history=False):
@@ -262,6 +261,7 @@ def render_signing_table(df_list, sign_type, is_history=False):
                     btn_col3.button("❌ 駁回", disabled=True, key=f"fk_sno_{sign_type}_{i}")
             else:
                 btn_col2.write(f"[{r['狀態']}]")
+
 
 # ================= 頁面邏輯 =================
 if menu == "1. 填寫申請單":
@@ -427,7 +427,7 @@ elif menu == "4. 表單狀態總覽":
     f_db = load_data(); my_db = f_db[f_db["類型"]=="採購單"]
     st.dataframe(my_db[["單號", "專案名稱", "總金額", "申請人", "狀態", "已請款金額", "尚未請款金額"]], hide_index=True)
 
-# ================= 頁面 5: 系統設定 (僅管理員可見) =================
+# ================= 頁面 5: 系統設定 =================
 elif menu == "5. 系統設定":
     st.title("⚙️ 系統設定")
     with st.expander("💾 1. 資料庫管理", expanded=True):
