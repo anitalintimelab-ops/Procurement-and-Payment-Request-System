@@ -168,9 +168,14 @@ for k in ['edit_id', 'last_id', 'view_id']:
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
-# --- 7. 左側側邊欄 (與採購單嚴格一致) ---
+# --- 7. 左側側邊欄 ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
+
+menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
+menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
+st.sidebar.divider()
+
 avatar_b64 = ""
 try: avatar_b64 = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0].get("avatar", "")
 except: pass
@@ -193,13 +198,13 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-# --- 管理員專屬設定 ---
+# --- 管理員專屬區塊 ---
+st.sidebar.markdown("---")
 if is_admin:
-    st.sidebar.success("管理員模式")
+    st.sidebar.success("管理員專屬區塊 (已解鎖)")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
-        st.markdown("---")
         st.write("**恢復預設密碼 (0000)**")
         reset_target = st.selectbox("選擇人員", st.session_state.staff_df["name"].tolist(), key="req_rst_sel")
         if st.button("確認恢復預設", key="req_rst_btn"):
@@ -242,11 +247,21 @@ if is_admin:
             save_staff(s_df)
             st.session_state.staff_df = s_df
             st.rerun()
+else:
+    st.sidebar.warning("管理員專屬區塊 (僅供檢視)")
+    with st.sidebar.expander("🔑 所有人員密碼清單"):
+        st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
+        st.write("**恢復預設密碼 (0000)**")
+        st.selectbox("選擇人員", st.session_state.staff_df["name"].tolist(), key="req_rst_sel", disabled=True)
+        st.button("確認恢復預設", key="req_rst_btn", disabled=True)
+    with st.sidebar.expander("➕ 新增人員"):
+        st.text_input("姓名", key="req_new_staff_name", disabled=True)
+        st.button("新增", key="req_add_staff", disabled=True)
+    with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
+        st.data_editor(st.session_state.staff_df[["name", "status", "line_uid"]], hide_index=True, disabled=True, key="req_staff_editor_admin")
+        st.button("💾 儲存人員設定", key="req_save_staff_admin", disabled=True)
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
-
-menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
-menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
 
 # --- 8. 簽核列表渲染模組 ---
 def render_signing_table(df_list, sign_type, is_history=False):
@@ -269,7 +284,6 @@ def render_signing_table(df_list, sign_type, is_history=False):
                 st.session_state.view_id = r["單號"]; st.rerun()
             
             if not is_history:
-                # 權限判定
                 can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active
                 if btn_col2.button("✅ 核准", key=f"sok_{sign_type}_{i}", disabled=not can_sign):
                     fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
@@ -311,37 +325,24 @@ if menu == "1. 填寫申請單":
         c1, c2, c3 = st.columns(3)
         app_val = c1.selectbox("申請人", staffs, index=staffs.index(dv["app"]) if dv["app"] in staffs else 0) if curr_name == "Anita" else curr_name
         if curr_name != "Anita": c1.text_input("申請人", value=app_val, disabled=True)
-        pn = c2.text_input("專案名稱", value=dv["pn"])
-        pi = c3.text_input("專案編號", value=dv["pi"])
-        
+        pn = c2.text_input("專案名稱", value=dv["pn"]); pi = c3.text_input("專案編號", value=dv["pi"])
         cx1, cx2, cx3 = st.columns(3)
         exe = cx1.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]) if dv["exe"] in staffs else 0)
-        net_amt = cx2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0)
-        tax_amt = cx3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
-        
+        net_amt = cx2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0); tax_amt = cx3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
         cv1, cv2, cv3 = st.columns(3)
-        vdr = cv1.text_input("請款廠商", value=dv["vdr"])
-        acc = cv2.text_input("匯款帳戶", value=dv["acc"])
-        inv_no = cv3.text_input("發票號碼或憑證 (非必填)", value=dv["inv_no"])
-        
+        vdr = cv1.text_input("請款廠商", value=dv["vdr"]); acc = cv2.text_input("匯款帳戶", value=dv["acc"]); inv_no = cv3.text_input("發票號碼或憑證 (非必填)", value=dv["inv_no"])
         c_cur, c_pay = st.columns([1, 2])
         curr = c_cur.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
         pay_idx = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]) if dv["pay"] in ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"] else 2
         pay = c_pay.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
-        
         desc = st.text_area("請款說明", value=dv["desc"])
         st.info("💡 **提示：請款總金額將於點擊下方儲存後，由系統自動將「金額 (未稅)」與「稅額」加總。**")
-        
-        f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"])
-        f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True)
-        
+        f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"]); f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True)
         if st.form_submit_button("💾 儲存並進入提交模式"):
             total_amt = net_amt + tax_amt
             if pn and total_amt > 0:
-                b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else dv["ab64"]
-                b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else dv["ib64"]
+                b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else dv["ab64"]; b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else dv["ib64"]
                 packed_desc = "[請款單資料]\n" + json.dumps({"net_amt": net_amt, "tax_amt": tax_amt, "inv_no": inv_no, "desc": desc}, ensure_ascii=False)
-                
                 f_db = load_data()
                 if st.session_state.edit_id:
                     idx = f_db[f_db["單號"]==st.session_state.edit_id].index[0]
@@ -356,17 +357,10 @@ if menu == "1. 填寫申請單":
     if st.session_state.last_id:
         c1, c2, c3 = st.columns(3)
         if c1.button("🚀 提交審核"):
-            f_db = load_data()
-            idx = f_db[f_db["單號"]==st.session_state.last_id].index[0]
-            f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
-            save_data(f_db)
-            
-            sys_name = st.session_state.get('sys_choice', '請款單系統')
-            pj_name = f_db.at[idx, '專案名稱']
-            exe_name = f_db.at[idx, '專案負責人']
-            msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{st.session_state.last_id}\n專案名稱：{pj_name}\n有一筆新的表單需要執行長 ({exe_name}) 進行簽核！"
-            send_line_message(msg)
-            
+            f_db = load_data(); idx = f_db[f_db["單號"]==st.session_state.last_id].index[0]
+            f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(f_db)
+            sys_name = st.session_state.get('sys_choice', '請款單系統'); pj_name = f_db.at[idx, '專案名稱']; exe_name = f_db.at[idx, '專案負責人']
+            send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{st.session_state.last_id}\n專案名稱：{pj_name}\n有一筆新的表單需要執行長 ({exe_name}) 進行簽核！")
             st.session_state.last_id = None; st.rerun()
         if c2.button("🔍 預覽單據"): st.session_state.view_id = st.session_state.last_id; st.rerun()
         if c3.button("🆕 下一筆"): st.session_state.last_id = None; st.rerun()
@@ -374,61 +368,42 @@ if menu == "1. 填寫申請單":
     st.divider(); st.subheader("📋 申請追蹤清單")
     f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
     if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
-    
     cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
-    for c, h in zip(cols, ["申請單號", "專案名稱", "負責執行長", "申請人", "請款總金額", "狀態", "操作"]): 
-        c.write(f"**{h}**")
-        
+    for c, h in zip(cols, ["申請單號", "專案名稱", "負責執行長", "申請人", "請款總金額", "狀態", "操作"]): c.write(f"**{h}**")
     for i, r in my_db.iterrows():
         c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
-        c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"])
-        c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
-        
-        stt = r["狀態"]
-        color = "blue" if stt in ["已儲存", "草稿"] else "orange" if "待" in stt else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
+        c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
+        stt = r["狀態"]; color = "blue" if stt in ["已儲存", "草稿"] else "orange" if "待" in stt else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
         c[5].markdown(f":{color}[**{stt}**]")
-        
         with c[6]:
             b1, b2, b3, b4, b5, b6 = st.columns(6)
-            is_own = (str(r["申請人"]).strip() == curr_name) or (str(r.get("代申請人", "")).strip() == curr_name)
-            can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
-            
+            is_own = (str(r["申請人"]).strip() == curr_name) or (str(r.get("代申請人", "")).strip() == curr_name); can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
-                fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
-                save_data(fdb)
+                fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
                 sys_name = st.session_state.get('sys_choice', '請款單系統')
-                msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"
-                send_line_message(msg)
-                st.rerun()
+                send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"); st.rerun()
             if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
             if b3.button("列印", key=f"p{i}"): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
             if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.edit_id = r["單號"]; st.rerun()
-            
             if can_edit:
                 with b5.popover("刪除"):
                     reason = st.text_input("刪除原因", key=f"d_res_{i}")
                     if st.button("確認", key=f"d{i}"):
                         if reason:
-                            fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]
-                            save_data(fresh_db); st.rerun()
+                            fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); st.rerun()
                         else: st.error("請輸入原因")
             else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
-            
             render_upload_popover(b6, r, f"up{i}")
 
 # ================= 頁面 2: 專案執行長簽核 =================
 elif menu == "2. 專案執行長簽核":
     st.title("👨‍💼 專案執行長簽核管理")
-    f_db = load_data()
-    req_db = f_db[f_db["類型"]=="請款單"]
-    
+    f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
     t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
-    
     with t1:
         pending = req_db[req_db["狀態"].isin(["待簽核", "待初審"])]
         if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
         render_signing_table(pending, "EXE")
-        
     with t2:
         history = req_db[(req_db["初審人"] == curr_name) | ((req_db["狀態"].isin(["已核准","已駁回","待複審"])) & (req_db["專案負責人"] == curr_name))]
         if is_admin: history = req_db[req_db["初審人"] != ""]
@@ -437,16 +412,12 @@ elif menu == "2. 專案執行長簽核":
 # ================= 頁面 3: 財務長簽核 =================
 elif menu == "3. 財務長簽核":
     st.title("💰 財務長簽核管理")
-    f_db = load_data()
-    req_db = f_db[f_db["類型"]=="請款單"]
-    
+    f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
     t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
-    
     with t1:
         pending = req_db[req_db["狀態"] == "待複審"]
         if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
         render_signing_table(pending, "CFO")
-        
     with t2:
         history = req_db[req_db["複審人"] == curr_name] if curr_name == CFO_NAME else pd.DataFrame()
         if is_admin: history = req_db[req_db["複審人"] != ""]
@@ -462,47 +433,52 @@ elif menu == "4. 表單狀態總覽":
 # ================= 頁面 5: 系統設定 =================
 elif menu == "5. 請款狀態/系統設定":
     st.title("⚙️ 請款狀態 / 系統設定")
-    st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
+    
+    # 判斷是否為管理員，非管理員隱藏上方三大區塊
+    if is_admin:
+        st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
 
-    with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
-        col_down, col_up = st.columns(2)
-        with col_down:
-            st.write("⬇️ **步驟一：下載最新表單資料庫**")
-            if os.path.exists(D_FILE):
-                with open(D_FILE, "rb") as f: st.download_button("下載表單備份檔", f, file_name=f"時研系統表單備份_{datetime.date.today()}.csv", mime="text/csv")
-        with col_up:
-            st.write("⬆️ **步驟二：還原表單資料庫**")
-            up_db = st.file_uploader("上傳表單 CSV 檔", type=["csv"], key="up_db", label_visibility="collapsed")
-            if up_db and st.button("確認還原表單"):
-                with open(D_FILE, "wb") as f: f.write(up_db.getbuffer())
-                st.success("表單資料庫已還原！"); time.sleep(1); st.rerun()
-            
-    with st.expander("👥 2. 人員與大頭貼資料備份與還原"):
-        col_down2, col_up2 = st.columns(2)
-        with col_down2:
-            st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
-            if os.path.exists(S_FILE):
-                with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系統人員備份_{datetime.date.today()}.csv", mime="text/csv")
-        with col_up2:
-            st.write("⬆️ **步驟二：還原人員資料**")
-            uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
-            if uploaded_staff and st.button("確認還原人員資料"):
-                with open(S_FILE, "wb") as f: f.write(uploaded_staff.getbuffer())
-                st.session_state.staff_df = load_staff()
-                st.success("人員資料已還原！"); time.sleep(1); st.rerun()
+        with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
+            col_down, col_up = st.columns(2)
+            with col_down:
+                st.write("⬇️ **步驟一：下載最新表單資料庫**")
+                if os.path.exists(D_FILE):
+                    with open(D_FILE, "rb") as f: st.download_button("下載表單備份檔", f, file_name=f"時研系統表單備份_{datetime.date.today()}.csv", mime="text/csv")
+            with col_up:
+                st.write("⬆️ **步驟二：還原表單資料庫**")
+                up_db = st.file_uploader("上傳表單 CSV 檔", type=["csv"], key="up_db", label_visibility="collapsed")
+                if up_db and st.button("確認還原表單"):
+                    with open(D_FILE, "wb") as f: f.write(up_db.getbuffer())
+                    st.success("表單資料庫已還原！"); time.sleep(1); st.rerun()
+                
+        with st.expander("👥 2. 人員與大頭貼資料備份與還原"):
+            col_down2, col_up2 = st.columns(2)
+            with col_down2:
+                st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
+                if os.path.exists(S_FILE):
+                    with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系統人員備份_{datetime.date.today()}.csv", mime="text/csv")
+            with col_up2:
+                st.write("⬆️ **步驟二：還原人員資料**")
+                uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
+                if uploaded_staff and st.button("確認還原人員資料"):
+                    with open(S_FILE, "wb") as f: f.write(uploaded_staff.getbuffer())
+                    st.session_state.staff_df = load_staff()
+                    st.success("人員資料已還原！"); time.sleep(1); st.rerun()
 
-    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)", expanded=True):
-        st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
-        ct, cu = get_line_credentials()
-        nt = st.text_input("Channel Access Token (長字串)", value=ct, type="password")
-        nu = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=cu)
-        if st.button("💾 儲存 LINE 設定"): 
-            save_line_credentials(nt, nu)
-            st.success("LINE 推播設定已成功儲存並啟用！")
-            time.sleep(1)
-            st.rerun()
+        with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)", expanded=True):
+            st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
+            ct, cu = get_line_credentials()
+            nt = st.text_input("Channel Access Token (長字串)", value=ct, type="password")
+            nu = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=cu)
+            if st.button("💾 儲存 LINE 設定"): 
+                save_line_credentials(nt, nu)
+                st.success("LINE 推播設定已成功儲存並啟用！")
+                time.sleep(1)
+                st.rerun()
+        st.divider()
 
-    st.divider(); st.subheader("💰 財務匯款註記 (僅管理員)")
+    # 此區塊所有人都看得到，且文字精簡為「財務匯款註記」
+    st.subheader("💰 財務匯款註記")
     f_db = load_data(); df_pay = f_db[f_db["類型"]=="請款單"].copy()
     if not df_pay.empty:
         df_pay["匯款日期"] = pd.to_datetime(df_pay["匯款日期"], errors='coerce').dt.date
