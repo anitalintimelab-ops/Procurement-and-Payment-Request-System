@@ -149,9 +149,17 @@ for k in ['edit_id', 'last_id', 'view_id']:
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
-# --- 6. 左側側邊欄 (設定全面反灰機制) ---
+# --- 6. 左側側邊欄 ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
+
+# 動態產生導覽列 (非管理員看不到系統設定)
+menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
+if is_admin:
+    menu_options.append("5. 系統設定")
+menu = st.sidebar.radio("導覽", menu_options, key="po_menu_radio")
+st.sidebar.divider()
+
 avatar_b64 = ""
 try: avatar_b64 = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0].get("avatar", "")
 except: pass
@@ -161,52 +169,54 @@ else: st.sidebar.markdown(f"### 👤 {curr_name}")
 
 st.sidebar.info(f"🟢 目前在線人數：**{get_online_users(curr_name)}** 人")
 
-# 個人設定也強制只有管理員可見可修？(依照要求：左側功能列 只有ANITA能修改 其餘進去只看到畫面並反灰)
 with st.sidebar.expander("📸 修改大頭貼"):
-    new_avatar = st.file_uploader("上傳圖片", type=["jpg", "png"], key="side_avatar", disabled=not is_admin)
-    if st.button("更新大頭貼", disabled=not is_admin) and new_avatar:
+    new_avatar = st.file_uploader("上傳圖片", type=["jpg", "png"], key="side_avatar")
+    if st.button("更新大頭貼", key="btn_update_avatar") and new_avatar:
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "avatar"] = base64.b64encode(new_avatar.getvalue()).decode()
         save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
 
 with st.sidebar.expander("🔐 修改我的密碼"):
-    new_pw = st.text_input("新密碼", type="password", key="side_pw", disabled=not is_admin)
-    if st.button("更新密碼", disabled=not is_admin) and len(new_pw) >= 4:
+    new_pw = st.text_input("新密碼", type="password", key="side_pw")
+    if st.button("更新密碼", key="btn_update_pw") and len(new_pw) >= 4:
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-# 管理員專屬設定，全部公開，但對非管理員反灰
+# --- 管理員專屬區塊 (僅管理員可見) ---
+if is_admin:
+    st.sidebar.markdown("---")
+    st.sidebar.success("管理員專屬區塊")
+    
+    with st.sidebar.expander("🔑 所有人員密碼清單"):
+        st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
+        st.write("**恢復預設密碼 (0000)**")
+        reset_target = st.selectbox("選擇人員", st.session_state.staff_df["name"].tolist(), key="po_rst_sel")
+        if st.button("確認恢復預設", key="po_rst_btn"):
+            s_df = load_staff(); idx = s_df[s_df["name"] == reset_target].index[0]
+            s_df.at[idx, "password"] = "0000"; save_staff(s_df); st.session_state.staff_df = s_df; st.success("已重置")
+
+    with st.sidebar.expander("➕ 新增人員"):
+        n = st.text_input("姓名", key="po_new_staff_name")
+        if st.button("新增", key="po_add_staff"):
+            s_df = load_staff()
+            if n and n not in s_df["name"].values:
+                new_row = pd.DataFrame([{"name": n, "status": "在職", "password": "0000", "avatar": "", "line_uid": ""}])
+                s_df = pd.concat([s_df, new_row], ignore_index=True); save_staff(s_df); st.session_state.staff_df = s_df; st.success("成功"); st.rerun()
+
+    with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
+        edited_staff = st.data_editor(
+            st.session_state.staff_df[["name", "status", "line_uid"]], 
+            column_config={"name": st.column_config.TextColumn("姓名", disabled=True), "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])}, 
+            hide_index=True, 
+            key="po_staff_editor_admin"
+        )
+        if st.button("💾 儲存人員設定", key="po_save_staff_admin"):
+            s_df = load_staff()
+            for idx, row in edited_staff.iterrows(): s_df.at[idx, "status"] = row["status"]; s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
+            save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
+
 st.sidebar.markdown("---")
-if is_admin: st.sidebar.success("管理員專屬區塊 (已解鎖)")
-else: st.sidebar.warning("管理員專屬區塊 (僅供檢視)")
-
-with st.sidebar.expander("🔑 所有人員密碼清單"):
-    st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
-    st.write("**恢復預設密碼 (0000)**")
-    reset_target = st.selectbox("選擇人員", st.session_state.staff_df["name"].tolist(), key="po_rst_sel", disabled=not is_admin)
-    if st.button("確認恢復預設", key="po_rst_btn", disabled=not is_admin):
-        s_df = load_staff(); idx = s_df[s_df["name"] == reset_target].index[0]
-        s_df.at[idx, "password"] = "0000"; save_staff(s_df); st.session_state.staff_df = s_df; st.success("已重置")
-
-with st.sidebar.expander("➕ 新增人員"):
-    n = st.text_input("姓名", key="po_new_staff_name", disabled=not is_admin)
-    if st.button("新增", key="po_add_staff", disabled=not is_admin):
-        s_df = load_staff()
-        if n and n not in s_df["name"].values:
-            new_row = pd.DataFrame([{"name": n, "status": "在職", "password": "0000", "avatar": "", "line_uid": ""}])
-            s_df = pd.concat([s_df, new_row], ignore_index=True); save_staff(s_df); st.session_state.staff_df = s_df; st.success("成功"); st.rerun()
-
-with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
-    edited_staff = st.data_editor(st.session_state.staff_df[["name", "status", "line_uid"]], column_config={"name": st.column_config.TextColumn("姓名", disabled=True), "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])}, hide_index=True, disabled=not is_admin)
-    if st.button("💾 儲存人員設定", disabled=not is_admin):
-        s_df = load_staff()
-        for idx, row in edited_staff.iterrows(): s_df.at[idx, "status"] = row["status"]; s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
-        save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
-
-if st.sidebar.button("登出系統"): st.session_state.user_id = None; st.switch_page("app.py")
-
-menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 系統設定"]
-menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
+if st.sidebar.button("登出系統", key="po_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
 # --- 8. 簽核列表渲染模組 (採購單專用) ---
 def render_signing_table(df_list, sign_type, is_history=False):
@@ -252,7 +262,6 @@ def render_signing_table(df_list, sign_type, is_history=False):
                     btn_col3.button("❌ 駁回", disabled=True, key=f"fk_sno_{sign_type}_{i}")
             else:
                 btn_col2.write(f"[{r['狀態']}]")
-
 
 # ================= 頁面邏輯 =================
 if menu == "1. 填寫申請單":
@@ -418,7 +427,7 @@ elif menu == "4. 表單狀態總覽":
     f_db = load_data(); my_db = f_db[f_db["類型"]=="採購單"]
     st.dataframe(my_db[["單號", "專案名稱", "總金額", "申請人", "狀態", "已請款金額", "尚未請款金額"]], hide_index=True)
 
-# ================= 頁面 5: 系統設定 =================
+# ================= 頁面 5: 系統設定 (僅管理員可見) =================
 elif menu == "5. 系統設定":
     st.title("⚙️ 系統設定")
     with st.expander("💾 1. 資料庫管理", expanded=True):
