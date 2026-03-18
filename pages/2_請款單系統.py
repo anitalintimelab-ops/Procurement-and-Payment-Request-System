@@ -168,7 +168,7 @@ for k in ['edit_id', 'last_id', 'view_id']:
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
-# --- 7. 左側側邊欄 (與採購單嚴格一致) ---
+# --- 7. 左側側邊欄 ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
 avatar_b64 = ""
@@ -193,11 +193,55 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
+# --- 管理員專屬設定 (修正：新增密碼清單、新增人員、更名人員設定) ---
 if is_admin:
     st.sidebar.success("管理員模式")
-    with st.sidebar.expander("⚙️ 人員設定"):
-        edited_staff = st.data_editor(st.session_state.staff_df[["name", "status", "line_uid"]], column_config={"status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])}, hide_index=True, key="req_staff_editor")
-        if st.button("💾 儲存人員設定", key="req_save_staff"): save_staff(edited_staff); st.rerun()
+    
+    with st.sidebar.expander("🔑 所有人員密碼清單"):
+        st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
+        st.markdown("---")
+        st.write("**恢復預設密碼 (0000)**")
+        reset_target = st.selectbox("選擇人員", st.session_state.staff_df["name"].tolist(), key="req_rst_sel")
+        if st.button("確認恢復預設", key="req_rst_btn"):
+            s_df = load_staff()
+            idx = s_df[s_df["name"] == reset_target].index[0]
+            s_df.at[idx, "password"] = "0000"
+            save_staff(s_df)
+            st.session_state.staff_df = s_df
+            st.success(f"{reset_target} 密碼已重置")
+            
+    with st.sidebar.expander("➕ 新增人員"):
+        n = st.text_input("姓名", key="req_new_staff_name")
+        if st.button("新增", key="req_add_staff"):
+            s_df = load_staff()
+            if n and n not in s_df["name"].values:
+                new_row = pd.DataFrame([{"name": n, "status": "在職", "password": "0000", "avatar": "", "line_uid": ""}])
+                s_df = pd.concat([s_df, new_row], ignore_index=True)
+                save_staff(s_df)
+                st.session_state.staff_df = s_df
+                st.success("人員新增成功")
+                st.rerun()
+            elif n in s_df["name"].values:
+                st.error("人員已存在")
+
+    with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
+        edited_staff = st.data_editor(
+            st.session_state.staff_df[["name", "status", "line_uid"]], 
+            column_config={
+                "name": st.column_config.TextColumn("姓名", disabled=True),
+                "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])
+            }, 
+            hide_index=True, 
+            key="req_staff_editor_admin"
+        )
+        if st.button("💾 儲存人員設定", key="req_save_staff_admin"):
+            s_df = load_staff()
+            for idx, row in edited_staff.iterrows():
+                s_df.at[idx, "status"] = row["status"]
+                s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
+            save_staff(s_df)
+            st.session_state.staff_df = s_df
+            st.rerun()
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
