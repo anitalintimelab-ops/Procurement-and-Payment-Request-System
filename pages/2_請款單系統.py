@@ -168,7 +168,7 @@ for k in ['edit_id', 'last_id', 'view_id']:
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
-# --- 7. 左側側邊欄 ---
+# --- 7. 左側側邊欄 (與採購單嚴格一致) ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
 avatar_b64 = ""
@@ -193,7 +193,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-# --- 管理員專屬設定 (修正：新增密碼清單、新增人員、更名人員設定) ---
+# --- 管理員專屬設定 ---
 if is_admin:
     st.sidebar.success("管理員模式")
     
@@ -248,6 +248,52 @@ if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
 menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
 
+# --- 8. 簽核列表渲染模組 ---
+def render_signing_table(df_list, sign_type, is_history=False):
+    if df_list.empty:
+        st.info("目前無相關紀錄")
+        return
+    
+    cols_header = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.0])
+    headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "提交時間", "操作"]
+    for c, h in zip(cols_header, headers): c.write(f"**{h}**")
+    
+    for i, r in df_list.iterrows():
+        c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.0])
+        c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"])
+        c[4].write(f"${clean_amount(r['總金額']):,}"); c[5].write(str(r["提交時間"])[5:16] if pd.notna(r["提交時間"]) else "")
+        
+        with c[6]:
+            btn_col1, btn_col2, btn_col3 = st.columns(3)
+            if btn_col1.button("預覽", key=f"sv_{sign_type}_{i}_{is_history}"):
+                st.session_state.view_id = r["單號"]; st.rerun()
+            
+            if not is_history:
+                # 權限判定
+                can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active
+                if btn_col2.button("✅ 核准", key=f"sok_{sign_type}_{i}", disabled=not can_sign):
+                    fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                    if sign_type == "EXE":
+                        fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
+                        sys_name = st.session_state.get('sys_choice', '請款單系統')
+                        send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
+                    else:
+                        fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
+                    save_data(fresh_db); st.success("已核准！"); time.sleep(0.5); st.rerun()
+                
+                if can_sign:
+                    with btn_col3.popover("❌ 駁回"):
+                        reason = st.text_input("駁回原因", key=f"sr_{sign_type}_{i}")
+                        if st.button("確認", key=f"sno_{sign_type}_{i}"):
+                            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                            field_prefix = "初審" if sign_type == "EXE" else "複審"
+                            fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
+                            save_data(fresh_db); st.rerun()
+                else:
+                    btn_col3.button("❌ 駁回", disabled=True, key=f"fk_sno_{sign_type}_{i}")
+            else:
+                btn_col2.write(f"[{r['狀態']}]")
+
 # ================= 頁面邏輯 =================
 if menu == "1. 填寫申請單":
     st.title("時研國際設計股份有限公司")
@@ -258,7 +304,6 @@ if menu == "1. 填寫申請單":
     if st.session_state.edit_id:
         r = db[db["單號"]==st.session_state.edit_id].iloc[0]
         jd = parse_req_json(r["請款說明"])
-        # 相容舊資料總額
         legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
         dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", "")})
 
@@ -351,7 +396,6 @@ if menu == "1. 填寫申請單":
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
                 save_data(fdb)
-                
                 sys_name = st.session_state.get('sys_choice', '請款單系統')
                 msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"
                 send_line_message(msg)
@@ -372,48 +416,41 @@ if menu == "1. 填寫申請單":
             
             render_upload_popover(b6, r, f"up{i}")
 
-# ================= 頁面 2 & 3: 簽核 =================
-elif menu in ["2. 專案執行長簽核", "3. 財務長簽核"]:
-    st.subheader(menu)
+# ================= 頁面 2: 專案執行長簽核 =================
+elif menu == "2. 專案執行長簽核":
+    st.title("👨‍💼 專案執行長簽核管理")
     f_db = load_data()
-    if menu == "2. 專案執行長簽核":
-        my_db = f_db[(f_db["類型"]=="請款單") & (f_db["狀態"].isin(["待簽核", "待初審"]))]
-        if not is_admin: my_db = my_db[my_db["專案負責人"] == curr_name]
-    else:
-        my_db = f_db[(f_db["類型"]=="請款單") & (f_db["狀態"] == "待複審")]
-        if not is_admin and curr_name != CFO_NAME: my_db = my_db[my_db["專案負責人"] == curr_name]
+    req_db = f_db[f_db["類型"]=="請款單"]
+    
+    t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
+    
+    with t1:
+        pending = req_db[req_db["狀態"].isin(["待簽核", "待初審"])]
+        if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
+        render_signing_table(pending, "EXE")
+        
+    with t2:
+        history = req_db[(req_db["初審人"] == curr_name) | ((req_db["狀態"].isin(["已核准","已駁回","待複審"])) & (req_db["專案負責人"] == curr_name))]
+        if is_admin: history = req_db[req_db["初審人"] != ""]
+        render_signing_table(history, "EXE", is_history=True)
 
-    if my_db.empty: st.info("目前無待簽核單據")
-    else:
-        cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.0])
-        for c, h in zip(cols, ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "提交時間", "操作"]): c.write(f"**{h}**")
-        for i, r in my_db.iterrows():
-            c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.0])
-            c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"])
-            c[4].write(f"${clean_amount(r['總金額']):,}"); c[5].write(r["提交時間"])
-            with c[6]:
-                b1, b2, b3 = st.columns(3)
-                can_sign = (r["專案負責人"] == curr_name if menu == "2. 專案執行長簽核" else curr_name == CFO_NAME) and is_active
-                if b1.button("預覽", key=f"sv_{i}"): st.session_state.view_id = r["單號"]; st.rerun()
-                if b2.button("✅ 核准", key=f"sok_{i}", disabled=not can_sign):
-                    fresh_db = load_data()
-                    if menu == "2. 專案執行長簽核": 
-                        fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
-                        sys_name = st.session_state.get('sys_choice', '請款單系統')
-                        msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 (Charles) 進行簽核！"
-                        send_line_message(msg)
-                    else: 
-                        fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
-                    save_data(fresh_db); st.rerun()
-                if can_sign:
-                    with b3.popover("❌ 駁回"):
-                        reason = st.text_input("駁回原因", key=f"sr_{i}")
-                        if st.button("確認", key=f"sno_{i}"):
-                            fresh_db = load_data()
-                            field_prefix = "初審" if menu == "2. 專案執行長簽核" else "複審"
-                            fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
-                            save_data(fresh_db); st.rerun()
-                else: b3.button("❌ 駁回", disabled=True, key=f"fk_sno_{i}")
+# ================= 頁面 3: 財務長簽核 =================
+elif menu == "3. 財務長簽核":
+    st.title("💰 財務長簽核管理")
+    f_db = load_data()
+    req_db = f_db[f_db["類型"]=="請款單"]
+    
+    t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
+    
+    with t1:
+        pending = req_db[req_db["狀態"] == "待複審"]
+        if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
+        render_signing_table(pending, "CFO")
+        
+    with t2:
+        history = req_db[req_db["複審人"] == curr_name] if curr_name == CFO_NAME else pd.DataFrame()
+        if is_admin: history = req_db[req_db["複審人"] != ""]
+        render_signing_table(history, "CFO", is_history=True)
 
 # ================= 頁面 4: 總覽 =================
 elif menu == "4. 表單狀態總覽":
