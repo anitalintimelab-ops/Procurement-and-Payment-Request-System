@@ -111,11 +111,24 @@ def load_staff():
 
 def save_staff(df): df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
 
-# --- 4. HTML 渲染 ---
+# --- 4. 請款單資料打包解析器 ---
+def parse_req_json(desc_raw):
+    try:
+        if "[請款單資料]" in desc_raw:
+            return json.loads(desc_raw.split("[請款單資料]")[1].strip())
+    except: pass
+    return {"desc": desc_raw, "net_amt": 0, "tax_amt": 0, "inv_no": ""}
+
+# --- 5. HTML 渲染 ---
 def render_html(row):
     amt = clean_amount(row['總金額'])
+    data = parse_req_json(row.get("請款說明", ""))
     sub_time = str(row.get("提交時間", "")) or get_taiwan_time()
     display_app = f"{row['申請人']} ({row.get('代申請人', '')} 代)" if row.get("代申請人") else row['申請人']
+    
+    # 相容舊資料邏輯：如果沒有記錄過獨立的未稅與稅額，就直接抓總額當作未稅
+    legacy_net = amt if data.get("net_amt", 0) == 0 and data.get("tax_amt", 0) == 0 else data.get("net_amt", 0)
+
     h = f'<div style="padding:20px;border:2px solid #000;background:#fff;color:#000;font-family:sans-serif;">'
     h += f'<div style="text-align:center;"><h2>時研國際設計 - 請款申請單</h2></div>'
     h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
@@ -123,9 +136,14 @@ def render_html(row):
     h += f'<tr><td bgcolor="#eee">專案</td><td>{row["專案名稱"]}</td><td bgcolor="#eee">編號</td><td>{row["專案編號"]}</td></tr>'
     h += f'<tr><td bgcolor="#eee">申請人</td><td colspan="3">{display_app}</td></tr>'
     h += f'<tr><td bgcolor="#eee">請款廠商</td><td>{row.get("請款廠商","")}</td><td bgcolor="#eee">匯款帳戶</td><td>{row.get("匯款帳戶","")}</td></tr>'
+    h += f'<tr><td bgcolor="#eee">發票/憑證</td><td colspan="3">{data.get("inv_no","")}</td></tr>'
     h += f'<tr><td bgcolor="#eee">付款方式</td><td colspan="3">{row.get("付款方式","")}</td></tr>'
-    h += f'<tr><td bgcolor="#eee">請款說明</td><td colspan="3">{row["請款說明"]}</td></tr>'
+    h += f'<tr><td bgcolor="#eee">請款說明</td><td colspan="3">{data.get("desc","")}</td></tr>'
+    
+    h += f'<tr><td colspan="3" align="right"><b>金額 (未稅)</b></td><td align="right"><b>{row.get("幣別","TWD")} {legacy_net:,}</b></td></tr>'
+    h += f'<tr><td colspan="3" align="right"><b>稅額</b></td><td align="right"><b>{row.get("幣別","TWD")} {data.get("tax_amt", 0):,}</b></td></tr>'
     h += f'<tr><td colspan="3" align="right"><b>請款總金額</b></td><td align="right"><b>{row.get("幣別","TWD")} {amt:,}</b></td></tr></table>'
+    
     h += f'<p style="font-size:11px;margin-top:10px;">提交：{sub_time} | 初審：{row.get("初審人","")} | 複審：{row.get("複審人","")}</p></div>'
     return h
 
@@ -142,7 +160,7 @@ def render_upload_popover(container, r, prefix):
             if nf_ims: fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
             save_data(fresh_db); st.rerun()
 
-# --- 5. Session 初始化 ---
+# --- 6. Session 初始化 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 for k in ['edit_id', 'last_id', 'view_id']: 
@@ -151,7 +169,7 @@ for k in ['edit_id', 'last_id', 'view_id']:
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
-# --- 6. 左側側邊欄 ---
+# --- 7. 左側側邊欄 ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
 avatar_b64 = ""
@@ -193,10 +211,13 @@ if menu == "1. 填寫申請單":
     st.subheader("📝 填寫請款申請單")
     db = load_data(); staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
     
-    dv = {"app": curr_name, "pn": "", "pi": "", "exe": staffs[0], "amt": 0, "desc": "", "ib64": "", "cur": "TWD", "ab64":"", "vdr":"", "acc":"", "pay":"匯款(扣30手續費)"}
+    dv = {"app": curr_name, "pn": "", "pi": "", "exe": staffs[0], "net_amt": 0, "tax_amt": 0, "desc": "", "ib64": "", "cur": "TWD", "ab64":"", "vdr":"", "acc":"", "pay":"匯款(扣30手續費)", "inv_no":""}
     if st.session_state.edit_id:
         r = db[db["單號"]==st.session_state.edit_id].iloc[0]
-        dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "amt": r["總金額"], "desc": r["請款說明"], "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)")})
+        jd = parse_req_json(r["請款說明"])
+        # 相容舊資料總額
+        legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
+        dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", "")})
 
     with st.form("req_form"):
         c1, c2, c3 = st.columns(3)
@@ -207,35 +228,42 @@ if menu == "1. 填寫申請單":
         
         cx1, cx2, cx3 = st.columns(3)
         exe = cx1.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]) if dv["exe"] in staffs else 0)
-        amt = cx2.number_input("請款總金額", value=int(dv["amt"]), min_value=0)
-        curr = cx3.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
+        net_amt = cx2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0)
+        tax_amt = cx3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
         
-        pay_idx = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]) if dv["pay"] in ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"] else 2
-        pay = st.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
-        
-        cv1, cv2 = st.columns(2)
+        cv1, cv2, cv3 = st.columns(3)
         vdr = cv1.text_input("請款廠商", value=dv["vdr"])
         acc = cv2.text_input("匯款帳戶", value=dv["acc"])
+        inv_no = cv3.text_input("發票號碼或憑證 (非必填)", value=dv["inv_no"])
+        
+        c_cur, c_pay = st.columns([1, 2])
+        curr = c_cur.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
+        pay_idx = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]) if dv["pay"] in ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"] else 2
+        pay = c_pay.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
         
         desc = st.text_area("請款說明", value=dv["desc"])
+        st.info("💡 **提示：請款總金額將於點擊下方儲存後，由系統自動將「金額 (未稅)」與「稅額」加總。**")
         
         f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"])
         f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True)
         
         if st.form_submit_button("💾 儲存並進入提交模式"):
-            if pn and amt > 0:
+            total_amt = net_amt + tax_amt
+            if pn and total_amt > 0:
                 b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else dv["ab64"]
                 b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else dv["ib64"]
+                packed_desc = "[請款單資料]\n" + json.dumps({"net_amt": net_amt, "tax_amt": tax_amt, "inv_no": inv_no, "desc": desc}, ensure_ascii=False)
+                
                 f_db = load_data()
                 if st.session_state.edit_id:
                     idx = f_db[f_db["單號"]==st.session_state.edit_id].index[0]
-                    f_db.loc[idx, ["申請人", "專案名稱", "專案編號", "專案負責人", "總金額", "請款說明", "請款廠商", "匯款帳戶", "付款方式", "影像Base64", "帳戶影像Base64", "幣別"]] = [app_val, pn, pi, exe, amt, desc, vdr, acc, pay, b_ims, b_acc, curr]
+                    f_db.loc[idx, ["申請人", "專案名稱", "專案編號", "專案負責人", "總金額", "請款說明", "請款廠商", "匯款帳戶", "付款方式", "影像Base64", "帳戶影像Base64", "幣別"]] = [app_val, pn, pi, exe, total_amt, packed_desc, vdr, acc, pay, b_ims, b_acc, curr]
                     st.session_state.edit_id = None
                 else:
                     tid = f"{datetime.date.today().strftime('%Y%m%d')}-{len(f_db[f_db['單號'].str.startswith(datetime.date.today().strftime('%Y%m%d'))])+1:02d}"
-                    nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":desc, "總金額":amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已儲存", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
+                    nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed_desc, "總金額":total_amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已儲存", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
                     f_db = pd.concat([f_db, pd.DataFrame([nr])], ignore_index=True); st.session_state.last_id = tid
-                save_data(f_db); st.success("儲存成功！"); st.rerun()
+                save_data(f_db); st.success(f"儲存成功！已為您自動加總金額為：{total_amt:,}"); st.rerun()
 
     if st.session_state.last_id:
         c1, c2, c3 = st.columns(3)
@@ -259,7 +287,7 @@ if menu == "1. 填寫申請單":
     if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
     
     cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
-    for c, h in zip(cols, ["申請單號", "專案名稱", "負責執行長", "申請人", "請款金額", "狀態", "操作"]): 
+    for c, h in zip(cols, ["申請單號", "專案名稱", "負責執行長", "申請人", "請款總金額", "狀態", "操作"]): 
         c.write(f"**{h}**")
         
     for i, r in my_db.iterrows():
