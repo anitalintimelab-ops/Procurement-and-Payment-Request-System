@@ -198,9 +198,9 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-# --- 管理員專屬區塊 ---
-st.sidebar.markdown("---")
+# --- 管理員專屬區塊 (僅管理員可見，非管理員完全隱藏) ---
 if is_admin:
+    st.sidebar.markdown("---")
     st.sidebar.success("管理員專屬區塊 (已解鎖)")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
@@ -247,19 +247,6 @@ if is_admin:
             save_staff(s_df)
             st.session_state.staff_df = s_df
             st.rerun()
-else:
-    st.sidebar.warning("管理員專屬區塊 (僅供檢視)")
-    with st.sidebar.expander("🔑 所有人員密碼清單"):
-        st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
-        st.write("**恢復預設密碼 (0000)**")
-        st.selectbox("選擇人員", st.session_state.staff_df["name"].tolist(), key="req_rst_sel", disabled=True)
-        st.button("確認恢復預設", key="req_rst_btn", disabled=True)
-    with st.sidebar.expander("➕ 新增人員"):
-        st.text_input("姓名", key="req_new_staff_name", disabled=True)
-        st.button("新增", key="req_add_staff", disabled=True)
-    with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
-        st.data_editor(st.session_state.staff_df[["name", "status", "line_uid"]], hide_index=True, disabled=True, key="req_staff_editor_admin")
-        st.button("💾 儲存人員設定", key="req_save_staff_admin", disabled=True)
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
@@ -419,8 +406,12 @@ elif menu == "3. 財務長簽核":
         if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
         render_signing_table(pending, "CFO")
     with t2:
-        history = req_db[req_db["複審人"] == curr_name] if curr_name == CFO_NAME else pd.DataFrame()
-        if is_admin: history = req_db[req_db["複審人"] != ""]
+        if is_admin:
+            history = req_db[req_db["複審人"] != ""]
+        elif curr_name == CFO_NAME:
+            history = req_db[req_db["複審人"] == curr_name]
+        else:
+            history = req_db[(req_db["複審人"] != "") & ((req_db["申請人"] == curr_name) | (req_db["專案負責人"] == curr_name))]
         render_signing_table(history, "CFO", is_history=True)
 
 # ================= 頁面 4: 總覽 =================
@@ -434,7 +425,6 @@ elif menu == "4. 表單狀態總覽":
 elif menu == "5. 請款狀態/系統設定":
     st.title("⚙️ 請款狀態 / 系統設定")
     
-    # 判斷是否為管理員，非管理員隱藏上方三大區塊
     if is_admin:
         st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
 
@@ -477,7 +467,6 @@ elif menu == "5. 請款狀態/系統設定":
                 st.rerun()
         st.divider()
 
-    # 此區塊所有人都看得到，且文字精簡為「財務匯款註記」
     st.subheader("💰 財務匯款註記")
     f_db = load_data(); df_pay = f_db[f_db["類型"]=="請款單"].copy()
     if not df_pay.empty:
