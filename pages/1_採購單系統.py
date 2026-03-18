@@ -149,7 +149,7 @@ for k in ['edit_id', 'last_id', 'view_id']:
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
-# --- 6. 左側側邊欄 ---
+# --- 6. 左側側邊欄 (設定全面反灰機制) ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
 avatar_b64 = ""
@@ -161,45 +161,50 @@ else: st.sidebar.markdown(f"### 👤 {curr_name}")
 
 st.sidebar.info(f"🟢 目前在線人數：**{get_online_users(curr_name)}** 人")
 
+# 個人設定也強制只有管理員可見可修？(依照要求：左側功能列 只有ANITA能修改 其餘進去只看到畫面並反灰)
 with st.sidebar.expander("📸 修改大頭貼"):
-    new_avatar = st.file_uploader("上傳圖片", type=["jpg", "png"], key="side_avatar")
-    if st.button("更新大頭貼") and new_avatar:
+    new_avatar = st.file_uploader("上傳圖片", type=["jpg", "png"], key="side_avatar", disabled=not is_admin)
+    if st.button("更新大頭貼", disabled=not is_admin) and new_avatar:
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "avatar"] = base64.b64encode(new_avatar.getvalue()).decode()
         save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
 
 with st.sidebar.expander("🔐 修改我的密碼"):
-    new_pw = st.text_input("新密碼", type="password", key="side_pw")
-    if st.button("更新密碼") and len(new_pw) >= 4:
+    new_pw = st.text_input("新密碼", type="password", key="side_pw", disabled=not is_admin)
+    if st.button("更新密碼", disabled=not is_admin) and len(new_pw) >= 4:
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-if is_admin:
-    st.sidebar.success("管理員模式")
-    with st.sidebar.expander("🔑 所有人員密碼清單"):
-        st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
-        st.write("**恢復預設密碼 (0000)**")
-        reset_target = st.selectbox("選擇人員", st.session_state.staff_df["name"].tolist(), key="po_rst_sel")
-        if st.button("確認恢復預設", key="po_rst_btn"):
-            s_df = load_staff(); idx = s_df[s_df["name"] == reset_target].index[0]
-            s_df.at[idx, "password"] = "0000"; save_staff(s_df); st.session_state.staff_df = s_df; st.success("已重置")
-    with st.sidebar.expander("➕ 新增人員"):
-        n = st.text_input("姓名", key="po_new_staff_name")
-        if st.button("新增", key="po_add_staff"):
-            s_df = load_staff()
-            if n and n not in s_df["name"].values:
-                new_row = pd.DataFrame([{"name": n, "status": "在職", "password": "0000", "avatar": "", "line_uid": ""}])
-                s_df = pd.concat([s_df, new_row], ignore_index=True); save_staff(s_df); st.session_state.staff_df = s_df; st.success("成功"); st.rerun()
-    with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
-        edited_staff = st.data_editor(st.session_state.staff_df[["name", "status", "line_uid"]], column_config={"name": st.column_config.TextColumn("姓名", disabled=True), "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])}, hide_index=True)
-        if st.button("💾 儲存人員設定"):
-            s_df = load_staff()
-            for idx, row in edited_staff.iterrows(): s_df.at[idx, "status"] = row["status"]; s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
-            save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
+# 管理員專屬設定，全部公開，但對非管理員反灰
+st.sidebar.markdown("---")
+if is_admin: st.sidebar.success("管理員專屬區塊 (已解鎖)")
+else: st.sidebar.warning("管理員專屬區塊 (僅供檢視)")
+
+with st.sidebar.expander("🔑 所有人員密碼清單"):
+    st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
+    st.write("**恢復預設密碼 (0000)**")
+    reset_target = st.selectbox("選擇人員", st.session_state.staff_df["name"].tolist(), key="po_rst_sel", disabled=not is_admin)
+    if st.button("確認恢復預設", key="po_rst_btn", disabled=not is_admin):
+        s_df = load_staff(); idx = s_df[s_df["name"] == reset_target].index[0]
+        s_df.at[idx, "password"] = "0000"; save_staff(s_df); st.session_state.staff_df = s_df; st.success("已重置")
+
+with st.sidebar.expander("➕ 新增人員"):
+    n = st.text_input("姓名", key="po_new_staff_name", disabled=not is_admin)
+    if st.button("新增", key="po_add_staff", disabled=not is_admin):
+        s_df = load_staff()
+        if n and n not in s_df["name"].values:
+            new_row = pd.DataFrame([{"name": n, "status": "在職", "password": "0000", "avatar": "", "line_uid": ""}])
+            s_df = pd.concat([s_df, new_row], ignore_index=True); save_staff(s_df); st.session_state.staff_df = s_df; st.success("成功"); st.rerun()
+
+with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
+    edited_staff = st.data_editor(st.session_state.staff_df[["name", "status", "line_uid"]], column_config={"name": st.column_config.TextColumn("姓名", disabled=True), "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])}, hide_index=True, disabled=not is_admin)
+    if st.button("💾 儲存人員設定", disabled=not is_admin):
+        s_df = load_staff()
+        for idx, row in edited_staff.iterrows(): s_df.at[idx, "status"] = row["status"]; s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
+        save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
 
 if st.sidebar.button("登出系統"): st.session_state.user_id = None; st.switch_page("app.py")
 
-# 功能5名稱修改為"5. 系統設定"
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 系統設定"]
 menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
 
@@ -424,7 +429,21 @@ elif menu == "5. 系統設定":
             with open(D_FILE, "wb") as f: f.write(up.getbuffer())
             st.success("還原成功！"); time.sleep(1); st.rerun()
             
-    with st.expander("🔔 2. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)", expanded=True):
+    with st.expander("👥 2. 人員備份與還原", expanded=True):
+        col_down2, col_up2 = st.columns(2)
+        with col_down2:
+            st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
+            if os.path.exists(S_FILE):
+                with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系統人員備份_{datetime.date.today()}.csv", mime="text/csv")
+        with col_up2:
+            st.write("⬆️ **步驟二：還原人員資料**")
+            uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
+            if uploaded_staff and st.button("確認還原人員資料"):
+                with open(S_FILE, "wb") as f: f.write(uploaded_staff.getbuffer())
+                st.session_state.staff_df = load_staff()
+                st.success("人員資料已還原！"); time.sleep(1); st.rerun()
+
+    with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)", expanded=True):
         st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
         ct, cu = get_line_credentials()
         nt = st.text_input("Channel Access Token (長字串)", value=ct, type="password")
