@@ -168,7 +168,7 @@ for k in ['edit_id', 'last_id', 'view_id']:
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
-# --- 7. 左側側邊欄 ---
+# --- 7. 左側側邊欄 (與採購單嚴格一致) ---
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
 avatar_b64 = ""
@@ -181,28 +181,28 @@ else: st.sidebar.markdown(f"### 👤 {curr_name}")
 st.sidebar.info(f"🟢 目前在線人數：**{get_online_users(curr_name)}** 人")
 
 with st.sidebar.expander("📸 修改大頭貼"):
-    new_avatar = st.file_uploader("上傳圖片", type=["jpg", "png"], key="side_avatar")
-    if st.button("更新大頭貼") and new_avatar:
+    new_avatar = st.file_uploader("上傳圖片", type=["jpg", "png"], key="req_side_avatar")
+    if st.button("更新大頭貼", key="req_update_avatar") and new_avatar:
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "avatar"] = base64.b64encode(new_avatar.getvalue()).decode()
         save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
 
 with st.sidebar.expander("🔐 修改我的密碼"):
-    new_pw = st.text_input("新密碼", type="password", key="side_pw")
-    if st.button("更新密碼") and len(new_pw) >= 4:
+    new_pw = st.text_input("新密碼", type="password", key="req_side_pw")
+    if st.button("更新密碼", key="req_update_pw") and len(new_pw) >= 4:
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
 if is_admin:
     st.sidebar.success("管理員模式")
     with st.sidebar.expander("⚙️ 人員設定"):
-        edited_staff = st.data_editor(st.session_state.staff_df[["name", "status", "line_uid"]], column_config={"status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])}, hide_index=True)
-        if st.button("💾 儲存人員設定"): save_staff(edited_staff); st.rerun()
+        edited_staff = st.data_editor(st.session_state.staff_df[["name", "status", "line_uid"]], column_config={"status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])}, hide_index=True, key="req_staff_editor")
+        if st.button("💾 儲存人員設定", key="req_save_staff"): save_staff(edited_staff); st.rerun()
 
-if st.sidebar.button("登出系統"): st.session_state.user_id = None; st.switch_page("app.py")
+if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
-menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
+menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
 
 # ================= 頁面邏輯 =================
 if menu == "1. 填寫申請單":
@@ -214,6 +214,7 @@ if menu == "1. 填寫申請單":
     if st.session_state.edit_id:
         r = db[db["單號"]==st.session_state.edit_id].iloc[0]
         jd = parse_req_json(r["請款說明"])
+        # 相容舊資料總額
         legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
         dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", "")})
 
@@ -271,7 +272,6 @@ if menu == "1. 填寫申請單":
             f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
             save_data(f_db)
             
-            # --- LINE 修正：通知執行長 ---
             sys_name = st.session_state.get('sys_choice', '請款單系統')
             pj_name = f_db.at[idx, '專案名稱']
             exe_name = f_db.at[idx, '專案負責人']
@@ -308,7 +308,6 @@ if menu == "1. 填寫申請單":
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
                 save_data(fdb)
                 
-                # --- LINE 修正：通知執行長 ---
                 sys_name = st.session_state.get('sys_choice', '請款單系統')
                 msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"
                 send_line_message(msg)
@@ -356,7 +355,6 @@ elif menu in ["2. 專案執行長簽核", "3. 財務長簽核"]:
                     fresh_db = load_data()
                     if menu == "2. 專案執行長簽核": 
                         fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
-                        # 通知財務長
                         sys_name = st.session_state.get('sys_choice', '請款單系統')
                         msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 (Charles) 進行簽核！"
                         send_line_message(msg)
