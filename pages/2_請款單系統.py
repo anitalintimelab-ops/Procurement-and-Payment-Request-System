@@ -131,6 +131,17 @@ def render_html(row):
 
 def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
+def render_upload_popover(container, r, prefix):
+    with container.popover("📎 附件"):
+        st.write("**上傳附件 (圖/Excel)**")
+        nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
+        nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
+        if st.button("💾 儲存附件", key=f"{prefix}_b"):
+            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+            if nf_acc: fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
+            if nf_ims: fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
+            save_data(fresh_db); st.rerun()
+
 # --- 5. Session 初始化 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
@@ -175,17 +186,6 @@ if st.sidebar.button("登出系統"): st.session_state.user_id = None; st.switch
 
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
 menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
-
-def render_upload_popover(container, r, prefix):
-    with container.popover("📎"):
-        st.write("**上傳附件 (圖/Excel)**")
-        nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
-        nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
-        if st.button("💾 儲存附件", key=f"{prefix}_b"):
-            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-            if nf_acc: fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
-            if nf_ims: fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
-            save_data(fresh_db); st.rerun()
 
 # ================= 頁面邏輯 =================
 if menu == "1. 填寫申請單":
@@ -245,6 +245,7 @@ if menu == "1. 填寫申請單":
             f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
             save_data(f_db)
             
+            # --- LINE 推播訊息設定 ---
             sys_name = st.session_state.get('sys_choice', '請款單系統')
             pj_name = f_db.at[idx, '專案名稱']
             msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{st.session_state.last_id}\n專案名稱：{pj_name}\n有一筆新的表單需要財務長 (Charles) 進行簽核！"
@@ -258,6 +259,7 @@ if menu == "1. 填寫申請單":
     f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
     if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
     
+    # 完美欄位寬度與標題
     cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
     for c, h in zip(cols, ["申請單號", "專案名稱", "負責執行長", "申請人", "請款金額", "狀態", "操作"]): 
         c.write(f"**{h}**")
@@ -280,23 +282,37 @@ if menu == "1. 填寫申請單":
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
                 save_data(fdb)
                 
+                # --- LINE 推播訊息設定 ---
                 sys_name = st.session_state.get('sys_choice', '請款單系統')
                 msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要財務長 (Charles) 進行簽核！"
                 send_line_message(msg)
+                
                 st.rerun()
             if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
             if b3.button("列印", key=f"p{i}"): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
             if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.edit_id = r["單號"]; st.rerun()
             
-            if can_edit:
-                with b5.popover("刪除"):
-                    reason = st.text_input("刪除原因", key=f"d_res_{i}")
-                    if st.button("確認", key=f"d{i}"):
-                        if reason:
-                            fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]
-                            save_data(fresh_db); st.rerun()
-                        else: st.error("請輸入原因")
-            else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
+            if stt == "已核准" and is_active:
+                with b5.popover("📝 更新"):
+                    st.write("**請款單後續更新**")
+                    new_bill_stat = st.text_input("請款狀態", value=str(r.get("請款狀態", "")), key=f"m1_bs_{i}")
+                    new_billed = st.number_input("已請款金額", value=int(clean_amount(r.get("已請款金額", 0))), min_value=0, key=f"m1_ba_{i}")
+                    new_unbilled = st.number_input("尚未請款金額", value=int(clean_amount(r.get("尚未請款金額", 0))), min_value=0, key=f"m1_ua_{i}")
+                    new_desc = st.text_area("說明內容", value=str(r.get("請款說明", "")), key=f"m1_desc_{i}")
+                    if st.button("💾 儲存修改", key=f"m1_save_pur_{i}"):
+                        fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+                        fresh_db.loc[idx, ["請款狀態", "已請款金額", "尚未請款金額", "請款說明"]] = [new_bill_stat, new_billed, new_unbilled, new_desc]
+                        save_data(fresh_db); st.success("已更新！"); time.sleep(0.5); st.rerun()
+            else:
+                if can_edit:
+                    with b5.popover("刪除"):
+                        reason = st.text_input("刪除原因", key=f"d_res_{i}")
+                        if st.button("確認", key=f"d{i}"):
+                            if reason:
+                                fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]
+                                save_data(fresh_db); st.rerun()
+                            else: st.error("請輸入原因")
+                else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
             
             render_upload_popover(b6, r, f"up{i}")
 
@@ -304,7 +320,6 @@ if menu == "1. 填寫申請單":
 elif menu in ["2. 專案執行長簽核", "3. 財務長簽核"]:
     st.subheader(menu)
     f_db = load_data()
-    # 依身分與簽核狀態過濾
     if menu == "2. 專案執行長簽核":
         my_db = f_db[(f_db["類型"]=="請款單") & (f_db["狀態"].isin(["待簽核", "待初審"]))]
         if not is_admin: my_db = my_db[my_db["專案負責人"] == curr_name]
