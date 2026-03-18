@@ -126,7 +126,6 @@ def render_html(row):
     sub_time = str(row.get("提交時間", "")) or get_taiwan_time()
     display_app = f"{row['申請人']} ({row.get('代申請人', '')} 代)" if row.get("代申請人") else row['申請人']
     
-    # 相容舊資料邏輯：如果沒有記錄過獨立的未稅與稅額，就直接抓總額當作未稅
     legacy_net = amt if data.get("net_amt", 0) == 0 and data.get("tax_amt", 0) == 0 else data.get("net_amt", 0)
 
     h = f'<div style="padding:20px;border:2px solid #000;background:#fff;color:#000;font-family:sans-serif;">'
@@ -215,7 +214,6 @@ if menu == "1. 填寫申請單":
     if st.session_state.edit_id:
         r = db[db["單號"]==st.session_state.edit_id].iloc[0]
         jd = parse_req_json(r["請款說明"])
-        # 相容舊資料總額
         legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
         dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", "")})
 
@@ -273,9 +271,11 @@ if menu == "1. 填寫申請單":
             f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
             save_data(f_db)
             
+            # --- LINE 修正：通知執行長 ---
             sys_name = st.session_state.get('sys_choice', '請款單系統')
             pj_name = f_db.at[idx, '專案名稱']
-            msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{st.session_state.last_id}\n專案名稱：{pj_name}\n有一筆新的表單需要財務長 (Charles) 進行簽核！"
+            exe_name = f_db.at[idx, '專案負責人']
+            msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{st.session_state.last_id}\n專案名稱：{pj_name}\n有一筆新的表單需要執行長 ({exe_name}) 進行簽核！"
             send_line_message(msg)
             
             st.session_state.last_id = None; st.rerun()
@@ -308,8 +308,9 @@ if menu == "1. 填寫申請單":
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
                 save_data(fdb)
                 
+                # --- LINE 修正：通知執行長 ---
                 sys_name = st.session_state.get('sys_choice', '請款單系統')
-                msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要財務長 (Charles) 進行簽核！"
+                msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"
                 send_line_message(msg)
                 st.rerun()
             if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
@@ -353,8 +354,14 @@ elif menu in ["2. 專案執行長簽核", "3. 財務長簽核"]:
                 if b1.button("預覽", key=f"sv_{i}"): st.session_state.view_id = r["單號"]; st.rerun()
                 if b2.button("✅ 核准", key=f"sok_{i}", disabled=not can_sign):
                     fresh_db = load_data()
-                    if menu == "2. 專案執行長簽核": fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
-                    else: fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
+                    if menu == "2. 專案執行長簽核": 
+                        fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
+                        # 通知財務長
+                        sys_name = st.session_state.get('sys_choice', '請款單系統')
+                        msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 (Charles) 進行簽核！"
+                        send_line_message(msg)
+                    else: 
+                        fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
                     save_data(fresh_db); st.rerun()
                 if can_sign:
                     with b3.popover("❌ 駁回"):
