@@ -172,10 +172,6 @@ is_active = (st.session_state.user_status == "在職")
 st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
 st.sidebar.divider()
 
-menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
-menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
-st.sidebar.divider()
-
 avatar_b64 = ""
 try: avatar_b64 = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0].get("avatar", "")
 except: pass
@@ -249,6 +245,11 @@ if is_admin:
             st.rerun()
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
+
+# 導覽列移至最下方
+menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
+menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
+
 
 # --- 8. 簽核列表渲染模組 ---
 def render_signing_table(df_list, sign_type, is_history=False):
