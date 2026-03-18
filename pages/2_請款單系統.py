@@ -245,7 +245,6 @@ if menu == "1. 填寫申請單":
             f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
             save_data(f_db)
             
-            # --- LINE 推播訊息設定 ---
             sys_name = st.session_state.get('sys_choice', '請款單系統')
             pj_name = f_db.at[idx, '專案名稱']
             msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{st.session_state.last_id}\n專案名稱：{pj_name}\n有一筆新的表單需要財務長 (Charles) 進行簽核！"
@@ -259,7 +258,6 @@ if menu == "1. 填寫申請單":
     f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
     if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
     
-    # 完美欄位寬度與標題
     cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
     for c, h in zip(cols, ["申請單號", "專案名稱", "負責執行長", "申請人", "請款金額", "狀態", "操作"]): 
         c.write(f"**{h}**")
@@ -282,37 +280,23 @@ if menu == "1. 填寫申請單":
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
                 save_data(fdb)
                 
-                # --- LINE 推播訊息設定 ---
                 sys_name = st.session_state.get('sys_choice', '請款單系統')
                 msg = f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要財務長 (Charles) 進行簽核！"
                 send_line_message(msg)
-                
                 st.rerun()
             if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
             if b3.button("列印", key=f"p{i}"): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
             if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.edit_id = r["單號"]; st.rerun()
             
-            if stt == "已核准" and is_active:
-                with b5.popover("📝 更新"):
-                    st.write("**請款單後續更新**")
-                    new_bill_stat = st.text_input("請款狀態", value=str(r.get("請款狀態", "")), key=f"m1_bs_{i}")
-                    new_billed = st.number_input("已請款金額", value=int(clean_amount(r.get("已請款金額", 0))), min_value=0, key=f"m1_ba_{i}")
-                    new_unbilled = st.number_input("尚未請款金額", value=int(clean_amount(r.get("尚未請款金額", 0))), min_value=0, key=f"m1_ua_{i}")
-                    new_desc = st.text_area("說明內容", value=str(r.get("請款說明", "")), key=f"m1_desc_{i}")
-                    if st.button("💾 儲存修改", key=f"m1_save_pur_{i}"):
-                        fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                        fresh_db.loc[idx, ["請款狀態", "已請款金額", "尚未請款金額", "請款說明"]] = [new_bill_stat, new_billed, new_unbilled, new_desc]
-                        save_data(fresh_db); st.success("已更新！"); time.sleep(0.5); st.rerun()
-            else:
-                if can_edit:
-                    with b5.popover("刪除"):
-                        reason = st.text_input("刪除原因", key=f"d_res_{i}")
-                        if st.button("確認", key=f"d{i}"):
-                            if reason:
-                                fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]
-                                save_data(fresh_db); st.rerun()
-                            else: st.error("請輸入原因")
-                else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
+            if can_edit:
+                with b5.popover("刪除"):
+                    reason = st.text_input("刪除原因", key=f"d_res_{i}")
+                    if st.button("確認", key=f"d{i}"):
+                        if reason:
+                            fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]
+                            save_data(fresh_db); st.rerun()
+                        else: st.error("請輸入原因")
+            else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
             
             render_upload_popover(b6, r, f"up{i}")
 
@@ -364,14 +348,35 @@ elif menu == "4. 表單狀態總覽":
 # ================= 頁面 5: 系統設定 =================
 elif menu == "5. 請款狀態/系統設定":
     st.title("⚙️ 請款狀態 / 系統設定")
-    with st.expander("💾 1. 資料庫管理", expanded=True):
-        if os.path.exists(D_FILE):
-            with open(D_FILE, "rb") as f: st.download_button("⬇️ 下載資料庫", f, file_name="database.csv")
-        up = st.file_uploader("⬆️ 還原資料庫", type=["csv"])
-        if up and st.button("確認還原"):
-            with open(D_FILE, "wb") as f: f.write(up.getbuffer())
-            st.success("還原成功！"); time.sleep(1); st.rerun()
+    st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
+
+    with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
+        col_down, col_up = st.columns(2)
+        with col_down:
+            st.write("⬇️ **步驟一：下載最新表單資料庫**")
+            if os.path.exists(D_FILE):
+                with open(D_FILE, "rb") as f: st.download_button("下載表單備份檔", f, file_name=f"時研系統表單備份_{datetime.date.today()}.csv", mime="text/csv")
+        with col_up:
+            st.write("⬆️ **步驟二：還原表單資料庫**")
+            up_db = st.file_uploader("上傳表單 CSV 檔", type=["csv"], key="up_db", label_visibility="collapsed")
+            if up_db and st.button("確認還原表單"):
+                with open(D_FILE, "wb") as f: f.write(up_db.getbuffer())
+                st.success("表單資料庫已還原！"); time.sleep(1); st.rerun()
             
+    with st.expander("👥 2. 人員與大頭貼資料備份與還原"):
+        col_down2, col_up2 = st.columns(2)
+        with col_down2:
+            st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
+            if os.path.exists(S_FILE):
+                with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系統人員備份_{datetime.date.today()}.csv", mime="text/csv")
+        with col_up2:
+            st.write("⬆️ **步驟二：還原人員資料**")
+            uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
+            if uploaded_staff and st.button("確認還原人員資料"):
+                with open(S_FILE, "wb") as f: f.write(uploaded_staff.getbuffer())
+                st.session_state.staff_df = load_staff()
+                st.success("人員資料已還原！"); time.sleep(1); st.rerun()
+
     with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)", expanded=True):
         st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
         ct, cu = get_line_credentials()
