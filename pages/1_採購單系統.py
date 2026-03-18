@@ -8,7 +8,7 @@ import requests
 import json
 import io
 
-# --- 1. 系統鎖定與介面設定 ---
+# --- 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "採購單系統"
 st.set_page_config(page_title="時研-採購單系統", layout="wide", page_icon="🏢")
 
@@ -24,7 +24,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. 路徑定位 ---
+# --- 路徑定位 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
 D_FILE = os.path.join(B_DIR, "database.csv")
@@ -33,16 +33,17 @@ O_FILE = os.path.join(B_DIR, "online.csv")
 L_FILE = os.path.join(B_DIR, "line_credentials.txt") 
 
 ADMINS = ["Anita"]
+CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- 3. 基礎工具 ---
+# --- 基礎工具 ---
 def get_taiwan_time(): 
     return (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')
 
 def clean_amount(val):
     if pd.isna(val) or val is None or str(val).strip() == "": return 0
     try: return int(float(str(val).replace(",", "").replace("$", "").replace(" ", "")))
-    except: return 0
+    except Exception: return 0
 
 def clean_name(val): 
     return str(val).strip().split(" ")[0] if pd.notna(val) and str(val).strip() != "" else ""
@@ -77,43 +78,27 @@ def send_line_message(msg):
         try: requests.post("https://api.line.me/v2/bot/message/broadcast", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"messages": [{"type": "text", "text": msg}]}, timeout=5)
         except: pass
 
-def read_csv_robust(filepath):
-    if not os.path.exists(filepath): return None
-    for enc in ['utf-8-sig', 'utf-8', 'cp950', 'big5']:
-        try: return pd.read_csv(filepath, encoding=enc, dtype=str).fillna("")
-        except: continue
-    return pd.DataFrame()
-
-# [核心修復] 讀取資料並自動校準欄位
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
-    df = read_csv_robust(D_FILE)
-    if df is None or df.empty: return pd.DataFrame(columns=cols)
+    if not os.path.exists(D_FILE): return pd.DataFrame(columns=cols)
     try:
-        # 清理隱藏空格
-        df.columns = [c.strip() for c in df.columns]
+        df = pd.read_csv(D_FILE, encoding='utf-8-sig', dtype=str).fillna("")
         if "專案執行人" in df.columns: df = df.rename(columns={"專案執行人": "專案負責人"})
-        for c in cols:
-            if c not in df.columns: df[c] = ""
         for c in ["總金額", "已請款金額", "尚未請款金額"]:
-            df[c] = df[c].apply(clean_amount)
-        return df[cols]
-    except Exception as e:
-        st.error(f"資料庫讀取失敗：{e}")
-        return pd.DataFrame(columns=cols)
+            if c in df.columns: df[c] = df[c].apply(clean_amount)
+        return df
+    except: return pd.DataFrame(columns=cols)
 
 def save_data(df):
     try: df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
-    except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
+    except: st.error("⚠️ 檔案鎖定中！請關閉 Excel 中的 database.csv 後重試。"); st.stop()
 
 def load_staff():
-    df = read_csv_robust(S_FILE)
-    if df is None or df.empty: return pd.DataFrame({"name": DEFAULT_STAFF, "status":["在職"]*5, "password":["0000"]*5})
-    return df
+    if not os.path.exists(S_FILE): return pd.DataFrame({"name": DEFAULT_STAFF, "status":["在職"]*5, "password":["0000"]*5})
+    return pd.read_csv(S_FILE, encoding='utf-8-sig', dtype=str).fillna("")
 
 def save_staff(df): df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
 
-# --- 4. HTML 渲染 (採購單專用) ---
 def render_html(row):
     amt = clean_amount(row['總金額'])
     sub_time = str(row.get("提交時間", "")) or get_taiwan_time()
@@ -125,13 +110,13 @@ def render_html(row):
     h += f'<tr><td bgcolor="#eee">專案</td><td>{row["專案名稱"]}</td><td bgcolor="#eee">編號</td><td>{row["專案編號"]}</td></tr>'
     h += f'<tr><td bgcolor="#eee">申請人</td><td colspan="3">{display_app}</td></tr>'
     h += f'<tr><td bgcolor="#eee">說明</td><td colspan="3">{row["請款說明"]}</td></tr>'
-    h += f'<tr><td colspan="3" align="right"><b>預計採購總金額</b></td><td align="right"><b>{row.get("幣別","TWD")} {amt:,}</b></td></tr></table>'
+    h += f'<tr><td colspan="3" align="right"><b>預計採購金額</b></td><td align="right"><b>{row.get("幣別","TWD")} {amt:,}</b></td></tr></table>'
     h += f'<p style="font-size:11px;margin-top:10px;">提交：{sub_time} | 初審：{row.get("初審人","")} | 複審：{row.get("複審人","")}</p></div>'
     return h
 
 def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
-# --- 5. Session 初始化 ---
+# --- Session ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 for k in ['edit_id', 'last_id', 'view_id']: 
@@ -139,7 +124,7 @@ for k in ['edit_id', 'last_id', 'view_id']:
 
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 
-# --- 6. 左側側邊欄 ---
+# --- 側邊欄 ---
 st.sidebar.markdown(f"**📌 目前系統：** `採購單系統`")
 st.sidebar.divider()
 avatar_b64 = ""
@@ -172,20 +157,21 @@ if is_admin:
 
 if st.sidebar.button("登出系統"): st.session_state.user_id = None; st.switch_page("app.py")
 
-menu = st.sidebar.radio("導覽", ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"], key="menu_radio")
+menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
+menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
 
 def render_upload_popover(container, r, prefix):
     with container.popover("📎 附件"):
-        st.write("**上傳附件 (圖/Excel)**")
-        nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx"], key=f"{prefix}_a")
-        nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx"], accept_multiple_files=True, key=f"{prefix}_i")
+        st.write("**上傳附件 (圖/Excel, 覆蓋原檔)**")
+        new_f_acc = st.file_uploader("存摺", type=["png", "jpg", "jpeg", "xlsx", "xls"], key=f"{prefix}_a")
+        new_f_ims = st.file_uploader("憑證", type=["png", "jpg", "jpeg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
         if st.button("💾 儲存附件", key=f"{prefix}_b"):
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-            if nf_acc: fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
-            if nf_ims: fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
+            if new_f_acc: fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(new_f_acc.getvalue()).decode()
+            if new_f_ims: fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in new_f_ims])
             save_data(fresh_db); st.rerun()
 
-# ================= 頁面邏輯 =================
+# ================= 頁面 1: 填寫申請單 =================
 if menu == "1. 填寫申請單":
     st.title("時研國際設計股份有限公司")
     st.subheader("📝 填寫採購申請單")
@@ -207,8 +193,11 @@ if menu == "1. 填寫申請單":
         amt = cx2.number_input("預計採購金額", value=int(dv["amt"]), min_value=0)
         curr = cx3.selectbox("幣別", ["TWD", "USD", "EUR"], index=0)
         desc = st.text_area("說明", value=dv["desc"])
-        f_acc = st.file_uploader("上傳存摺 (圖/Excel)", type=["png", "jpg", "xlsx"])
-        f_ims = st.file_uploader("上傳憑證 (圖/Excel)", type=["png", "jpg", "xlsx"], accept_multiple_files=True)
+        
+        st.write("**📎 附件上傳 (支援圖檔與 Excel)**")
+        f1, f2 = st.columns(2)
+        f_acc = f1.file_uploader("上傳存摺/匯款資料", type=["png", "jpg", "jpeg", "xlsx", "xls"])
+        f_ims = f2.file_uploader("上傳報價單/憑證", type=["png", "jpg", "jpeg", "xlsx", "xls"], accept_multiple_files=True)
         
         if st.form_submit_button("💾 儲存並進入提交模式"):
             if pn and amt > 0:
@@ -230,26 +219,25 @@ if menu == "1. 填寫申請單":
         if c1.button("🚀 提交審核"):
             f_db = load_data(); f_db.loc[f_db["單號"]==st.session_state.last_id, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
             save_data(f_db); send_line_message(f"🔔 採購單 {st.session_state.last_id} 待簽核"); st.session_state.last_id = None; st.rerun()
-        if c2.button("🔍 預覽單據"): st.session_state.view_id = st.session_state.last_id; st.rerun()
+        if c2.button("🔍 預覽最後單據"): st.session_state.view_id = st.session_state.last_id; st.rerun()
         if c3.button("🆕 下一筆"): st.session_state.last_id = None; st.rerun()
 
-    st.divider(); st.subheader("📋 採購申請追蹤清單")
+    st.divider(); st.subheader("📋 申請追蹤清單")
     f_db = load_data(); my_db = f_db[f_db["類型"]=="採購單"]
     if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
     
-    # 嚴格恢復比例寬度
     cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
-    for c, h in zip(cols, ["單號", "專案名稱", "負責長", "申請人", "金額", "狀態", "操作"]): c.write(f"**{h}**")
+    for c, h in zip(cols, ["單號", "專案名稱", "執行長", "申請人", "金額", "狀態", "操作"]): c.write(f"**{h}**")
     for i, r in my_db.iterrows():
         c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
         c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"])
         c[4].write(f"${clean_amount(r['總金額']):,}"); c[5].write(r["狀態"])
         with c[6]:
             b1, b2, b3, b4, b5, b6 = st.columns(6)
-            if b1.button("提", key=f"s{i}", disabled=r["狀態"] != "已儲存"):
+            if b1.button("提交", key=f"s{i}", disabled=r["狀態"] != "已儲存"):
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
                 save_data(fdb); st.rerun()
-            if b2.button("覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
+            if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
             if b3.button("印", key=f"p{i}"):
                 st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
             if b4.button("改", key=f"e{i}", disabled=r["狀態"] not in ["已儲存", "已駁回"]): 
@@ -258,27 +246,44 @@ if menu == "1. 填寫申請單":
                 fdb = load_data(); fdb.at[fdb[fdb["單號"]==r["單號"]].index[0], "狀態"] = "已刪除"; save_data(fdb); st.rerun()
             render_upload_popover(b6, r, f"up{i}")
 
+# ================= 頁面 2 & 3: 簽核 (保留) =================
+elif menu in ["2. 專案執行長簽核", "3. 財務長簽核"]:
+    st.title("簽核模式 (簡化顯示)")
+    f_db = load_data(); my_db = f_db[(f_db["類型"]=="採購單") & (f_db["狀態"]=="待簽核")]
+    st.dataframe(my_db[["單號", "專案名稱", "總金額", "申請人"]], hide_index=True)
+
+# ================= 頁面 5: 系統設定 =================
 elif menu == "5. 請款狀態/系統設定":
-    render_header(); st.title("⚙️ 系統設定與財務管理")
+    st.title("⚙️ 請款狀態 / 系統設定")
     with st.expander("💾 資料庫管理", expanded=True):
         if os.path.exists(D_FILE):
-            with open(D_FILE, "rb") as f: st.download_button("⬇️ 下載資料庫", f, file_name="database.csv")
-        up = st.file_uploader("⬆️ 還原資料庫", type=["csv"])
+            with open(D_FILE, "rb") as f: st.download_button("⬇️ 下載資料備份", f, file_name="database.csv")
+        up = st.file_uploader("⬆️ 還原備份", type=["csv"])
         if up and st.button("確認還原"):
             with open(D_FILE, "wb") as f: f.write(up.getbuffer())
-            st.success("成功！"); time.sleep(1); st.rerun()
+            st.success("還原成功！"); time.sleep(1); st.rerun()
 
-# ================= 全域預覽 =================
+# ================= 全域預覽模組 (支援 Excel 解析) =================
 if st.session_state.view_id:
     st.divider(); r = load_data(); r = r[r["單號"]==st.session_state.view_id].iloc[0]
     if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()
     st.markdown(render_html(r), unsafe_allow_html=True)
-    all_f = []
-    if r.get("帳戶影像Base64"): all_f.append(r["帳戶影像Base64"])
-    if r.get("影像Base64"): all_f.extend(r["影像Base64"].split('|'))
-    for f_b64 in all_f:
-        try:
-            raw = base64.b64decode(f_b64)
-            if raw.startswith(b'PK\x03\x04'): st.write("📊 Excel 預覽："); st.dataframe(pd.read_excel(io.BytesIO(raw)))
-            else: st.image(raw, use_container_width=True)
-        except: st.warning("無法預覽部分檔案")
+    
+    # 合併顯示所有附件 (帳戶 + 憑證)
+    all_files = []
+    if r.get("帳戶影像Base64"): all_files.append(r["帳戶影像Base64"])
+    if r.get("影像Base64"): all_files.extend(r["影像Base64"].split('|'))
+    
+    if all_files:
+        st.write("#### 📎 附件內容預覽")
+        for f_b64 in all_files:
+            try:
+                raw = base64.b64decode(f_b64)
+                # 偵測是否為 Excel (透過檔案標頭 PK\x03\x04 判斷 xlsx)
+                if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
+                    st.info("📊 偵測到 Excel 檔案：")
+                    df_preview = pd.read_excel(io.BytesIO(raw))
+                    st.dataframe(df_preview, use_container_width=True)
+                else:
+                    st.image(raw, use_container_width=True)
+            except: st.warning("此附件格式無法預覽，請確認檔案是否損壞。")
