@@ -194,7 +194,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-# --- 管理員專屬區塊 (僅管理員可見) ---
+# --- 管理員專屬區塊 (僅管理員可見，非管理員完全隱藏) ---
 if is_admin:
     st.sidebar.markdown("---")
     st.sidebar.success("管理員專屬區塊 (已解鎖)")
@@ -244,7 +244,6 @@ if is_admin:
             st.session_state.staff_df = s_df
             st.rerun()
 
-st.sidebar.markdown("---")
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
 # 導覽列移至最下方
@@ -413,6 +412,7 @@ elif menu == "3. 財務長簽核":
         elif curr_name == CFO_NAME:
             history = req_db[req_db["複審人"] == curr_name]
         else:
+            # 修改：非管理員且非財務長，顯示自己負責或申請的已過財務長關卡的案件
             history = req_db[(req_db["複審人"] != "") & ((req_db["申請人"] == curr_name) | (req_db["專案負責人"] == curr_name))]
         render_signing_table(history, "CFO", is_history=True)
 
@@ -472,18 +472,24 @@ elif menu == "5. 請款狀態/系統設定":
     st.subheader("💰 財務匯款註記")
     f_db = load_data(); df_pay = f_db[f_db["類型"]=="請款單"].copy()
     
-    # --- 新增權限過濾邏輯 ---
+    # --- 權限過濾邏輯 ---
     if not is_admin and curr_name != CFO_NAME:
         df_pay = df_pay[(df_pay["申請人"] == curr_name) | (df_pay["專案負責人"] == curr_name)]
     # -----------------------
     
     if not df_pay.empty:
         df_pay["匯款日期"] = pd.to_datetime(df_pay["匯款日期"], errors='coerce').dt.date
-        ed = st.data_editor(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True, column_config={"匯款狀態": st.column_config.SelectboxColumn("匯款狀態", options=["尚未匯款", "已匯款"]), "匯款日期": st.column_config.DateColumn("匯款日期", format="YYYY-MM-DD")})
-        if st.button("💾 儲存匯款資訊"):
-            for _, row in ed.iterrows():
-                f_db.loc[f_db["單號"]==row["單號"], ["匯款狀態", "匯款日期"]] = [row["匯款狀態"], str(row["匯款日期"]) if pd.notna(row["匯款日期"]) else ""]
-            save_data(f_db); st.success("已更新"); st.rerun()
+        
+        if is_admin:
+            # 管理員可編輯
+            ed = st.data_editor(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True, column_config={"匯款狀態": st.column_config.SelectboxColumn("匯款狀態", options=["尚未匯款", "已匯款"]), "匯款日期": st.column_config.DateColumn("匯款日期", format="YYYY-MM-DD")})
+            if st.button("💾 儲存匯款資訊"):
+                for _, row in ed.iterrows():
+                    f_db.loc[f_db["單號"]==row["單號"], ["匯款狀態", "匯款日期"]] = [row["匯款狀態"], str(row["匯款日期"]) if pd.notna(row["匯款日期"]) else ""]
+                save_data(f_db); st.success("已更新"); st.rerun()
+        else:
+            # 非管理員僅能檢視，不顯示儲存按鈕
+            st.dataframe(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True)
 
 # ================= 全域預覽模組 =================
 if st.session_state.view_id:
