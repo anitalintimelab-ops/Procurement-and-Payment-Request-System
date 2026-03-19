@@ -194,7 +194,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-# --- 管理員專屬區塊 (僅管理員可見，非管理員完全隱藏) ---
+# --- 管理員專屬區塊 (僅管理員可見) ---
 if is_admin:
     st.sidebar.markdown("---")
     st.sidebar.success("管理員專屬區塊 (已解鎖)")
@@ -244,6 +244,7 @@ if is_admin:
             st.session_state.staff_df = s_df
             st.rerun()
 
+st.sidebar.markdown("---")
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
 # 導覽列移至最下方
@@ -470,6 +471,12 @@ elif menu == "5. 請款狀態/系統設定":
 
     st.subheader("💰 財務匯款註記")
     f_db = load_data(); df_pay = f_db[f_db["類型"]=="請款單"].copy()
+    
+    # --- 新增權限過濾邏輯 ---
+    if not is_admin and curr_name != CFO_NAME:
+        df_pay = df_pay[(df_pay["申請人"] == curr_name) | (df_pay["專案負責人"] == curr_name)]
+    # -----------------------
+    
     if not df_pay.empty:
         df_pay["匯款日期"] = pd.to_datetime(df_pay["匯款日期"], errors='coerce').dt.date
         ed = st.data_editor(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True, column_config={"匯款狀態": st.column_config.SelectboxColumn("匯款狀態", options=["尚未匯款", "已匯款"]), "匯款日期": st.column_config.DateColumn("匯款日期", format="YYYY-MM-DD")})
