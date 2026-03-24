@@ -329,7 +329,6 @@ if menu == "1. 填寫申請單":
         st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，總金額會自動扣除 30 元。**")
         f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"]); f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True)
         
-        # 存檔按鈕
         if st.form_submit_button("💾 存檔"):
             fee = 30 if "扣30手續費" in pay else 0
             total_amt = net_amt + tax_amt - fee
@@ -337,18 +336,21 @@ if menu == "1. 填寫申請單":
                 b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else dv["ab64"]; b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else dv["ib64"]
                 packed_desc = "[請款單資料]\n" + json.dumps({"net_amt": net_amt, "tax_amt": tax_amt, "fee": fee, "inv_no": inv_no, "desc": desc}, ensure_ascii=False)
                 f_db = load_data()
+                
+                # --- 自動判斷並記錄代申請人 ---
+                proxy_app = curr_name if (curr_name == "Anita" and app_val != curr_name) else ""
+                
                 if st.session_state.edit_id:
                     idx = f_db[f_db["單號"]==st.session_state.edit_id].index[0]
-                    f_db.loc[idx, ["申請人", "專案名稱", "專案編號", "專案負責人", "總金額", "請款說明", "請款廠商", "匯款帳戶", "付款方式", "影像Base64", "帳戶影像Base64", "幣別"]] = [app_val, pn, pi, exe, total_amt, packed_desc, vdr, acc, pay, b_ims, b_acc, curr]
+                    f_db.loc[idx, ["申請人", "代申請人", "專案名稱", "專案編號", "專案負責人", "總金額", "請款說明", "請款廠商", "匯款帳戶", "付款方式", "影像Base64", "帳戶影像Base64", "幣別"]] = [app_val, proxy_app, pn, pi, exe, total_amt, packed_desc, vdr, acc, pay, b_ims, b_acc, curr]
                     st.session_state.last_id = st.session_state.edit_id
                     st.session_state.edit_id = None
                 else:
                     tid = f"{datetime.date.today().strftime('%Y%m%d')}-{len(f_db[f_db['單號'].str.startswith(datetime.date.today().strftime('%Y%m%d'))])+1:02d}"
-                    nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed_desc, "總金額":total_amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已儲存", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
+                    nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "代申請人":proxy_app, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed_desc, "總金額":total_amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已儲存", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
                     f_db = pd.concat([f_db, pd.DataFrame([nr])], ignore_index=True); st.session_state.last_id = tid
                 save_data(f_db); st.rerun()
 
-    # 存檔後顯示的操作列 (包含您要求的 4 個後續動作，加上存檔共 5 個流程按鈕)
     if st.session_state.last_id:
         st.success(f"📄 **單據 {st.session_state.last_id} 已存檔成功！請選擇後續操作：**")
         btn_col1, btn_col2, btn_col3, btn_col4, btn_col5 = st.columns(5)
@@ -383,15 +385,17 @@ if menu == "1. 填寫申請單":
         c[5].markdown(f":{color}[**{stt}**]")
         with c[6]:
             b1, b2, b3, b4, b5, b6 = st.columns(6)
-            is_own = (str(r["申請人"]).strip() == curr_name) or (str(r.get("代申請人", "")).strip() == curr_name); can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
+            
+            # --- 權限判斷：只有本人(申請人) 或 代申請人(Anita) 才能編輯 ---
+            is_own = (str(r["申請人"]).strip() == curr_name) or (str(r.get("代申請人", "")).strip() == curr_name)
+            can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
+            
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
                 sys_name = st.session_state.get('sys_choice', '請款單系統')
                 send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"); st.rerun()
             if b2.button("預覽", key=f"v{i}"): st.session_state.view_id = r["單號"]; st.rerun()
             if b3.button("列印", key=f"p{i}"): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
-            
-            # 只要是尚未提交 (已儲存/已駁回) 都可以進行修改
             if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.edit_id = r["單號"]; st.rerun()
             
             if can_edit:
@@ -402,6 +406,7 @@ if menu == "1. 填寫申請單":
                             fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); st.rerun()
                         else: st.error("請輸入原因")
             else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
+            
             render_upload_popover(b6, r, f"up{i}")
 
 # ================= 頁面 2: 專案執行長簽核 =================
