@@ -197,7 +197,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 # --- 管理員專屬區塊 (僅管理員可見，非管理員完全隱藏) ---
 if is_admin:
     st.sidebar.markdown("---")
-    st.sidebar.success("管理員專屬區塊 (已解鎖)")
+    st.sidebar.success("管理員專屬區塊")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
