@@ -326,7 +326,7 @@ if menu == "1. 填寫申請單":
         pay_idx = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]) if dv["pay"] in ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"] else 2
         pay = c_pay.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
         desc = st.text_area("請款說明", value=dv["desc"])
-        st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，總金額會自動扣除 30 元。**")
+        st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」。**")
         f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"]); f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True)
         
         if st.form_submit_button("💾 存檔"):
