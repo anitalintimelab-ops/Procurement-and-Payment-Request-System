@@ -164,7 +164,7 @@ def render_upload_popover(container, r, prefix):
 # --- 6. Session 初始化 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
-for k in ['edit_id', 'last_id', 'view_id']: 
+for k in ['edit_id', 'last_id', 'view_id', 'just_edited']: 
     if k not in st.session_state: st.session_state[k] = None
 
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
@@ -345,14 +345,20 @@ if menu == "1. 填寫申請單":
                     f_db.loc[idx, ["申請人", "代申請人", "專案名稱", "專案編號", "專案負責人", "總金額", "請款說明", "請款廠商", "匯款帳戶", "付款方式", "影像Base64", "帳戶影像Base64", "幣別"]] = [app_val, proxy_app, pn, pi, exe, total_amt, packed_desc, vdr, acc, pay, b_ims, b_acc, curr]
                     st.session_state.last_id = st.session_state.edit_id
                     st.session_state.edit_id = None
+                    st.session_state.just_edited = True
                 else:
                     tid = f"{datetime.date.today().strftime('%Y%m%d')}-{len(f_db[f_db['單號'].str.startswith(datetime.date.today().strftime('%Y%m%d'))])+1:02d}"
                     nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "代申請人":proxy_app, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed_desc, "總金額":total_amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已儲存", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
                     f_db = pd.concat([f_db, pd.DataFrame([nr])], ignore_index=True); st.session_state.last_id = tid
+                    st.session_state.just_edited = False
                 save_data(f_db); st.rerun()
 
     if st.session_state.last_id:
-        st.success(f"📄 **單據 {st.session_state.last_id} 已存檔成功！請選擇後續操作：**")
+        if st.session_state.get("just_edited"):
+            st.success(f"📄 **單據 {st.session_state.last_id} 已修改完畢並存檔！請選擇後續操作：**")
+        else:
+            st.success(f"📄 **單據 {st.session_state.last_id} 已存檔成功！請選擇後續操作：**")
+            
         btn_col1, btn_col2, btn_col3, btn_col4, btn_col5 = st.columns(5)
         if btn_col1.button("✏️ 修改", key="btn_e"):
             st.session_state.edit_id = st.session_state.last_id
