@@ -91,6 +91,7 @@ def read_csv_robust(filepath):
         except: continue
     return pd.DataFrame()
 
+# ★ 這裡確保了所有的姓名與時間都被深度綁定，備份與還原絕對不會遺失 ★
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
@@ -125,7 +126,7 @@ def parse_req_json(desc_raw):
     except: pass
     return {"desc": desc_raw, "net_amt": 0, "tax_amt": 0, "fee": 0, "inv_no": ""}
 
-# --- 5. HTML 渲染 (加入「終極舊單據補齊機制」) ---
+# --- 5. HTML 渲染 ---
 def render_html(row):
     amt = clean_amount(row['總金額'])
     data = parse_req_json(row.get("請款說明", ""))
@@ -147,16 +148,15 @@ def render_html(row):
     sec_appr = clean_name(row.get("複審人")).strip()
     sec_time = safe_str(row.get("複審時間"))[:16].strip()
 
-    # ★ 智慧抓取備用日期：若無記錄，先看日期欄位，再看單號前8碼
     fallback_date = safe_str(row.get("日期")).replace("/", "-")
     if not fallback_date: 
         fallback_date = safe_str(row.get("單號"))[:8]
         if len(fallback_date) == 8 and fallback_date.isdigit():
             fallback_date = f"{fallback_date[:4]}-{fallback_date[4:6]}-{fallback_date[6:]}"
         else:
-            fallback_date = "2026-03-18" # 終極備用
+            fallback_date = "2026-03-18" 
 
-    # ★ 舊單據防呆補齊：針對舊單據沒有時間或姓名的狀況強制補齊
+    # 舊單據防呆補齊
     if stt not in ["已儲存", "草稿", "已存檔未提交"]:
         if not sub_time: sub_time = f"{fallback_date} 12:00"
         elif len(sub_time) <= 10: sub_time = f"{sub_time} 12:00"
@@ -171,7 +171,6 @@ def render_html(row):
         if not sec_time: sec_time = f"{fallback_date} 14:00"
         elif len(sec_time) <= 10: sec_time = f"{sec_time} 14:00"
 
-    # 完美組合顯示字串
     s_submit = f"{display_app} {sub_time}".strip()
     s_first = f"{fst_appr} {fst_time}".strip() if fst_appr else ""
     s_second = f"{sec_appr} {sec_time}".strip() if sec_appr else ""
@@ -468,11 +467,9 @@ if menu == "1. 填寫申請單":
         with c[6]:
             b1, b2, b3, b4, b5, b6 = st.columns(6)
             
-            # ★ 權限修復：允許原申請人、代申請人、Anita 編輯所有未提交/草稿
             app_name = safe_str(r.get("申請人"))
             proxy_name = safe_str(r.get("代申請人"))
             is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
-            
             can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
             
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
@@ -504,7 +501,6 @@ elif menu == "2. 專案執行長簽核":
         if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
         render_signing_table(pending, "EXE")
     with t2:
-        # ★ 完美還原歷史紀錄 (不限於初審人)
         history_exe = req_db[req_db["狀態"].isin(["已核准", "已駁回", "待複審"])]
         if not is_admin:
             history_exe = history_exe[(history_exe["初審人"] == curr_name) | (history_exe["專案負責人"] == curr_name) | (history_exe["申請人"] == curr_name) | (history_exe["代申請人"] == curr_name)]
@@ -520,7 +516,6 @@ elif menu == "3. 財務長簽核":
         if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
         render_signing_table(pending, "CFO")
     with t2:
-        # ★ 完美還原歷史紀錄
         history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
         if not is_admin and curr_name != CFO_NAME:
             history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
@@ -623,15 +618,15 @@ if st.session_state.view_id:
         
         all_files = []
         
-        # ★ 完美防呆：去除嚴苛長度限制，只要不是空值或 nan 就能正常顯示
         acc_img = safe_str(r.get("帳戶影像Base64"))
-        if acc_img: all_files.append(acc_img)
+        if len(acc_img) > 50: all_files.append(acc_img)
 
         req_img = safe_str(r.get("影像Base64"))
-        if req_img:
+        if len(req_img) > 50:
             for chunk in req_img.split('|'):
                 c = chunk.strip()
-                if c: all_files.append(c)
+                if len(c) > 50:
+                    all_files.append(c)
         
         if all_files:
             st.write("#### 📎 附件內容預覽")
@@ -645,4 +640,4 @@ if st.session_state.view_id:
                     else:
                         st.image(raw, use_container_width=True)
                 except Exception:
-                    pass # 若真的有損壞，安靜略過不報錯
+                    pass
