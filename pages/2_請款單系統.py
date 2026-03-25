@@ -442,7 +442,7 @@ if menu == "1. 填寫申請單":
         c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
         c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
         
-        stt_raw = valid_str(r.get("狀態"))
+        stt_raw = safe_str(r.get("狀態"))
         # 視覺與判斷上，將舊版狀態統一升級顯示為「已存檔未提交」
         stt_display = "已存檔未提交" if stt_raw in ["已儲存", "草稿"] else stt_raw
         
@@ -452,10 +452,10 @@ if menu == "1. 填寫申請單":
         with c[6]:
             b1, b2, b3, b4, b5, b6 = st.columns(6)
             
-            # --- ★ 權限解鎖：只要是 Anita 或 申請人 或 代申請人 皆可修改未提交的單據 ---
-            app_name = str(r.get("申請人", "")).strip()
-            proxy_name = str(r.get("代申請人", "")).strip()
-            is_own = (curr_name in app_name) or (curr_name in proxy_name) or is_admin
+            # --- ★ 權限解鎖：只要是 Anita 或 申請人本人，無論舊單新單，只要未提交皆可修改 ---
+            app_name = safe_str(r.get("申請人"))
+            proxy_name = safe_str(r.get("代申請人"))
+            is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
             
             can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
             
@@ -488,9 +488,9 @@ elif menu == "2. 專案執行長簽核":
         if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
         render_signing_table(pending, "EXE")
     with t2:
-        # ★ 完美還原歷史紀錄邏輯
+        # ★ 完美還原歷史紀錄：把過濾條件放寬回原本的狀態
         history = req_db[(req_db["初審人"] == curr_name) | ((req_db["狀態"].isin(["已核准","已駁回","待複審"])) & (req_db["專案負責人"] == curr_name))]
-        if is_admin: history = req_db[req_db["初審人"] != ""]
+        if is_admin: history = req_db[req_db["狀態"].isin(["已核准", "已駁回", "待複審"])]
         render_signing_table(history, "EXE", is_history=True)
 
 # ================= 頁面 3: 財務長簽核 =================
@@ -503,9 +503,9 @@ elif menu == "3. 財務長簽核":
         if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
         render_signing_table(pending, "CFO")
     with t2:
-        # ★ 完美還原歷史紀錄邏輯
+        # ★ 完美還原歷史紀錄
         if is_admin:
-            history = req_db[req_db["複審人"] != ""]
+            history = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
         elif curr_name == CFO_NAME:
             history = req_db[req_db["複審人"] == curr_name]
         else:
@@ -596,25 +596,28 @@ if st.session_state.view_id:
     
     all_files = []
     
-    # ★ 徹底修復：簡單安全的顯示舊資料附件，絕對不報錯
-    if pd.notna(r.get("帳戶影像Base64")) and str(r.get("帳戶影像Base64")).strip() and str(r.get("帳戶影像Base64")).strip().lower() != 'nan':
-        all_files.append(str(r.get("帳戶影像Base64")).strip())
+    # ★ 徹底防呆：限制字串必須大於50字元才解析，完美消滅 nan 報錯
+    acc_img = safe_str(r.get("帳戶影像Base64"))
+    if len(acc_img) > 50: all_files.append(acc_img)
 
-    if pd.notna(r.get("影像Base64")) and str(r.get("影像Base64")).strip() and str(r.get("影像Base64")).strip().lower() != 'nan':
-        for chunk in str(r.get("影像Base64")).split('|'):
+    req_img = safe_str(r.get("影像Base64"))
+    if len(req_img) > 50:
+        for chunk in req_img.split('|'):
             c = chunk.strip()
-            if c and c.lower() != 'nan':
+            if len(c) > 50:
                 all_files.append(c)
     
     if all_files:
         st.write("#### 📎 附件內容預覽")
         for f_b64 in all_files:
             try:
-                raw = base64.b64decode(f_b64)
+                # 確保 Base64 格式完整，避免解碼失敗
+                pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
+                raw = base64.b64decode(pad)
                 if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
                     st.info("📊 偵測到 Excel 檔案：")
                     st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
                 else:
                     st.image(raw, use_container_width=True)
             except Exception:
-                pass # 解析失敗直接安靜略過，絕不跳出黃色警告
+                pass # 解析失敗直接無視，絕對不跳警告影響畫面
