@@ -48,8 +48,12 @@ def clean_amount(val):
 def clean_name(val): 
     return str(val).strip().split(" ")[0] if pd.notna(val) and str(val).strip() != "" else ""
 
+# 嚴格空值過濾機制 (修復附件報錯與姓名空白的核心)
 def safe_str(val): 
-    return "" if pd.isna(val) or str(val).strip().lower() == "nan" else str(val).strip()
+    if pd.isna(val) or val is None: return ""
+    s = str(val).strip()
+    if s.lower() in ["nan", "none", ""]: return ""
+    return s
 
 def get_online_users(curr_user):
     try:
@@ -135,16 +139,16 @@ def render_html(row):
     fee = data.get("fee", 0)
     tax = data.get("tax_amt", 0)
 
-    # 精準取得所有審核人與時間 (去除無效字串)
+    # 確保每個欄位就算沒有時間，姓名也一定會完整印出
     sub_time = safe_str(row.get("提交時間"))[:16]
     fst_appr = safe_str(row.get("初審人"))
     fst_time = safe_str(row.get("初審時間"))[:16]
     sec_appr = safe_str(row.get("複審人"))
     sec_time = safe_str(row.get("複審時間"))[:16]
 
-    s_submit = f"{display_app} {sub_time}".strip() if sub_time else ""
-    s_first = f"{fst_appr} {fst_time}".strip() if fst_appr else ""
-    s_second = f"{sec_appr} {sec_time}".strip() if sec_appr else ""
+    s_submit = f"{display_app} {sub_time}".strip()
+    s_first = f"{fst_appr} {fst_time}".strip()
+    s_second = f"{sec_appr} {sec_time}".strip()
 
     h = f'<div style="padding:40px;border:4px solid #000;background:#fff;color:#000;font-family:sans-serif;max-width:900px;margin:auto;">'
     h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;">Time Lab 時研國際設計股份有限公司</h1></div>'
@@ -577,19 +581,20 @@ if st.session_state.view_id:
     st.markdown(render_html(r), unsafe_allow_html=True)
     
     all_files = []
-    if r.get("帳戶影像Base64"): all_files.append(r["帳戶影像Base64"])
-    if r.get("影像Base64"): all_files.extend(r["影像Base64"].split('|'))
+    # 【最嚴格防呆過濾】完全阻絕 nan 或空字串
+    acc_img = safe_str(r.get("帳戶影像Base64"))
+    if acc_img: all_files.append(acc_img)
+
+    req_img = safe_str(r.get("影像Base64"))
+    if req_img:
+        for chunk in req_img.split('|'):
+            c = chunk.strip()
+            if c and c.lower() not in ["nan", "none", ""]:
+                all_files.append(c)
     
     if all_files:
         st.write("#### 📎 附件內容預覽")
         for f_b64 in all_files:
-            # 增加最嚴格的空值防呆機制
-            if pd.isna(f_b64) or not isinstance(f_b64, str): 
-                continue
-            f_b64 = f_b64.strip()
-            if not f_b64 or f_b64.lower() == "nan": 
-                continue
-            
             try:
                 raw = base64.b64decode(f_b64)
                 if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
