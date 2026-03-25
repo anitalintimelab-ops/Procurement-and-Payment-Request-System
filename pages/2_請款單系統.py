@@ -48,6 +48,9 @@ def clean_amount(val):
 def clean_name(val): 
     return str(val).strip().split(" ")[0] if pd.notna(val) and str(val).strip() != "" else ""
 
+def safe_str(val): 
+    return "" if pd.isna(val) or str(val).strip().lower() == "nan" else str(val).strip()
+
 def get_online_users(curr_user):
     try:
         now = time.time()
@@ -119,46 +122,53 @@ def parse_req_json(desc_raw):
     except: pass
     return {"desc": desc_raw, "net_amt": 0, "tax_amt": 0, "fee": 0, "inv_no": ""}
 
-# --- 5. HTML 渲染 ---
+# --- 5. HTML 渲染 (完全套用 Time Lab PDF 格式) ---
 def render_html(row):
     amt = clean_amount(row['總金額'])
     data = parse_req_json(row.get("請款說明", ""))
     
-    # 判斷代申請人顯示方式
-    display_app = f"{row['申請人']} ({row.get('代申請人', '')} 代申請)" if row.get("代申請人") else row['申請人']
+    app_name = safe_str(row.get('申請人'))
+    proxy_name = safe_str(row.get('代申請人'))
+    display_app = f"{app_name} ({proxy_name} 代申請)" if proxy_name and proxy_name != app_name else app_name
     
     legacy_net = amt if data.get("net_amt", 0) == 0 and data.get("tax_amt", 0) == 0 else data.get("net_amt", 0)
     fee = data.get("fee", 0)
+    tax = data.get("tax_amt", 0)
 
-    # 頁腳審核資訊格式化
-    sub_time = str(row.get("提交時間", ""))
-    sub_time_str = sub_time[:16] if sub_time else ""
-    fst_appr = str(row.get("初審人", ""))
-    fst_time = str(row.get("初審時間", ""))[:16] if str(row.get("初審時間", "")) else ""
-    sec_appr = str(row.get("複審人", ""))
-    sec_time = str(row.get("複審時間", ""))[:16] if str(row.get("複審時間", "")) else ""
+    # 精準取得所有審核人與時間 (去除無效字串)
+    sub_time = safe_str(row.get("提交時間"))[:16]
+    fst_appr = safe_str(row.get("初審人"))
+    fst_time = safe_str(row.get("初審時間"))[:16]
+    sec_appr = safe_str(row.get("複審人"))
+    sec_time = safe_str(row.get("複審時間"))[:16]
 
-    s_submit = f"提交: {display_app} {sub_time_str}".strip()
-    s_first = f"初審: {fst_appr} {fst_time}".strip() if fst_appr else "初審: "
-    s_second = f"複審: {sec_appr} {sec_time}".strip() if sec_appr else "複審: "
+    s_submit = f"{display_app} {sub_time}".strip() if sub_time else ""
+    s_first = f"{fst_appr} {fst_time}".strip() if fst_appr else ""
+    s_second = f"{sec_appr} {sec_time}".strip() if sec_appr else ""
 
-    h = f'<div style="padding:20px;border:2px solid #000;background:#fff;color:#000;font-family:sans-serif;">'
-    h += f'<div style="text-align:center;"><h2>時研國際設計 - 請款申請單</h2></div>'
-    h += '<table style="width:100%;border-collapse:collapse;font-size:14px;" border="1">'
-    h += f'<tr><td bgcolor="#eee" width="25%">單號</td><td>{row["單號"]}</td><td bgcolor="#eee">執行長</td><td>{row["專案負責人"]}</td></tr>'
-    h += f'<tr><td bgcolor="#eee">專案</td><td>{row["專案名稱"]}</td><td bgcolor="#eee">編號</td><td>{row["專案編號"]}</td></tr>'
-    h += f'<tr><td bgcolor="#eee">申請人</td><td colspan="3">{display_app}</td></tr>'
-    h += f'<tr><td bgcolor="#eee">請款廠商</td><td>{row.get("請款廠商","")}</td><td bgcolor="#eee">匯款帳戶</td><td>{row.get("匯款帳戶","")}</td></tr>'
-    h += f'<tr><td bgcolor="#eee">發票/憑證</td><td colspan="3">{data.get("inv_no","")}</td></tr>'
-    h += f'<tr><td bgcolor="#eee">付款方式</td><td colspan="3">{row.get("付款方式","")}</td></tr>'
-    h += f'<tr><td bgcolor="#eee">請款說明</td><td colspan="3">{data.get("desc","")}</td></tr>'
+    h = f'<div style="padding:40px;border:4px solid #000;background:#fff;color:#000;font-family:sans-serif;max-width:900px;margin:auto;">'
+    h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;">Time Lab 時研國際設計股份有限公司</h1></div>'
+    h += f'<div style="text-align:center;"><h2 style="margin-top:0px;margin-bottom:15px;font-size:24px;letter-spacing:5px;">請款單</h2></div>'
+    h += f'<hr style="border-top: 3px solid black; margin-bottom: 3px;">'
+    h += f'<hr style="border-top: 1px solid black; margin-top: 0px; margin-bottom: 20px;">'
     
-    h += f'<tr><td colspan="3" align="right"><b>金額 (未稅)</b></td><td align="right"><b>{row.get("幣別","TWD")} {legacy_net:,}</b></td></tr>'
-    h += f'<tr><td colspan="3" align="right"><b>稅額</b></td><td align="right"><b>{row.get("幣別","TWD")} {data.get("tax_amt", 0):,}</b></td></tr>'
-    h += f'<tr><td colspan="3" align="right"><b>手續費</b></td><td align="right"><b>{row.get("幣別","TWD")} {fee:,}</b></td></tr>'
-    h += f'<tr><td colspan="3" align="right"><b>請款總金額</b></td><td align="right"><b>{row.get("幣別","TWD")} {amt:,}</b></td></tr></table>'
+    h += '<table style="width:100%;border-collapse:collapse;font-size:15px;border:2px solid black;" border="1">'
+    h += f'<tr><td width="15%" style="padding:8px;">單號</td><td width="35%" style="padding:8px;">{safe_str(row.get("單號"))}</td><td width="15%" style="padding:8px;">負責執行長</td><td width="35%" style="padding:8px;">{safe_str(row.get("專案負責人"))}</td></tr>'
+    h += f'<tr><td style="padding:8px;">專案</td><td style="padding:8px;">{safe_str(row.get("專案名稱"))}</td><td style="padding:8px;">編號</td><td style="padding:8px;">{safe_str(row.get("專案編號"))}</td></tr>'
+    h += f'<tr><td style="padding:8px;">申請人</td><td style="padding:8px;">{display_app}</td><td style="padding:8px;">廠商</td><td style="padding:8px;">{safe_str(row.get("請款廠商"))}</td></tr>'
+    h += f'<tr><td style="padding:8px;">匯款帳戶</td><td colspan="3" style="padding:8px;">{safe_str(row.get("匯款帳戶"))}</td></tr>'
     
-    h += f'<p style="font-size:14px;margin-top:15px;">{s_submit} | {s_first} | {s_second}</p></div>'
+    desc_html = data.get("desc","").replace("\n", "<br>")
+    inv_str = f"發票/憑證: {safe_str(data.get('inv_no',''))}<br>" if safe_str(data.get('inv_no','')) else ""
+    h += f'<tr><td style="padding:8px;">說明</td><td colspan="3" style="padding:8px;">{inv_str}{desc_html}</td></tr>'
+    
+    cur = safe_str(row.get("幣別")) or "TWD"
+    h += f'<tr><td colspan="3" align="right" style="padding:8px;">金額 (未稅)</td><td align="right" style="padding:8px;">{cur} {legacy_net:,}</td></tr>'
+    h += f'<tr><td colspan="3" align="right" style="padding:8px;">稅額</td><td align="right" style="padding:8px;">{cur} {tax:,}</td></tr>'
+    h += f'<tr><td colspan="3" align="right" style="padding:8px;">手續費</td><td align="right" style="padding:8px;">{cur} {fee:,}</td></tr>'
+    h += f'<tr><td colspan="3" align="right" style="padding:8px;"><b>實付 / 請款總額</b></td><td align="right" style="padding:8px;"><b>{cur} {amt:,}</b></td></tr></table>'
+    
+    h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
 def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
@@ -423,7 +433,6 @@ if menu == "1. 填寫申請單":
         c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
         
         stt = r["狀態"]
-        # 新增的「已存檔未提交」也統一顯示藍色
         color = "blue" if stt in ["已儲存", "草稿", "已存檔未提交"] else "orange" if "待" in stt else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
         c[5].markdown(f":{color}[**{stt}**]")
         
@@ -431,8 +440,7 @@ if menu == "1. 填寫申請單":
             b1, b2, b3, b4, b5, b6 = st.columns(6)
             
             # --- 權限判斷：只有本人(申請人) 或 代申請人(Anita) 才能編輯 ---
-            is_own = (str(r["申請人"]).strip() == curr_name) or (str(r.get("代申請人", "")).strip() == curr_name)
-            # 已將新狀態「已存檔未提交」加入可修改的條件清單
+            is_own = (safe_str(r["申請人"]) == curr_name) or (safe_str(r.get("代申請人")) == curr_name)
             can_edit = (stt in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
             
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
@@ -575,9 +583,13 @@ if st.session_state.view_id:
     if all_files:
         st.write("#### 📎 附件內容預覽")
         for f_b64 in all_files:
-            # 增加嚴格的防呆機制，若存檔時讀到空字串則自動略過，不報錯
-            if not isinstance(f_b64, str) or not f_b64.strip():
+            # 增加最嚴格的空值防呆機制
+            if pd.isna(f_b64) or not isinstance(f_b64, str): 
                 continue
+            f_b64 = f_b64.strip()
+            if not f_b64 or f_b64.lower() == "nan": 
+                continue
+            
             try:
                 raw = base64.b64decode(f_b64)
                 if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
