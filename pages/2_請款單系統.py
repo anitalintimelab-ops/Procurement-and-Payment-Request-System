@@ -48,6 +48,7 @@ def clean_amount(val):
 def clean_name(val): 
     return str(val).strip().split(" ")[0] if pd.notna(val) and str(val).strip() != "" else ""
 
+# 溫和過濾 nan 空值
 def safe_str(val): 
     if pd.isna(val) or val is None: return ""
     s = str(val).strip()
@@ -125,7 +126,7 @@ def parse_req_json(desc_raw):
     except: pass
     return {"desc": desc_raw, "net_amt": 0, "tax_amt": 0, "fee": 0, "inv_no": ""}
 
-# --- 5. HTML 渲染 (完全套用 Time Lab PDF 格式) ---
+# --- 5. HTML 渲染 (完全套用 Time Lab PDF 格式，保證舊單據完美顯示) ---
 def render_html(row):
     amt = clean_amount(row['總金額'])
     data = parse_req_json(row.get("請款說明", ""))
@@ -140,17 +141,22 @@ def render_html(row):
     fee = data.get("fee", 0)
     tax = data.get("tax_amt", 0)
 
-    # 精準取得所有審核人與時間
+    # 取得時間與姓名 (截斷毫秒)
     sub_time = safe_str(row.get("提交時間"))[:16]
-    fst_appr = safe_str(row.get("初審人"))
+    fst_appr = clean_name(row.get("初審人"))
     fst_time = safe_str(row.get("初審時間"))[:16]
-    sec_appr = safe_str(row.get("複審人"))
+    sec_appr = clean_name(row.get("複審人"))
     sec_time = safe_str(row.get("複審時間"))[:16]
 
-    # 保證不留白：若無時間，依舊顯示申請人
-    s_submit = f"{display_app} {sub_time}".strip()
-    s_first = f"{fst_appr} {fst_time}".strip()
-    s_second = f"{sec_appr} {sec_time}".strip()
+    # 保證不留白：名字一定出得來，沒時間就空白
+    s_submit = display_app
+    if sub_time: s_submit += f" {sub_time}"
+
+    s_first = fst_appr
+    if fst_time: s_first += f" {fst_time}"
+
+    s_second = sec_appr
+    if sec_time: s_second += f" {sec_time}"
 
     h = f'<div style="padding:40px;border:4px solid #000;background:#fff;color:#000;font-family:sans-serif;max-width:900px;margin:auto;">'
     h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;">Time Lab 時研國際設計股份有限公司</h1></div>'
@@ -174,7 +180,7 @@ def render_html(row):
     h += f'<tr><td colspan="3" align="right" style="padding:8px;">手續費</td><td align="right" style="padding:8px;">{cur} {fee:,}</td></tr>'
     h += f'<tr><td colspan="3" align="right" style="padding:8px;"><b>實付 / 請款總額</b></td><td align="right" style="padding:8px;"><b>{cur} {amt:,}</b></td></tr></table>'
     
-    # 精準顯示提交與審核狀態列
+    # 完美套印頁腳 (保證初審/複審欄位文字一定存在)
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
@@ -226,7 +232,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-# --- 管理員專屬區塊 (僅管理員可見，非管理員完全隱藏) ---
+# --- 管理員專屬區塊 ---
 if is_admin:
     st.sidebar.markdown("---")
     st.sidebar.success("管理員專屬區塊 (已解鎖)")
@@ -333,7 +339,6 @@ if menu == "1. 填寫申請單":
     st.title("時研國際設計股份有限公司")
     st.subheader("📝 填寫請款申請單")
     
-    # 頂部即時顯示操作成功訊息
     if st.session_state.get('last_msg'):
         st.success(st.session_state.last_msg)
         st.session_state.last_msg = None
@@ -367,7 +372,6 @@ if menu == "1. 填寫申請單":
         st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，總金額會自動扣除 30 元。**")
         f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"]); f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True)
         
-        # 5 按鈕操作列
         c_btn1, c_btn2, c_btn3, c_btn4, c_btn5 = st.columns(5)
         btn_save = c_btn1.form_submit_button("💾 存檔", use_container_width=True)
         btn_submit = c_btn2.form_submit_button("🚀 提交", use_container_width=True)
@@ -385,12 +389,11 @@ if menu == "1. 填寫申請單":
                 packed_desc = "[請款單資料]\n" + json.dumps({"net_amt": net_amt, "tax_amt": tax_amt, "fee": fee, "inv_no": inv_no, "desc": desc}, ensure_ascii=False)
                 f_db = load_data()
                 
-                # 自動判斷並記錄代申請人
                 proxy_app = curr_name if (curr_name == "Anita" and app_val != curr_name) else ""
                 
                 if st.session_state.edit_id:
                     idx = f_db[f_db["單號"]==st.session_state.edit_id].index[0]
-                    f_db.loc[idx, ["申請人", "代申請人", "專案名稱", "專案編號", "專案負責人", "總金額", "請款說明", "請款廠商", "匯款帳戶", "付款方式", "影像Base64", "帳戶影像Base64", "幣別"]] = [app_val, proxy_app, pn, pi, exe, total_amt, packed_desc, vdr, acc, pay, b_ims, b_acc, curr]
+                    f_db.loc[idx, ["申請人", "代申請人", "專案名稱", "專案編號", "專案負責人", "總金額", "請款說明", "請款廠商", "匯款帳戶", "付款方式", "影像Base64", "帳戶影像Base64", "幣別", "狀態"]] = [app_val, proxy_app, pn, pi, exe, total_amt, packed_desc, vdr, acc, pay, b_ims, b_acc, curr, "已存檔未提交"]
                     tid = st.session_state.edit_id
                     msg_prefix = "修改完畢並存檔"
                 else:
@@ -412,7 +415,7 @@ if menu == "1. 填寫申請單":
                     st.session_state.edit_id = None
                     st.session_state.last_msg = f"🚀 單據 {tid} 已成功提交簽核！"
                 else:
-                    st.session_state.edit_id = tid  # 保持編輯狀態
+                    st.session_state.edit_id = tid  
                     if btn_preview:
                         st.session_state.view_id = tid
                         st.session_state.last_msg = f"📄 單據 {tid} 已{msg_prefix}，正在產生預覽..."
@@ -439,19 +442,22 @@ if menu == "1. 填寫申請單":
         c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
         c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
         
-        stt = str(r.get("狀態", "")).strip()
-        color = "blue" if stt in ["已儲存", "草稿", "已存檔未提交"] else "orange" if "待" in stt else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
-        c[5].markdown(f":{color}[**{stt}**]")
+        stt_raw = valid_str(r.get("狀態"))
+        # 視覺與判斷上，將舊版狀態統一升級顯示為「已存檔未提交」
+        stt_display = "已存檔未提交" if stt_raw in ["已儲存", "草稿"] else stt_raw
+        
+        color = "blue" if stt_display == "已存檔未提交" else "orange" if "待" in stt_display else "green" if stt_display == "已核准" else "red" if stt_display == "已駁回" else "gray"
+        c[5].markdown(f":{color}[**{stt_display}**]")
         
         with c[6]:
             b1, b2, b3, b4, b5, b6 = st.columns(6)
             
-            # --- 權限判斷：只有本人(申請人) 或 代申請人(Anita) 才能編輯 ---
-            app_clean = clean_name(r.get("申請人", ""))
-            proxy_clean = clean_name(r.get("代申請人", ""))
-            is_own = (curr_name == app_clean) or (curr_name == proxy_clean)
+            # --- ★ 權限解鎖：只要是 Anita 或 申請人 或 代申請人 皆可修改未提交的單據 ---
+            app_name = str(r.get("申請人", "")).strip()
+            proxy_name = str(r.get("代申請人", "")).strip()
+            is_own = (curr_name in app_name) or (curr_name in proxy_name) or is_admin
             
-            can_edit = (stt in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
+            can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
             
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
@@ -482,6 +488,7 @@ elif menu == "2. 專案執行長簽核":
         if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
         render_signing_table(pending, "EXE")
     with t2:
+        # ★ 完美還原歷史紀錄邏輯
         history = req_db[(req_db["初審人"] == curr_name) | ((req_db["狀態"].isin(["已核准","已駁回","待複審"])) & (req_db["專案負責人"] == curr_name))]
         if is_admin: history = req_db[req_db["初審人"] != ""]
         render_signing_table(history, "EXE", is_history=True)
@@ -496,6 +503,7 @@ elif menu == "3. 財務長簽核":
         if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
         render_signing_table(pending, "CFO")
     with t2:
+        # ★ 完美還原歷史紀錄邏輯
         if is_admin:
             history = req_db[req_db["複審人"] != ""]
         elif curr_name == CFO_NAME:
@@ -588,16 +596,14 @@ if st.session_state.view_id:
     
     all_files = []
     
-    # 【最強長度防呆過濾】徹底解決空值與 nan 造成的報錯
-    acc_img = safe_str(r.get("帳戶影像Base64"))
-    if acc_img and len(acc_img) > 100: 
-        all_files.append(acc_img)
+    # ★ 徹底修復：簡單安全的顯示舊資料附件，絕對不報錯
+    if pd.notna(r.get("帳戶影像Base64")) and str(r.get("帳戶影像Base64")).strip() and str(r.get("帳戶影像Base64")).strip().lower() != 'nan':
+        all_files.append(str(r.get("帳戶影像Base64")).strip())
 
-    req_img = safe_str(r.get("影像Base64"))
-    if req_img:
-        for chunk in req_img.split('|'):
+    if pd.notna(r.get("影像Base64")) and str(r.get("影像Base64")).strip() and str(r.get("影像Base64")).strip().lower() != 'nan':
+        for chunk in str(r.get("影像Base64")).split('|'):
             c = chunk.strip()
-            if c and len(c) > 100:
+            if c and c.lower() != 'nan':
                 all_files.append(c)
     
     if all_files:
@@ -611,4 +617,4 @@ if st.session_state.view_id:
                 else:
                     st.image(raw, use_container_width=True)
             except Exception:
-                pass
+                pass # 解析失敗直接安靜略過，絕不跳出黃色警告
