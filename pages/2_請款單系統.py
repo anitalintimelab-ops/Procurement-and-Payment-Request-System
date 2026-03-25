@@ -164,7 +164,7 @@ def render_upload_popover(container, r, prefix):
 # --- 6. Session 初始化 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
-for k in ['edit_id', 'last_id', 'view_id', 'just_edited']: 
+for k in ['edit_id', 'last_id', 'view_id', 'print_id', 'last_msg']: 
     if k not in st.session_state: st.session_state[k] = None
 
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
@@ -199,7 +199,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 # --- 管理員專屬區塊 (僅管理員可見，非管理員完全隱藏) ---
 if is_admin:
     st.sidebar.markdown("---")
-    st.sidebar.success("管理員專屬區塊")
+    st.sidebar.success("管理員專屬區塊 (已解鎖)")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
@@ -302,14 +302,22 @@ def render_signing_table(df_list, sign_type, is_history=False):
 if menu == "1. 填寫申請單":
     st.title("時研國際設計股份有限公司")
     st.subheader("📝 填寫請款申請單")
+    
+    # 頂部即時顯示操作成功訊息
+    if st.session_state.get('last_msg'):
+        st.success(st.session_state.last_msg)
+        st.session_state.last_msg = None
+
     db = load_data(); staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
     
     dv = {"app": curr_name, "pn": "", "pi": "", "exe": staffs[0], "net_amt": 0, "tax_amt": 0, "desc": "", "ib64": "", "cur": "TWD", "ab64":"", "vdr":"", "acc":"", "pay":"匯款(扣30手續費)", "inv_no":""}
     if st.session_state.edit_id:
-        r = db[db["單號"]==st.session_state.edit_id].iloc[0]
-        jd = parse_req_json(r["請款說明"])
-        legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
-        dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", "")})
+        match_r = db[db["單號"]==st.session_state.edit_id]
+        if not match_r.empty:
+            r = match_r.iloc[0]
+            jd = parse_req_json(r["請款說明"])
+            legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
+            dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", "")})
 
     with st.form("req_form"):
         c1, c2, c3 = st.columns(3)
@@ -326,58 +334,71 @@ if menu == "1. 填寫申請單":
         pay_idx = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]) if dv["pay"] in ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"] else 2
         pay = c_pay.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
         desc = st.text_area("請款說明", value=dv["desc"])
-        st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」。**")
+        st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，總金額會自動扣除 30 元。**")
         f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"]); f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True)
         
-        if st.form_submit_button("💾 存檔"):
+        # 5 按鈕操作列
+        c_btn1, c_btn2, c_btn3, c_btn4, c_btn5 = st.columns(5)
+        btn_save = c_btn1.form_submit_button("💾 存檔", use_container_width=True)
+        btn_submit = c_btn2.form_submit_button("🚀 提交", use_container_width=True)
+        btn_preview = c_btn3.form_submit_button("🔍 預覽", use_container_width=True)
+        btn_print = c_btn4.form_submit_button("🖨️ 列印", use_container_width=True)
+        btn_next = c_btn5.form_submit_button("🆕 下一筆申請", use_container_width=True)
+
+        if btn_save or btn_submit or btn_preview or btn_print:
             fee = 30 if "扣30手續費" in pay else 0
             total_amt = net_amt + tax_amt - fee
-            if pn and (net_amt + tax_amt) > 0:
+            if not pn or (net_amt + tax_amt) <= 0:
+                st.error("⚠️ 請填寫「專案名稱」且金額須大於 0")
+            else:
                 b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else dv["ab64"]; b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else dv["ib64"]
                 packed_desc = "[請款單資料]\n" + json.dumps({"net_amt": net_amt, "tax_amt": tax_amt, "fee": fee, "inv_no": inv_no, "desc": desc}, ensure_ascii=False)
                 f_db = load_data()
                 
-                # --- 自動判斷並記錄代申請人 ---
+                # 自動判斷並記錄代申請人
                 proxy_app = curr_name if (curr_name == "Anita" and app_val != curr_name) else ""
                 
                 if st.session_state.edit_id:
                     idx = f_db[f_db["單號"]==st.session_state.edit_id].index[0]
                     f_db.loc[idx, ["申請人", "代申請人", "專案名稱", "專案編號", "專案負責人", "總金額", "請款說明", "請款廠商", "匯款帳戶", "付款方式", "影像Base64", "帳戶影像Base64", "幣別"]] = [app_val, proxy_app, pn, pi, exe, total_amt, packed_desc, vdr, acc, pay, b_ims, b_acc, curr]
-                    st.session_state.last_id = st.session_state.edit_id
-                    st.session_state.edit_id = None
-                    st.session_state.just_edited = True
+                    tid = st.session_state.edit_id
+                    msg_prefix = "修改完畢並存檔"
                 else:
                     tid = f"{datetime.date.today().strftime('%Y%m%d')}-{len(f_db[f_db['單號'].str.startswith(datetime.date.today().strftime('%Y%m%d'))])+1:02d}"
                     nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "代申請人":proxy_app, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed_desc, "總金額":total_amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已儲存", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
-                    f_db = pd.concat([f_db, pd.DataFrame([nr])], ignore_index=True); st.session_state.last_id = tid
-                    st.session_state.just_edited = False
-                save_data(f_db); st.rerun()
+                    f_db = pd.concat([f_db, pd.DataFrame([nr])], ignore_index=True)
+                    msg_prefix = "存檔成功"
+                
+                save_data(f_db)
 
-    if st.session_state.last_id:
-        if st.session_state.get("just_edited"):
-            st.success(f"📄 **單據 {st.session_state.last_id} 已修改完畢並存檔！請選擇後續操作：**")
-        else:
-            st.success(f"📄 **單據 {st.session_state.last_id} 已存檔成功！請選擇後續操作：**")
-            
-        btn_col1, btn_col2, btn_col3, btn_col4, btn_col5 = st.columns(5)
-        if btn_col1.button("✏️ 修改", key="btn_e"):
-            st.session_state.edit_id = st.session_state.last_id
+                if btn_submit:
+                    f_db = load_data()
+                    idx = f_db[f_db["單號"]==tid].index[0]
+                    f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
+                    save_data(f_db)
+                    sys_name = st.session_state.get('sys_choice', '請款單系統')
+                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{tid}\n專案名稱：{pn}\n有一筆新的表單需要執行長 ({exe}) 進行簽核！")
+                    
+                    st.session_state.edit_id = None
+                    st.session_state.last_msg = f"🚀 單據 {tid} 已成功提交簽核！"
+                else:
+                    st.session_state.edit_id = tid  # 保持編輯狀態
+                    if btn_preview:
+                        st.session_state.view_id = tid
+                        st.session_state.last_msg = f"📄 單據 {tid} 已{msg_prefix}，正在產生預覽..."
+                    elif btn_print:
+                        st.session_state.print_id = tid
+                        st.session_state.last_msg = f"🖨️ 單據 {tid} 已{msg_prefix}，正在準備列印..."
+                    else:
+                        st.session_state.last_msg = f"📄 單據 {tid} 已{msg_prefix}！您可以繼續修改或點擊提交。"
+                
+                st.rerun()
+
+        if btn_next:
+            st.session_state.edit_id = None
             st.session_state.last_id = None
+            st.session_state.last_msg = None
             st.rerun()
-        if btn_col2.button("🚀 提交", key="btn_s"):
-            f_db = load_data(); idx = f_db[f_db["單號"]==st.session_state.last_id].index[0]
-            f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(f_db)
-            sys_name = st.session_state.get('sys_choice', '請款單系統'); pj_name = f_db.at[idx, '專案名稱']; exe_name = f_db.at[idx, '專案負責人']
-            send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{st.session_state.last_id}\n專案名稱：{pj_name}\n有一筆新的表單需要執行長 ({exe_name}) 進行簽核！")
-            st.session_state.last_id = None; st.success("已提交！"); time.sleep(1); st.rerun()
-        if btn_col3.button("🔍 預覽", key="btn_v"):
-            st.session_state.view_id = st.session_state.last_id
-            st.rerun()
-        if btn_col4.button("🖨️ 列印", key="btn_p"):
-            r = load_data(); r = r[r["單號"]==st.session_state.last_id].iloc[0]
-            st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
-        if btn_col5.button("🆕 寫新單據", key="btn_n"):
-            st.session_state.last_id = None; st.rerun()
 
     st.divider(); st.subheader("📋 申請追蹤清單")
     f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
@@ -518,7 +539,12 @@ elif menu == "5. 請款狀態/系統設定":
         else:
             st.dataframe(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True)
 
-# ================= 全域預覽模組 =================
+# ================= 全域預覽/列印模組 =================
+if st.session_state.get('print_id'):
+    r = load_data(); r = r[r["單號"]==st.session_state.print_id].iloc[0]
+    st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
+    st.session_state.print_id = None
+
 if st.session_state.view_id:
     st.divider(); r = load_data(); r = r[r["單號"]==st.session_state.view_id].iloc[0]
     if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()
