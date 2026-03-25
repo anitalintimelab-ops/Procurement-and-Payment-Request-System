@@ -48,7 +48,6 @@ def clean_amount(val):
 def clean_name(val): 
     return str(val).strip().split(" ")[0] if pd.notna(val) and str(val).strip() != "" else ""
 
-# 溫和過濾 nan 空值
 def safe_str(val): 
     if pd.isna(val) or val is None: return ""
     s = str(val).strip()
@@ -126,7 +125,7 @@ def parse_req_json(desc_raw):
     except: pass
     return {"desc": desc_raw, "net_amt": 0, "tax_amt": 0, "fee": 0, "inv_no": ""}
 
-# --- 5. HTML 渲染 (完全套用 Time Lab PDF 格式，保證舊單據完美顯示) ---
+# --- 5. HTML 渲染 (加入舊單據自動補齊機制) ---
 def render_html(row):
     amt = clean_amount(row['總金額'])
     data = parse_req_json(row.get("請款說明", ""))
@@ -134,21 +133,29 @@ def render_html(row):
     app_name = safe_str(row.get('申請人'))
     proxy_name = safe_str(row.get('代申請人'))
     display_app = f"{app_name} ({proxy_name} 代申請)" if proxy_name and proxy_name != app_name else app_name
-    if not display_app:
-        display_app = "尚未指定"
+    if not display_app: display_app = "尚未指定"
         
     legacy_net = amt if data.get("net_amt", 0) == 0 and data.get("tax_amt", 0) == 0 else data.get("net_amt", 0)
     fee = data.get("fee", 0)
     tax = data.get("tax_amt", 0)
+    stt = safe_str(row.get("狀態"))
 
-    # 取得時間與姓名 (截斷毫秒)
+    # 取得原始紀錄
     sub_time = safe_str(row.get("提交時間"))[:16]
     fst_appr = clean_name(row.get("初審人"))
     fst_time = safe_str(row.get("初審時間"))[:16]
     sec_appr = clean_name(row.get("複審人"))
     sec_time = safe_str(row.get("複審時間"))[:16]
 
-    # 保證不留白：名字一定出得來，沒時間就空白
+    # ★ 舊單據防呆補齊機制：如果狀態已經是待複審或已核准，但當初沒紀錄到時間與初審人，自動抓取建單日期與負責人填補
+    if stt in ["待複審", "已核准"]:
+        if not fst_appr: fst_appr = clean_name(row.get("專案負責人"))
+        if not sub_time: sub_time = safe_str(row.get("日期"))
+        if not fst_time: fst_time = safe_str(row.get("日期"))
+    if stt in ["待簽核", "待初審"] and not sub_time:
+        sub_time = safe_str(row.get("日期"))
+
+    # 組合字串
     s_submit = display_app
     if sub_time: s_submit += f" {sub_time}"
 
@@ -180,7 +187,6 @@ def render_html(row):
     h += f'<tr><td colspan="3" align="right" style="padding:8px;">手續費</td><td align="right" style="padding:8px;">{cur} {fee:,}</td></tr>'
     h += f'<tr><td colspan="3" align="right" style="padding:8px;"><b>實付 / 請款總額</b></td><td align="right" style="padding:8px;"><b>{cur} {amt:,}</b></td></tr></table>'
     
-    # 完美套印頁腳 (保證初審/複審欄位文字一定存在)
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
@@ -452,12 +458,10 @@ if menu == "1. 填寫申請單":
         with c[6]:
             b1, b2, b3, b4, b5, b6 = st.columns(6)
             
-            # --- ★ 權限解鎖：只要是 Anita 或 申請人本人，無論舊單新單，只要未提交皆可修改 ---
             app_name = safe_str(r.get("申請人"))
             proxy_name = safe_str(r.get("代申請人"))
             is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
-            
-            can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
+            can_edit = (stt_display in ["已駁回", "已存檔未提交"]) and is_own and is_active
             
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
@@ -488,10 +492,11 @@ elif menu == "2. 專案執行長簽核":
         if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
         render_signing_table(pending, "EXE")
     with t2:
-        # ★ 完美還原歷史紀錄：把過濾條件放寬回原本的狀態
-        history = req_db[(req_db["初審人"] == curr_name) | ((req_db["狀態"].isin(["已核准","已駁回","待複審"])) & (req_db["專案負責人"] == curr_name))]
-        if is_admin: history = req_db[req_db["狀態"].isin(["已核准", "已駁回", "待複審"])]
-        render_signing_table(history, "EXE", is_history=True)
+        # ★ 歷史紀錄：執行長、管理員、申請人、初審人 皆可看見歷史
+        history_exe = req_db[req_db["狀態"].isin(["已核准","已駁回","待複審"])]
+        if not is_admin:
+            history_exe = history_exe[(history_exe["初審人"] == curr_name) | (history_exe["專案負責人"] == curr_name) | (history_exe["申請人"] == curr_name) | (history_exe["代申請人"] == curr_name)]
+        render_signing_table(history_exe, "EXE", is_history=True)
 
 # ================= 頁面 3: 財務長簽核 =================
 elif menu == "3. 財務長簽核":
@@ -503,14 +508,11 @@ elif menu == "3. 財務長簽核":
         if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
         render_signing_table(pending, "CFO")
     with t2:
-        # ★ 完美還原歷史紀錄
-        if is_admin:
-            history = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
-        elif curr_name == CFO_NAME:
-            history = req_db[req_db["複審人"] == curr_name]
-        else:
-            history = req_db[(req_db["複審人"] != "") & ((req_db["申請人"] == curr_name) | (req_db["專案負責人"] == curr_name))]
-        render_signing_table(history, "CFO", is_history=True)
+        # ★ 財務長與管理員看全部，其他人看自己相關
+        history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
+        if not is_admin and curr_name != CFO_NAME:
+            history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
+        render_signing_table(history_cfo, "CFO", is_history=True)
 
 # ================= 頁面 4: 總覽 =================
 elif menu == "4. 表單狀態總覽":
@@ -585,39 +587,51 @@ elif menu == "5. 請款狀態/系統設定":
 
 # ================= 全域預覽/列印模組 =================
 if st.session_state.get('print_id'):
-    r = load_data(); r = r[r["單號"]==st.session_state.print_id].iloc[0]
-    st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
+    r_df = load_data()
+    r_df = r_df[r_df["單號"]==st.session_state.print_id]
+    if not r_df.empty:
+        r = r_df.iloc[0]
+        st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
     st.session_state.print_id = None
 
 if st.session_state.view_id:
-    st.divider(); r = load_data(); r = r[r["單號"]==st.session_state.view_id].iloc[0]
-    if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()
-    st.markdown(render_html(r), unsafe_allow_html=True)
+    st.divider()
+    r_df = load_data()
+    r_df = r_df[r_df["單號"]==st.session_state.view_id]
     
-    all_files = []
-    
-    # ★ 徹底防呆：限制字串必須大於50字元才解析，完美消滅 nan 報錯
-    acc_img = safe_str(r.get("帳戶影像Base64"))
-    if len(acc_img) > 50: all_files.append(acc_img)
+    if r_df.empty:
+        st.warning("⚠️ 找不到該單號資料，可能已被刪除。")
+        if st.button("❌ 關閉預覽"):
+            st.session_state.view_id = None
+            st.rerun()
+    else:
+        r = r_df.iloc[0]
+        if st.button("❌ 關閉預覽"): st.session_state.view_id = None; st.rerun()
+        st.markdown(render_html(r), unsafe_allow_html=True)
+        
+        all_files = []
+        
+        # ★ 徹底防呆：限制字串必須大於50字元才解析，完美消滅 nan 報錯
+        acc_img = safe_str(r.get("帳戶影像Base64"))
+        if len(acc_img) > 50: all_files.append(acc_img)
 
-    req_img = safe_str(r.get("影像Base64"))
-    if len(req_img) > 50:
-        for chunk in req_img.split('|'):
-            c = chunk.strip()
-            if len(c) > 50:
-                all_files.append(c)
-    
-    if all_files:
-        st.write("#### 📎 附件內容預覽")
-        for f_b64 in all_files:
-            try:
-                # 確保 Base64 格式完整，避免解碼失敗
-                pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
-                raw = base64.b64decode(pad)
-                if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
-                    st.info("📊 偵測到 Excel 檔案：")
-                    st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
-                else:
-                    st.image(raw, use_container_width=True)
-            except Exception:
-                pass # 解析失敗直接無視，絕對不跳警告影響畫面
+        req_img = safe_str(r.get("影像Base64"))
+        if len(req_img) > 50:
+            for chunk in req_img.split('|'):
+                c = chunk.strip()
+                if len(c) > 50:
+                    all_files.append(c)
+        
+        if all_files:
+            st.write("#### 📎 附件內容預覽")
+            for f_b64 in all_files:
+                try:
+                    pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
+                    raw = base64.b64decode(pad)
+                    if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
+                        st.info("📊 偵測到 Excel 檔案：")
+                        st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
+                    else:
+                        st.image(raw, use_container_width=True)
+                except Exception:
+                    pass
