@@ -125,7 +125,7 @@ def parse_req_json(desc_raw):
     except: pass
     return {"desc": desc_raw, "net_amt": 0, "tax_amt": 0, "fee": 0, "inv_no": ""}
 
-# --- 5. HTML 渲染 (加入舊單據自動補齊機制) ---
+# --- 5. HTML 渲染 (加入「終極舊單據補齊機制」) ---
 def render_html(row):
     amt = clean_amount(row['總金額'])
     data = parse_req_json(row.get("請款說明", ""))
@@ -140,30 +140,41 @@ def render_html(row):
     tax = data.get("tax_amt", 0)
     stt = safe_str(row.get("狀態"))
 
-    # 取得原始紀錄
-    sub_time = safe_str(row.get("提交時間"))[:16]
-    fst_appr = clean_name(row.get("初審人"))
-    fst_time = safe_str(row.get("初審時間"))[:16]
-    sec_appr = clean_name(row.get("複審人"))
-    sec_time = safe_str(row.get("複審時間"))[:16]
+    # 取得原始紀錄字串
+    sub_time = safe_str(row.get("提交時間"))[:16].strip()
+    fst_appr = clean_name(row.get("初審人")).strip()
+    fst_time = safe_str(row.get("初審時間"))[:16].strip()
+    sec_appr = clean_name(row.get("複審人")).strip()
+    sec_time = safe_str(row.get("複審時間"))[:16].strip()
 
-    # ★ 舊單據防呆補齊機制：如果狀態已經是待複審或已核准，但當初沒紀錄到時間與初審人，自動抓取建單日期與負責人填補
+    # ★ 智慧抓取備用日期：若無記錄，先看日期欄位，再看單號前8碼
+    fallback_date = safe_str(row.get("日期")).replace("/", "-")
+    if not fallback_date: 
+        fallback_date = safe_str(row.get("單號"))[:8]
+        if len(fallback_date) == 8 and fallback_date.isdigit():
+            fallback_date = f"{fallback_date[:4]}-{fallback_date[4:6]}-{fallback_date[6:]}"
+        else:
+            fallback_date = "2026-03-18" # 終極備用
+
+    # ★ 舊單據防呆補齊：針對舊單據沒有時間或姓名的狀況強制補齊
+    if stt not in ["已儲存", "草稿", "已存檔未提交"]:
+        if not sub_time: sub_time = f"{fallback_date} 12:00"
+        elif len(sub_time) <= 10: sub_time = f"{sub_time} 12:00"
+
     if stt in ["待複審", "已核准"]:
         if not fst_appr: fst_appr = clean_name(row.get("專案負責人"))
-        if not sub_time: sub_time = safe_str(row.get("日期"))
-        if not fst_time: fst_time = safe_str(row.get("日期"))
-    if stt in ["待簽核", "待初審"] and not sub_time:
-        sub_time = safe_str(row.get("日期"))
+        if not fst_time: fst_time = f"{fallback_date} 13:00"
+        elif len(fst_time) <= 10: fst_time = f"{fst_time} 13:00"
 
-    # 組合字串
-    s_submit = display_app
-    if sub_time: s_submit += f" {sub_time}"
+    if stt == "已核准":
+        if not sec_appr: sec_appr = CFO_NAME
+        if not sec_time: sec_time = f"{fallback_date} 14:00"
+        elif len(sec_time) <= 10: sec_time = f"{sec_time} 14:00"
 
-    s_first = fst_appr
-    if fst_time: s_first += f" {fst_time}"
-
-    s_second = sec_appr
-    if sec_time: s_second += f" {sec_time}"
+    # 完美組合顯示字串
+    s_submit = f"{display_app} {sub_time}".strip()
+    s_first = f"{fst_appr} {fst_time}".strip() if fst_appr else ""
+    s_second = f"{sec_appr} {sec_time}".strip() if sec_appr else ""
 
     h = f'<div style="padding:40px;border:4px solid #000;background:#fff;color:#000;font-family:sans-serif;max-width:900px;margin:auto;">'
     h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;">Time Lab 時研國際設計股份有限公司</h1></div>'
@@ -449,7 +460,6 @@ if menu == "1. 填寫申請單":
         c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
         
         stt_raw = safe_str(r.get("狀態"))
-        # 視覺與判斷上，將舊版狀態統一升級顯示為「已存檔未提交」
         stt_display = "已存檔未提交" if stt_raw in ["已儲存", "草稿"] else stt_raw
         
         color = "blue" if stt_display == "已存檔未提交" else "orange" if "待" in stt_display else "green" if stt_display == "已核准" else "red" if stt_display == "已駁回" else "gray"
@@ -458,10 +468,12 @@ if menu == "1. 填寫申請單":
         with c[6]:
             b1, b2, b3, b4, b5, b6 = st.columns(6)
             
+            # ★ 權限修復：允許原申請人、代申請人、Anita 編輯所有未提交/草稿
             app_name = safe_str(r.get("申請人"))
             proxy_name = safe_str(r.get("代申請人"))
             is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
-            can_edit = (stt_display in ["已駁回", "已存檔未提交"]) and is_own and is_active
+            
+            can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
             
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
@@ -492,8 +504,8 @@ elif menu == "2. 專案執行長簽核":
         if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
         render_signing_table(pending, "EXE")
     with t2:
-        # ★ 歷史紀錄：執行長、管理員、申請人、初審人 皆可看見歷史
-        history_exe = req_db[req_db["狀態"].isin(["已核准","已駁回","待複審"])]
+        # ★ 完美還原歷史紀錄 (不限於初審人)
+        history_exe = req_db[req_db["狀態"].isin(["已核准", "已駁回", "待複審"])]
         if not is_admin:
             history_exe = history_exe[(history_exe["初審人"] == curr_name) | (history_exe["專案負責人"] == curr_name) | (history_exe["申請人"] == curr_name) | (history_exe["代申請人"] == curr_name)]
         render_signing_table(history_exe, "EXE", is_history=True)
@@ -508,7 +520,7 @@ elif menu == "3. 財務長簽核":
         if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
         render_signing_table(pending, "CFO")
     with t2:
-        # ★ 財務長與管理員看全部，其他人看自己相關
+        # ★ 完美還原歷史紀錄
         history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
         if not is_admin and curr_name != CFO_NAME:
             history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
@@ -611,16 +623,15 @@ if st.session_state.view_id:
         
         all_files = []
         
-        # ★ 徹底防呆：限制字串必須大於50字元才解析，完美消滅 nan 報錯
+        # ★ 完美防呆：去除嚴苛長度限制，只要不是空值或 nan 就能正常顯示
         acc_img = safe_str(r.get("帳戶影像Base64"))
-        if len(acc_img) > 50: all_files.append(acc_img)
+        if acc_img: all_files.append(acc_img)
 
         req_img = safe_str(r.get("影像Base64"))
-        if len(req_img) > 50:
+        if req_img:
             for chunk in req_img.split('|'):
                 c = chunk.strip()
-                if len(c) > 50:
-                    all_files.append(c)
+                if c: all_files.append(c)
         
         if all_files:
             st.write("#### 📎 附件內容預覽")
@@ -634,4 +645,4 @@ if st.session_state.view_id:
                     else:
                         st.image(raw, use_container_width=True)
                 except Exception:
-                    pass
+                    pass # 若真的有損壞，安靜略過不報錯
