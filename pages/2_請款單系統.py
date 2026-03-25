@@ -123,11 +123,24 @@ def parse_req_json(desc_raw):
 def render_html(row):
     amt = clean_amount(row['總金額'])
     data = parse_req_json(row.get("請款說明", ""))
-    sub_time = str(row.get("提交時間", "")) or get_taiwan_time()
-    display_app = f"{row['申請人']} ({row.get('代申請人', '')} 代)" if row.get("代申請人") else row['申請人']
+    
+    # 判斷代申請人顯示方式
+    display_app = f"{row['申請人']} ({row.get('代申請人', '')} 代申請)" if row.get("代申請人") else row['申請人']
     
     legacy_net = amt if data.get("net_amt", 0) == 0 and data.get("tax_amt", 0) == 0 else data.get("net_amt", 0)
     fee = data.get("fee", 0)
+
+    # 頁腳審核資訊格式化
+    sub_time = str(row.get("提交時間", ""))
+    sub_time_str = sub_time[:16] if sub_time else ""
+    fst_appr = str(row.get("初審人", ""))
+    fst_time = str(row.get("初審時間", ""))[:16] if str(row.get("初審時間", "")) else ""
+    sec_appr = str(row.get("複審人", ""))
+    sec_time = str(row.get("複審時間", ""))[:16] if str(row.get("複審時間", "")) else ""
+
+    s_submit = f"提交: {display_app} {sub_time_str}".strip()
+    s_first = f"初審: {fst_appr} {fst_time}".strip() if fst_appr else "初審: "
+    s_second = f"複審: {sec_appr} {sec_time}".strip() if sec_appr else "複審: "
 
     h = f'<div style="padding:20px;border:2px solid #000;background:#fff;color:#000;font-family:sans-serif;">'
     h += f'<div style="text-align:center;"><h2>時研國際設計 - 請款申請單</h2></div>'
@@ -145,7 +158,7 @@ def render_html(row):
     h += f'<tr><td colspan="3" align="right"><b>手續費</b></td><td align="right"><b>{row.get("幣別","TWD")} {fee:,}</b></td></tr>'
     h += f'<tr><td colspan="3" align="right"><b>請款總金額</b></td><td align="right"><b>{row.get("幣別","TWD")} {amt:,}</b></td></tr></table>'
     
-    h += f'<p style="font-size:11px;margin-top:10px;">提交：{sub_time} | 初審：{row.get("初審人","")} | 複審：{row.get("複審人","")}</p></div>'
+    h += f'<p style="font-size:14px;margin-top:15px;">{s_submit} | {s_first} | {s_second}</p></div>'
     return h
 
 def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
@@ -365,7 +378,7 @@ if menu == "1. 填寫申請單":
                     msg_prefix = "修改完畢並存檔"
                 else:
                     tid = f"{datetime.date.today().strftime('%Y%m%d')}-{len(f_db[f_db['單號'].str.startswith(datetime.date.today().strftime('%Y%m%d'))])+1:02d}"
-                    nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "代申請人":proxy_app, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed_desc, "總金額":total_amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已儲存", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
+                    nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "代申請人":proxy_app, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed_desc, "總金額":total_amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已存檔未提交", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
                     f_db = pd.concat([f_db, pd.DataFrame([nr])], ignore_index=True)
                     msg_prefix = "存檔成功"
                 
@@ -408,14 +421,19 @@ if menu == "1. 填寫申請單":
     for i, r in my_db.iterrows():
         c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
         c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
-        stt = r["狀態"]; color = "blue" if stt in ["已儲存", "草稿"] else "orange" if "待" in stt else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
+        
+        stt = r["狀態"]
+        # 新增的「已存檔未提交」也統一顯示藍色
+        color = "blue" if stt in ["已儲存", "草稿", "已存檔未提交"] else "orange" if "待" in stt else "green" if stt == "已核准" else "red" if stt == "已駁回" else "gray"
         c[5].markdown(f":{color}[**{stt}**]")
+        
         with c[6]:
             b1, b2, b3, b4, b5, b6 = st.columns(6)
             
             # --- 權限判斷：只有本人(申請人) 或 代申請人(Anita) 才能編輯 ---
             is_own = (str(r["申請人"]).strip() == curr_name) or (str(r.get("代申請人", "")).strip() == curr_name)
-            can_edit = (stt in ["已儲存", "草稿", "已駁回"]) and is_own and is_active
+            # 已將新狀態「已存檔未提交」加入可修改的條件清單
+            can_edit = (stt in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
             
             if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                 fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
@@ -557,6 +575,9 @@ if st.session_state.view_id:
     if all_files:
         st.write("#### 📎 附件內容預覽")
         for f_b64 in all_files:
+            # 增加嚴格的防呆機制，若存檔時讀到空字串則自動略過，不報錯
+            if not isinstance(f_b64, str) or not f_b64.strip():
+                continue
             try:
                 raw = base64.b64decode(f_b64)
                 if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
@@ -564,4 +585,5 @@ if st.session_state.view_id:
                     st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
                 else:
                     st.image(raw, use_container_width=True)
-            except: st.warning("此附件格式無法預覽，請確認檔案是否損壞。")
+            except Exception:
+                st.warning("此附件格式無法預覽，請確認檔案是否損壞。")
