@@ -20,6 +20,17 @@ st.markdown("""
     .block-container { padding-top: 1.5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
     table { word-wrap: break-word !important; font-size: 13px !important; }
     th, td { padding: 5px !important; }
+    /* ★ 強制手機版所有分欄保持橫式，改為左右滑動避免上下堆疊誤按 */
+    div[data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        padding-bottom: 5px;
+    }
+    div[data-testid="column"] {
+        width: auto !important;
+        flex: 1 1 auto !important;
+        min-width: max-content !important;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -286,7 +297,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 
 if is_admin:
     st.sidebar.markdown("---")
-    st.sidebar.success("管理員專屬區塊 ")
+    st.sidebar.success("管理員專屬區塊")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
@@ -352,22 +363,39 @@ if menu != st.session_state.req_prev_state_menu or st.session_state.user_id != s
     st.rerun()
 
 
-# --- 8. 簽核列表渲染模組 ---
+# --- 8. 簽核列表渲染模組 (★ 動態判斷是否顯示負責執行長欄位) ---
 def render_signing_table(df_list, sign_type, is_history=False):
     if df_list.empty:
         st.info("目前無相關紀錄")
         return
     
-    cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
-    headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
+    # 在「專案執行長簽核(EXE)」中，非管理員不顯示「負責執行長」欄位
+    show_exe = True
+    if sign_type == "EXE" and not is_admin:
+        show_exe = False
+        
+    if show_exe:
+        cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
+        headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
+    else:
+        cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 3.0])
+        headers = ["單號", "專案名稱", "申請人", "請款金額", "操作"]
+        
     for c, h in zip(cols_header, headers): c.write(f"**{h}**")
     
     for i, r in df_list.iterrows():
-        c = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
-        c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"])
-        c[4].write(f"${clean_amount(r['總金額']):,}")
-        
-        with c[5]:
+        if show_exe:
+            c = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
+            c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"])
+            c[4].write(f"${clean_amount(r['總金額']):,}")
+            btn_c = c[5]
+        else:
+            c = st.columns([1.2, 2.0, 1.2, 1.2, 3.0])
+            c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(r["申請人"])
+            c[3].write(f"${clean_amount(r['總金額']):,}")
+            btn_c = c[4]
+            
+        with btn_c:
             btn_col1, btn_col2, btn_col3 = st.columns(3)
             if btn_col1.button("預覽", key=f"sv_{sign_type}_{i}_{is_history}"):
                 st.session_state.req_view_id = r["單號"]; st.rerun()
