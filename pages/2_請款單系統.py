@@ -125,7 +125,7 @@ def load_staff():
 
 def save_staff(df): df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
 
-# --- 4. 請款單資料打包解析器 (支援提取檔名) ---
+# --- 4. 請款單資料打包解析器 ---
 def parse_req_json(desc_raw):
     try:
         if "[請款單資料]" in desc_raw:
@@ -227,7 +227,7 @@ def render_upload_popover(container, r, prefix):
                 fresh_db.at[idx, "請款說明"] = packed_desc
                 save_data(fresh_db); st.rerun()
 
-# --- 6. Session 初始化 (★ 加入前綴隔離與動態Uploader Key) ---
+# --- 6. Session 初始化 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 
@@ -411,28 +411,35 @@ if menu == "1. 填寫申請單":
             })
 
     with st.form("req_form"):
-        c1, c2, c3 = st.columns(3)
-        app_val = c1.selectbox("申請人", staffs, index=staffs.index(dv["app"]) if dv["app"] in staffs else 0) if curr_name == "Anita" else curr_name
-        if curr_name != "Anita": c1.text_input("申請人", value=app_val, disabled=True)
-        pn = c2.text_input("專案名稱", value=dv["pn"]); pi = c3.text_input("專案編號", value=dv["pi"])
+        # ★ 擴充為 4 欄，新增總計金額參考欄位
+        c1, c2, c3, c4 = st.columns(4)
+        exe = c1.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]) if dv["exe"] in staffs else 0)
+        net_amt = c2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0)
+        tax_amt = c3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
+        c4.text_input("總計金額 (未稅+稅額)", value=f"{int(dv['net_amt']) + int(dv['tax_amt']):,}", disabled=True, help="此為系統自動加總，點擊存檔或預覽後更新")
+        
+        # 申請人等其他欄位移至下一排
         cx1, cx2, cx3 = st.columns(3)
-        exe = cx1.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]) if dv["exe"] in staffs else 0)
-        net_amt = cx2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0); tax_amt = cx3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
+        app_val = cx1.selectbox("申請人", staffs, index=staffs.index(dv["app"]) if dv["app"] in staffs else 0) if curr_name == "Anita" else curr_name
+        if curr_name != "Anita": cx1.text_input("申請人", value=app_val, disabled=True)
+        pn = cx2.text_input("專案名稱", value=dv["pn"])
+        pi = cx3.text_input("專案編號", value=dv["pi"])
+        
         cv1, cv2, cv3 = st.columns(3)
         vdr = cv1.text_input("請款廠商", value=dv["vdr"]); acc = cv2.text_input("匯款帳戶", value=dv["acc"]); inv_no = cv3.text_input("發票號碼或憑證 (非必填)", value=dv["inv_no"])
+        
         c_cur, c_pay = st.columns([1, 2])
         curr = c_cur.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
         pay_idx = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]) if dv["pay"] in ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"] else 2
         pay = c_pay.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
+        
         desc = st.text_area("請款說明", value=dv["desc"])
         st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，總金額會自動扣除 30 元。**")
         
-        # ★ 動態加入 Key，強制於切換時清空上傳區塊
         up_key = st.session_state.req_uploader_key
         f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
         f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"req_f_ims_{up_key}")
         
-        # ★ 現有附件管理區塊 (顯示真實檔名)
         del_acc = False
         del_ims = []
         existing_ims = []
@@ -463,7 +470,6 @@ if menu == "1. 填寫申請單":
                         if st.checkbox(f"🗑️ 刪除 {disp_name}", key=f"del_im_{idx}"):
                             del_ims.append(idx)
                             
-        # ★ 操作按鈕動態擴充 (修改模式多出取消鈕)
         if st.session_state.req_edit_id:
             c_btn1, c_btn2, c_btn3, c_btn4, c_btn5, c_btn6 = st.columns(6)
             btn_save = c_btn1.form_submit_button("💾 存檔", use_container_width=True)
@@ -493,7 +499,6 @@ if menu == "1. 填寫申請單":
             if not pn or (net_amt + tax_amt) <= 0:
                 st.error("⚠️ 請填寫「專案名稱」且金額須大於 0")
             else:
-                # ★ 精準處理附件替換與檔名儲存
                 if f_acc:
                     b_acc = base64.b64encode(f_acc.getvalue()).decode()
                     acc_name_save = f_acc.name
