@@ -32,6 +32,10 @@ S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "online.csv")
 L_FILE = os.path.join(B_DIR, "line_credentials.txt") 
 
+# 新增：專案與廠商專屬資料庫路徑
+P_FILE = os.path.join(B_DIR, "projects.csv")
+V_FILE = os.path.join(B_DIR, "vendors.csv")
+
 ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
@@ -124,6 +128,23 @@ def load_staff():
     return df
 
 def save_staff(df): df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
+
+# 新增：專案與廠商庫存取
+def load_projects():
+    if not os.path.exists(P_FILE):
+        pd.DataFrame(columns=["負責執行長", "專案名稱", "專案編號"]).to_csv(P_FILE, index=False, encoding='utf-8-sig')
+    return read_csv_robust(P_FILE)
+
+def save_projects(df):
+    df.to_csv(P_FILE, index=False, encoding='utf-8-sig')
+
+def load_vendors():
+    if not os.path.exists(V_FILE):
+        pd.DataFrame(columns=["請款廠商", "匯款帳戶"]).to_csv(V_FILE, index=False, encoding='utf-8-sig')
+    return read_csv_robust(V_FILE)
+
+def save_vendors(df):
+    df.to_csv(V_FILE, index=False, encoding='utf-8-sig')
 
 # --- 4. 請款單資料打包解析器 ---
 def parse_req_json(desc_raw):
@@ -387,6 +408,41 @@ if menu == "1. 填寫申請單":
         st.success(st.session_state.req_last_msg)
         st.session_state.req_last_msg = None
 
+    # ★ 新增：專案與廠商庫存取
+    p_db = load_projects()
+    v_db = load_vendors()
+
+    # ★ 頂部加入新增資料庫欄位
+    with st.expander("➕ 新增專案 / 廠商至資料庫"):
+        tb1, tb2 = st.tabs(["📂 新增專案", "🏢 新增廠商"])
+        with tb1:
+            pc1, pc2, pc3, pc4 = st.columns([1, 2, 2, 1])
+            new_p_exe = pc1.selectbox("所屬執行長", st.session_state.staff_df["name"].apply(clean_name).tolist(), key="new_p_exe")
+            new_p_name = pc2.text_input("新專案名稱", key="new_p_name")
+            new_p_id = pc3.text_input("新專案編號", key="new_p_id")
+            if pc4.button("➕ 儲存專案"):
+                if new_p_name and new_p_id:
+                    p_db = load_projects()
+                    p_db = pd.concat([p_db, pd.DataFrame([{"負責執行長": new_p_exe, "專案名稱": new_p_name, "專案編號": new_p_id}])], ignore_index=True)
+                    save_projects(p_db)
+                    st.success("專案已新增！")
+                    st.rerun()
+                else:
+                    st.error("請填寫完整資訊")
+        with tb2:
+            vc1, vc2, vc3 = st.columns([2, 2, 1])
+            new_v_name = vc1.text_input("新廠商名稱", key="new_v_name")
+            new_v_acc = vc2.text_input("新匯款帳戶", key="new_v_acc")
+            if vc3.button("➕ 儲存廠商"):
+                if new_v_name and new_v_acc:
+                    v_db = load_vendors()
+                    v_db = pd.concat([v_db, pd.DataFrame([{"請款廠商": new_v_name, "匯款帳戶": new_v_acc}])], ignore_index=True)
+                    save_vendors(v_db)
+                    st.success("廠商已新增！")
+                    st.rerun()
+                else:
+                    st.error("請填寫完整資訊")
+
     db = load_data(); staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
     
     dv = {"app": curr_name, "pn": "", "pi": "", "exe": staffs[0], "net_amt": 0, "tax_amt": 0, "desc": "", "ib64": "", "cur": "TWD", "ab64":"", "vdr":"", "acc":"", "pay":"匯款(扣30手續費)", "inv_no":"", "acc_name": "", "ims_names": []}
@@ -405,34 +461,66 @@ if menu == "1. 填寫申請單":
                 "inv_no": jd.get("inv_no", ""), "acc_name": jd.get("acc_name", ""), "ims_names": jd.get("ims_names", [])
             })
 
-    with st.form("req_form"):
-        # ★ 第一排 (4欄)：申請人、負責執行長、專案名稱、專案編號
+    # ★ 取消 Form，解鎖即時下拉連動！
+    with st.container():
+        # 第一排：申請人、執行長、專案名稱、專案編號
         c1, c2, c3, c4 = st.columns(4)
         app_val = c1.selectbox("申請人", staffs, index=staffs.index(dv["app"]) if dv["app"] in staffs else 0) if curr_name == "Anita" else curr_name
         if curr_name != "Anita": c1.text_input("申請人", value=app_val, disabled=True)
         exe = c2.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]) if dv["exe"] in staffs else 0)
-        pn = c3.text_input("專案名稱", value=dv["pn"])
-        pi = c4.text_input("專案編號", value=dv["pi"])
         
-        # ★ 第二排 (4欄)：幣別、金額(未稅)、稅額、總計金額
+        # 專案連動邏輯
+        p_db = load_projects()
+        filtered_p = p_db[p_db["負責執行長"] == exe]
+        p_names = filtered_p["專案名稱"].unique().tolist()
+        p_options = [""] + p_names
+        # 相容舊單據未存在資料庫中的專案
+        if dv["pn"] and dv["pn"] not in p_options: p_options.append(dv["pn"])
+        pn_idx = p_options.index(dv["pn"]) if dv["pn"] in p_options else 0
+        
+        pn = c3.selectbox("專案名稱", p_options, index=pn_idx)
+        
+        # 專案編號自動帶出
+        if pn in filtered_p["專案名稱"].values:
+            auto_id = filtered_p[filtered_p["專案名稱"] == pn]["專案編號"].iloc[0]
+        else:
+            auto_id = dv["pi"]
+            
+        pi = c4.text_input("專案編號", value=auto_id)
+        
+        # 第二排：幣別、金額(未稅)、稅額、總計金額
         cx1, cx2, cx3, cx4 = st.columns(4)
         curr = cx1.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
         net_amt = cx2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0)
         tax_amt = cx3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
-        cx4.text_input("總計金額 (未稅+稅額)", value=f"{int(dv['net_amt']) + int(dv['tax_amt']):,}", disabled=True, help="此為系統自動加總，點擊存檔或預覽後更新")
+        cx4.text_input("總計金額 (未稅+稅額)", value=f"{int(net_amt) + int(tax_amt):,}", disabled=True)
         
-        # ★ 第三排 (3欄)：請款廠商、匯款帳戶、發票號碼
+        # 第三排：請款廠商、匯款帳戶、發票號碼
+        v_db = load_vendors()
+        v_names = v_db["請款廠商"].unique().tolist()
+        v_options = [""] + v_names
+        # 相容舊單據未存在資料庫中的廠商
+        if dv["vdr"] and dv["vdr"] not in v_options: v_options.append(dv["vdr"])
+        vdr_idx = v_options.index(dv["vdr"]) if dv["vdr"] in v_options else 0
+        
         cv1, cv2, cv3 = st.columns(3)
-        vdr = cv1.text_input("請款廠商", value=dv["vdr"])
-        acc = cv2.text_input("匯款帳戶", value=dv["acc"])
+        vdr = cv1.selectbox("請款廠商", v_options, index=vdr_idx)
+        
+        # 帳戶自動帶出
+        if vdr in v_db["請款廠商"].values:
+            auto_acc = v_db[v_db["請款廠商"] == vdr]["匯款帳戶"].iloc[0]
+        else:
+            auto_acc = dv["acc"]
+            
+        acc = cv2.text_input("匯款帳戶", value=auto_acc)
         inv_no = cv3.text_input("發票號碼或憑證 (非必填)", value=dv["inv_no"])
         
-        # ★ 第四排：付款方式獨立顯示
+        # 第四排：付款方式與說明
         pay_idx = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]) if dv["pay"] in ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"] else 2
         pay = st.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
         
         desc = st.text_area("請款說明", value=dv["desc"])
-        st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，總金額會自動扣除 30 元。**")
+        st.info("💡 **提示：系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，最終存檔總金額會自動扣除 30 元。**")
         
         up_key = st.session_state.req_uploader_key
         f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
@@ -468,21 +556,22 @@ if menu == "1. 填寫申請單":
                         if st.checkbox(f"🗑️ 刪除 {disp_name}", key=f"del_im_{idx}"):
                             del_ims.append(idx)
                             
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.session_state.req_edit_id:
             c_btn1, c_btn2, c_btn3, c_btn4, c_btn5, c_btn6 = st.columns(6)
-            btn_save = c_btn1.form_submit_button("💾 存檔", use_container_width=True)
-            btn_submit = c_btn2.form_submit_button("🚀 提交", use_container_width=True)
-            btn_preview = c_btn3.form_submit_button("🔍 預覽", use_container_width=True)
-            btn_print = c_btn4.form_submit_button("🖨️ 列印", use_container_width=True)
-            btn_next = c_btn5.form_submit_button("🆕 下一筆申請", use_container_width=True)
-            btn_cancel = c_btn6.form_submit_button("❌ 不存檔", use_container_width=True)
+            btn_save = c_btn1.button("💾 存檔", use_container_width=True)
+            btn_submit = c_btn2.button("🚀 提交", use_container_width=True)
+            btn_preview = c_btn3.button("🔍 預覽", use_container_width=True)
+            btn_print = c_btn4.button("🖨️ 列印", use_container_width=True)
+            btn_next = c_btn5.button("🆕 下一筆申請", use_container_width=True)
+            btn_cancel = c_btn6.button("❌ 不存檔", use_container_width=True)
         else:
             c_btn1, c_btn2, c_btn3, c_btn4, c_btn5 = st.columns(5)
-            btn_save = c_btn1.form_submit_button("💾 存檔", use_container_width=True)
-            btn_submit = c_btn2.form_submit_button("🚀 提交", use_container_width=True)
-            btn_preview = c_btn3.form_submit_button("🔍 預覽", use_container_width=True)
-            btn_print = c_btn4.form_submit_button("🖨️ 列印", use_container_width=True)
-            btn_next = c_btn5.form_submit_button("🆕 下一筆申請", use_container_width=True)
+            btn_save = c_btn1.button("💾 存檔", use_container_width=True)
+            btn_submit = c_btn2.button("🚀 提交", use_container_width=True)
+            btn_preview = c_btn3.button("🔍 預覽", use_container_width=True)
+            btn_print = c_btn4.button("🖨️ 列印", use_container_width=True)
+            btn_next = c_btn5.button("🆕 下一筆申請", use_container_width=True)
             btn_cancel = False
 
         if btn_cancel:
