@@ -32,7 +32,6 @@ S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "online.csv")
 L_FILE = os.path.join(B_DIR, "line_credentials.txt") 
 
-# 新增：專案與廠商專屬資料庫路徑
 P_FILE = os.path.join(B_DIR, "projects.csv")
 V_FILE = os.path.join(B_DIR, "vendors.csv")
 
@@ -129,7 +128,6 @@ def load_staff():
 
 def save_staff(df): df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
 
-# 新增：專案與廠商庫存取
 def load_projects():
     if not os.path.exists(P_FILE):
         pd.DataFrame(columns=["負責執行長", "專案名稱", "專案編號"]).to_csv(P_FILE, index=False, encoding='utf-8-sig')
@@ -408,11 +406,9 @@ if menu == "1. 填寫申請單":
         st.success(st.session_state.req_last_msg)
         st.session_state.req_last_msg = None
 
-    # ★ 新增：專案與廠商庫存取
     p_db = load_projects()
     v_db = load_vendors()
 
-    # ★ 頂部加入新增資料庫欄位
     with st.expander("➕ 新增專案 / 廠商至資料庫"):
         tb1, tb2 = st.tabs(["📂 新增專案", "🏢 新增廠商"])
         with tb1:
@@ -425,7 +421,8 @@ if menu == "1. 填寫申請單":
                     p_db = load_projects()
                     p_db = pd.concat([p_db, pd.DataFrame([{"負責執行長": new_p_exe, "專案名稱": new_p_name, "專案編號": new_p_id}])], ignore_index=True)
                     save_projects(p_db)
-                    st.success("專案已新增！")
+                    st.success(f"已存入 {new_p_name} 資料庫！")
+                    time.sleep(1)
                     st.rerun()
                 else:
                     st.error("請填寫完整資訊")
@@ -438,7 +435,8 @@ if menu == "1. 填寫申請單":
                     v_db = load_vendors()
                     v_db = pd.concat([v_db, pd.DataFrame([{"請款廠商": new_v_name, "匯款帳戶": new_v_acc}])], ignore_index=True)
                     save_vendors(v_db)
-                    st.success("廠商已新增！")
+                    st.success(f"已存入 {new_v_name} 資料庫！")
+                    time.sleep(1)
                     st.rerun()
                 else:
                     st.error("請填寫完整資訊")
@@ -461,61 +459,63 @@ if menu == "1. 填寫申請單":
                 "inv_no": jd.get("inv_no", ""), "acc_name": jd.get("acc_name", ""), "ims_names": jd.get("ims_names", [])
             })
 
-    # ★ 取消 Form，解鎖即時下拉連動！
     with st.container():
-        # 第一排：申請人、執行長、專案名稱、專案編號
         c1, c2, c3, c4 = st.columns(4)
         app_val = c1.selectbox("申請人", staffs, index=staffs.index(dv["app"]) if dv["app"] in staffs else 0) if curr_name == "Anita" else curr_name
         if curr_name != "Anita": c1.text_input("申請人", value=app_val, disabled=True)
         exe = c2.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]) if dv["exe"] in staffs else 0)
         
-        # 專案連動邏輯
-        p_db = load_projects()
         filtered_p = p_db[p_db["負責執行長"] == exe]
         p_names = filtered_p["專案名稱"].unique().tolist()
-        p_options = [""] + p_names
-        # 相容舊單據未存在資料庫中的專案
-        if dv["pn"] and dv["pn"] not in p_options: p_options.append(dv["pn"])
-        pn_idx = p_options.index(dv["pn"]) if dv["pn"] in p_options else 0
+        p_options = [""] + p_names + ["➕ 手動輸入"]
         
-        pn = c3.selectbox("專案名稱", p_options, index=pn_idx)
-        
-        # 專案編號自動帶出
-        if pn in filtered_p["專案名稱"].values:
+        if dv["pn"] and dv["pn"] not in p_names:
+            pn_idx = p_options.index("➕ 手動輸入")
+        else:
+            pn_idx = p_options.index(dv["pn"]) if dv["pn"] in p_options else 0
+            
+        pn_sel = c3.selectbox("專案名稱", p_options, index=pn_idx)
+        if pn_sel == "➕ 手動輸入":
+            pn = c3.text_input("✍️ 手動輸入專案名稱", value=dv["pn"] if dv["pn"] not in p_names else "")
+        else:
+            pn = pn_sel
+            
+        if pn_sel != "➕ 手動輸入" and pn in filtered_p["專案名稱"].values:
             auto_id = filtered_p[filtered_p["專案名稱"] == pn]["專案編號"].iloc[0]
         else:
             auto_id = dv["pi"]
             
-        pi = c4.text_input("專案編號", value=auto_id)
+        pi = c4.text_input("專案編號 (可手寫修改)", value=auto_id)
         
-        # 第二排：幣別、金額(未稅)、稅額、總計金額
         cx1, cx2, cx3, cx4 = st.columns(4)
         curr = cx1.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
         net_amt = cx2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0)
         tax_amt = cx3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
         cx4.text_input("總計金額 (未稅+稅額)", value=f"{int(net_amt) + int(tax_amt):,}", disabled=True)
         
-        # 第三排：請款廠商、匯款帳戶、發票號碼
-        v_db = load_vendors()
         v_names = v_db["請款廠商"].unique().tolist()
-        v_options = [""] + v_names
-        # 相容舊單據未存在資料庫中的廠商
-        if dv["vdr"] and dv["vdr"] not in v_options: v_options.append(dv["vdr"])
-        vdr_idx = v_options.index(dv["vdr"]) if dv["vdr"] in v_options else 0
+        v_options = [""] + v_names + ["➕ 手動輸入"]
         
+        if dv["vdr"] and dv["vdr"] not in v_names:
+            vdr_idx = v_options.index("➕ 手動輸入")
+        else:
+            vdr_idx = v_options.index(dv["vdr"]) if dv["vdr"] in v_options else 0
+            
         cv1, cv2, cv3 = st.columns(3)
-        vdr = cv1.selectbox("請款廠商", v_options, index=vdr_idx)
-        
-        # 帳戶自動帶出
-        if vdr in v_db["請款廠商"].values:
+        vdr_sel = cv1.selectbox("請款廠商", v_options, index=vdr_idx)
+        if vdr_sel == "➕ 手動輸入":
+            vdr = cv1.text_input("✍️ 手動輸入廠商名稱", value=dv["vdr"] if dv["vdr"] not in v_names else "")
+        else:
+            vdr = vdr_sel
+            
+        if vdr_sel != "➕ 手動輸入" and vdr in v_db["請款廠商"].values:
             auto_acc = v_db[v_db["請款廠商"] == vdr]["匯款帳戶"].iloc[0]
         else:
             auto_acc = dv["acc"]
             
-        acc = cv2.text_input("匯款帳戶", value=auto_acc)
+        acc = cv2.text_input("匯款帳戶 (可手寫修改)", value=auto_acc)
         inv_no = cv3.text_input("發票號碼或憑證 (非必填)", value=dv["inv_no"])
         
-        # 第四排：付款方式與說明
         pay_idx = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]) if dv["pay"] in ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"] else 2
         pay = st.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
         
