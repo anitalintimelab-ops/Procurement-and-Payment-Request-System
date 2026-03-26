@@ -159,20 +159,25 @@ def render_html(row):
     if stt in ["待簽核", "待初審", "待複審", "已核准", "已駁回"]:
         if not sub_time: sub_time = f"{fallback_date} 12:00"
         elif len(sub_time) <= 10: sub_time = f"{sub_time} 12:00"
+        s_submit = f"{display_app} {sub_time}".strip()
+    else:
+        s_submit = "" 
 
     if stt in ["待複審", "已核准"]:
         if not fst_appr: fst_appr = clean_name(row.get("專案負責人"))
         if not fst_time: fst_time = f"{fallback_date} 13:00"
         elif len(fst_time) <= 10: fst_time = f"{fst_time} 13:00"
+        s_first = f"{fst_appr} {fst_time}".strip()
+    else:
+        s_first = ""
 
     if stt == "已核准":
         if not sec_appr: sec_appr = CFO_NAME
         if not sec_time: sec_time = f"{fallback_date} 14:00"
         elif len(sec_time) <= 10: sec_time = f"{sec_time} 14:00"
-
-    s_submit = f"{display_app} {sub_time}".strip() if sub_time else display_app
-    s_first = f"{fst_appr} {fst_time}".strip() if fst_appr else ""
-    s_second = f"{sec_appr} {sec_time}".strip() if sec_appr else ""
+        s_second = f"{sec_appr} {sec_time}".strip()
+    else:
+        s_second = ""
 
     h = f'<div style="padding:40px;border:4px solid #000;background:#fff;color:#000;font-family:sans-serif;max-width:900px;margin:auto;">'
     h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;">Time Lab 時研國際設計股份有限公司</h1></div>'
@@ -303,6 +308,20 @@ if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
 menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
 
+# ★ 跨頁面預覽清除防呆機制
+if "prev_state_menu" not in st.session_state:
+    st.session_state.prev_state_menu = menu
+if "prev_state_user" not in st.session_state:
+    st.session_state.prev_state_user = st.session_state.user_id
+
+if menu != st.session_state.prev_state_menu or st.session_state.user_id != st.session_state.prev_state_user:
+    st.session_state.view_id = None
+    st.session_state.print_id = None
+    st.session_state.edit_id = None
+    st.session_state.prev_state_menu = menu
+    st.session_state.prev_state_user = st.session_state.user_id
+    st.rerun()
+
 
 # --- 8. 簽核列表渲染模組 ---
 def render_signing_table(df_list, sign_type, is_history=False):
@@ -387,21 +406,73 @@ if menu == "1. 填寫申請單":
         st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，總金額會自動扣除 30 元。**")
         f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"]); f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True)
         
-        c_btn1, c_btn2, c_btn3, c_btn4, c_btn5 = st.columns(5)
-        btn_save = c_btn1.form_submit_button("💾 存檔", use_container_width=True)
-        btn_submit = c_btn2.form_submit_button("🚀 提交", use_container_width=True)
-        btn_preview = c_btn3.form_submit_button("🔍 預覽", use_container_width=True)
-        btn_print = c_btn4.form_submit_button("🖨️ 列印", use_container_width=True)
-        btn_next = c_btn5.form_submit_button("🆕 下一筆申請", use_container_width=True)
+        # ★ 附件編輯與刪除管理區塊
+        del_acc = False
+        del_ims = []
+        existing_ims = []
+        
+        if st.session_state.edit_id:
+            st.markdown("---")
+            st.markdown("### 📎 現有附件管理 (勾選以刪除)")
+            
+            acc_img_str = safe_str(dv["ab64"])
+            if acc_img_str and len(acc_img_str) > 50:
+                del_acc = st.checkbox("🗑️ 刪除目前已上傳之「存摺/匯款資料」")
+                
+            req_img_str = safe_str(dv["ib64"])
+            if req_img_str:
+                chunks = req_img_str.split('|') if '|' in req_img_str else req_img_str.split(',') if ',' in req_img_str else [req_img_str]
+                for chunk in chunks:
+                    c = chunk.strip()
+                    if c.startswith('data:'): c = c.split('base64,')[-1]
+                    if c and len(c) > 50:
+                        existing_ims.append(c)
+                
+                if existing_ims:
+                    st.write("**已上傳之請款憑證：**")
+                    for idx, _ in enumerate(existing_ims):
+                        if st.checkbox(f"🗑️ 刪除憑證 {idx+1}", key=f"del_im_{idx}"):
+                            del_ims.append(idx)
+                            
+        # ★ 操作按鈕動態擴充 (修改模式多一顆取消鈕)
+        if st.session_state.edit_id:
+            c_btn1, c_btn2, c_btn3, c_btn4, c_btn5, c_btn6 = st.columns(6)
+            btn_save = c_btn1.form_submit_button("💾 存檔", use_container_width=True)
+            btn_submit = c_btn2.form_submit_button("🚀 提交", use_container_width=True)
+            btn_preview = c_btn3.form_submit_button("🔍 預覽", use_container_width=True)
+            btn_print = c_btn4.form_submit_button("🖨️ 列印", use_container_width=True)
+            btn_next = c_btn5.form_submit_button("🆕 下一筆申請", use_container_width=True)
+            btn_cancel = c_btn6.form_submit_button("❌ 不存檔", use_container_width=True)
+        else:
+            c_btn1, c_btn2, c_btn3, c_btn4, c_btn5 = st.columns(5)
+            btn_save = c_btn1.form_submit_button("💾 存檔", use_container_width=True)
+            btn_submit = c_btn2.form_submit_button("🚀 提交", use_container_width=True)
+            btn_preview = c_btn3.form_submit_button("🔍 預覽", use_container_width=True)
+            btn_print = c_btn4.form_submit_button("🖨️ 列印", use_container_width=True)
+            btn_next = c_btn5.form_submit_button("🆕 下一筆申請", use_container_width=True)
+            btn_cancel = False
 
-        if btn_save or btn_submit or btn_preview or btn_print:
-            # ★ 精準判斷手續費，只有「匯款(扣30手續費)」才扣
+        if btn_cancel:
+            st.session_state.edit_id = None
+            st.session_state.last_msg = "🚫 已取消修改，未儲存任何變更。"
+            st.rerun()
+        elif btn_save or btn_submit or btn_preview or btn_print:
             fee = 30 if pay == "匯款(扣30手續費)" else 0
             total_amt = net_amt + tax_amt - fee
             if not pn or (net_amt + tax_amt) <= 0:
                 st.error("⚠️ 請填寫「專案名稱」且金額須大於 0")
             else:
-                b_acc = base64.b64encode(f_acc.getvalue()).decode() if f_acc else dv["ab64"]; b_ims = "|".join([base64.b64encode(f.getvalue()).decode() for f in f_ims]) if f_ims else dv["ib64"]
+                # ★ 處理附件汰舊換新
+                if f_acc:
+                    b_acc = base64.b64encode(f_acc.getvalue()).decode()
+                else:
+                    b_acc = "" if del_acc else safe_str(dv["ab64"])
+                
+                retained_ims = [img for i, img in enumerate(existing_ims) if i not in del_ims]
+                new_ims_b64 = [base64.b64encode(f.getvalue()).decode() for f in f_ims] if f_ims else []
+                final_ims_list = retained_ims + new_ims_b64
+                b_ims = "|".join(final_ims_list)
+                
                 packed_desc = "[請款單資料]\n" + json.dumps({"net_amt": net_amt, "tax_amt": tax_amt, "fee": fee, "inv_no": inv_no, "desc": desc}, ensure_ascii=False)
                 f_db = load_data()
                 
