@@ -231,11 +231,9 @@ def render_upload_popover(container, r, prefix):
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
 
-# 使用 req_ 前綴確保與採購單系統隔離
 for k in ['req_edit_id', 'req_last_id', 'req_view_id', 'req_print_id', 'req_last_msg']: 
     if k not in st.session_state: st.session_state[k] = None
 
-# 用來強制清空上傳區塊的動態 Key
 if 'req_uploader_key' not in st.session_state: st.session_state.req_uploader_key = 0
 
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
@@ -267,7 +265,6 @@ with st.sidebar.expander("🔐 修改我的密碼"):
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
         s_df.at[idx, "password"] = str(new_pw); save_staff(s_df); st.success("成功")
 
-# --- 管理員專屬區塊 ---
 if is_admin:
     st.sidebar.markdown("---")
     st.sidebar.success("管理員專屬區塊 (已解鎖)")
@@ -319,11 +316,9 @@ if is_admin:
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
-# 導覽列移至最下方
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
 menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
 
-# ★ 跨系統頁面切換：自動收起預覽防呆機制
 if "req_prev_state_menu" not in st.session_state:
     st.session_state.req_prev_state_menu = menu
 if "req_prev_state_user" not in st.session_state:
@@ -411,27 +406,30 @@ if menu == "1. 填寫申請單":
             })
 
     with st.form("req_form"):
-        # ★ 擴充為 4 欄，新增總計金額參考欄位
+        # ★ 第一排 (4欄)：申請人、負責執行長、專案名稱、專案編號
         c1, c2, c3, c4 = st.columns(4)
-        exe = c1.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]) if dv["exe"] in staffs else 0)
-        net_amt = c2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0)
-        tax_amt = c3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
-        c4.text_input("總計金額 (未稅+稅額)", value=f"{int(dv['net_amt']) + int(dv['tax_amt']):,}", disabled=True, help="此為系統自動加總，點擊存檔或預覽後更新")
+        app_val = c1.selectbox("申請人", staffs, index=staffs.index(dv["app"]) if dv["app"] in staffs else 0) if curr_name == "Anita" else curr_name
+        if curr_name != "Anita": c1.text_input("申請人", value=app_val, disabled=True)
+        exe = c2.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]) if dv["exe"] in staffs else 0)
+        pn = c3.text_input("專案名稱", value=dv["pn"])
+        pi = c4.text_input("專案編號", value=dv["pi"])
         
-        # 申請人等其他欄位移至下一排
-        cx1, cx2, cx3 = st.columns(3)
-        app_val = cx1.selectbox("申請人", staffs, index=staffs.index(dv["app"]) if dv["app"] in staffs else 0) if curr_name == "Anita" else curr_name
-        if curr_name != "Anita": cx1.text_input("申請人", value=app_val, disabled=True)
-        pn = cx2.text_input("專案名稱", value=dv["pn"])
-        pi = cx3.text_input("專案編號", value=dv["pi"])
+        # ★ 第二排 (4欄)：幣別、金額(未稅)、稅額、總計金額
+        cx1, cx2, cx3, cx4 = st.columns(4)
+        curr = cx1.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
+        net_amt = cx2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0)
+        tax_amt = cx3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
+        cx4.text_input("總計金額 (未稅+稅額)", value=f"{int(dv['net_amt']) + int(dv['tax_amt']):,}", disabled=True, help="此為系統自動加總，點擊存檔或預覽後更新")
         
+        # ★ 第三排 (3欄)：請款廠商、匯款帳戶、發票號碼
         cv1, cv2, cv3 = st.columns(3)
-        vdr = cv1.text_input("請款廠商", value=dv["vdr"]); acc = cv2.text_input("匯款帳戶", value=dv["acc"]); inv_no = cv3.text_input("發票號碼或憑證 (非必填)", value=dv["inv_no"])
+        vdr = cv1.text_input("請款廠商", value=dv["vdr"])
+        acc = cv2.text_input("匯款帳戶", value=dv["acc"])
+        inv_no = cv3.text_input("發票號碼或憑證 (非必填)", value=dv["inv_no"])
         
-        c_cur, c_pay = st.columns([1, 2])
-        curr = c_cur.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
+        # ★ 第四排：付款方式獨立顯示
         pay_idx = ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"].index(dv["pay"]) if dv["pay"] in ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"] else 2
-        pay = c_pay.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
+        pay = st.radio("付款方式", ["零用金", "現金", "匯款(扣30手續費)", "匯款(不扣30手續費)"], index=pay_idx, horizontal=True)
         
         desc = st.text_area("請款說明", value=dv["desc"])
         st.info("💡 **提示：點擊下方「💾 存檔」後，系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，總金額會自動扣除 30 元。**")
