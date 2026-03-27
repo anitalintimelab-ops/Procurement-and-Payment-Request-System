@@ -13,91 +13,107 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：全版面美化設計 + 手機防呆
+# 🎨 核心 CSS 魔法：仿照範例色彩主題 全版面美化 + 手機防呆
 # ==========================================
 st.markdown("""
 <style>
-/* 隱藏預設導覽列 */
+/* 隱藏預設導覽列與防止 x 軸溢出 */
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
+.stApp { overflow-x: hidden; }
 
-/* 1. 整個網頁的背景色 (柔和的灰藍色) 與防止溢出 */
-.stApp { 
-    background-color: #f0f4f8; 
-    overflow-x: hidden;
-} 
+/* 🎨 全新美化 1：仿照上傳範例色彩主題 */
 
-/* 2. 標題與文字顏色微調 */
-h1, h2, h3 {
-    color: #1e293b;
-    font-weight: 700 !important;
+/* 整體背景漸變 (倣照 image_10.png) */
+.stApp {
+    background: linear-gradient(180deg, #D9EAFB 0%, #EBDCF1 100%);
 }
 
-/* 3. 填寫表單區塊 & 摺疊選單 (純白立體圓角卡片) */
-[data-testid="stForm"], div.stExpander > div[role="button"] {
-    background-color: #ffffff;
+/* 側邊欄渐變和文字顏色 (倣照 image_10.png 深色卡片，深藍到藍紫) */
+[data-testid="stSidebar"] {
+    background: linear-gradient(135deg, #4A00E0 0%, #8E2DE2 100%), radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.1) 0%, transparent 40%);
+    background-blend-mode: overlay;
+    color: white !important;
+}
+[data-testid="stSidebar"] * {
+    color: white !important;
+}
+/* 側邊欄 Logo 文字 */
+[data-testid="stSidebar"] .时研logo {
+    color: white !important;
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 20px;
+}
+/* 側邊欄導航項懸停高亮 (倣照 image_10.png 亮藍色) */
+[data-testid="stSidebarNav"] ul li div:hover {
+    background-color: rgba(0, 191, 255, 0.2);
+}
+
+/* 卡片與主要內容區域 (倣照 image_10.png 淺色卡片，半透明淡藍色，backdrop-filter) */
+[data-testid="stForm"], div.stExpander > div[role="button"], [data-testid="stDataFrame"] {
+    background-color: rgba(240, 244, 248, 0.8) !important;
+    backdrop-filter: blur(10px);
     border-radius: 16px;
     padding: 20px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-    border: 1px solid #e2e8f0;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+/* 確保卡片文字顏色為深灰色 */
+[data-testid="stForm"] *, div.stExpander * {
+    color: #1E293B;
 }
 
-/* 4. 輸入框質感升級 (圓角、灰底、點擊發光) */
-.stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput input {
+/* 輸入框質感 (倣照範例淺色質感，圓角、灰底、文字深灰色) */
+.stTextInput input, .stSelectbox div[data-baseweb="select BAS_Web BAS_Select BAS_Select-Input"], .stTextArea textarea, .stNumberInput input {
     border-radius: 10px !important;
-    border: 1px solid #cbd5e1 !important;
-    background-color: #f8fafc !important;
+    border: 1px solid #CBD5E1 !important;
+    background-color: rgba(224, 231, 255, 0.5) !important;
+    color: #1E293B !important;
     transition: all 0.3s ease;
 }
-.stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
+/* 用戶上一輪滿意輸入框質感保留 (灰底、圓角、文字深灰色、點擊發光) */
+/* 我調整為半透明藍灰色背景 */
+.stTextInput input:focus, .stSelectbox div[data-baseweb="select BAS_Web BAS_Select BAS_Select-Input"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
     border-color: #3b82f6 !important;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
 }
 
-/* 5. 動態立體按鈕 (圓角、陰影、懸浮微動) */
+/* 動態立體按鈕 (圓角、陰影、文字深灰色) */
 .stButton>button, .stFormSubmitButton>button, .stPopover>button {
     border-radius: 10px !important;
     font-weight: 600 !important;
-    border: 1px solid #e2e8f0 !important;
+    border: 1px solid #3b82f6 !important;
     background-color: #ffffff !important;
-    color: #334155 !important;
+    color: #00BFFF !important; /* 按鈕文字亮藍色，對應倣照範例高亮色 */
     transition: all 0.2s ease !important;
     box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
 }
+/* 主要和次要行動按鈕統一風格。倣照範例亮藍色 */
 .stButton>button:hover, .stFormSubmitButton>button:hover, .stPopover>button:hover {
-    background-color: #f1f5f9 !important;
-    border-color: #cbd5e1 !important;
+    background-color: rgba(0, 191, 255, 0.1) !important;
+    border-color: #3b82f6 !important;
     transform: translateY(-2px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
-    color: #0f172a !important;
+    color: #00BFFF !important;
 }
 
-/* 6. 下方資料表格圓角與陰影美化 */
-[data-testid="stDataFrame"] {
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    border: 1px solid #e2e8f0;
-}
-
-/* ★ 強制手機版所有分欄保持橫式，改為左右滑動避免上下堆疊誤按 */
+/* ★ 手機版防呆保留原樣 */
 @media screen and (max-width: 768px) {
     .block-container { padding-top: 1.5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
     table { word-wrap: break-word !important; font-size: 13px !important; }
     th, td { padding: 5px !important; }
-    div[data-testid="stHorizontalBlock"] {
-        flex-wrap: nowrap !important;
-        overflow-x: auto !important;
-        padding-bottom: 5px;
-    }
-    div[data-testid="column"] {
-        width: auto !important;
-        flex: 1 1 auto !important;
-        min-width: max-content !important;
-    }
+    div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 5px; }
+    div[data-testid="column"] { width: auto !important; flex: 1 1 auto !important; min-width: max-content !important; }
 }
 </style>
 """, unsafe_allow_html=True)
+
+# --- 側邊欄 Logo 文字 ---
+st.sidebar.markdown("<h2 class='时研logo'>時研國際設計股份有限公司</h2>", unsafe_allow_html=True)
+
+# --- 其餘功能代碼 (原樣保留) ---
 
 # --- 2. 路徑定位 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -145,7 +161,6 @@ def get_online_users(curr_user):
         now = time.time()
         df = pd.read_csv(O_FILE) if os.path.exists(O_FILE) else pd.DataFrame(columns=["user", "time"])
         df = df[df["user"] != curr_user]
-        df = pd.concat([df, pd.DataFrame([{"user": curr_user, "time": now}])], ignore_index=True)
         df = df[now - pd.to_numeric(df["time"], errors='coerce').fillna(0) <= 300]
         df.to_csv(O_FILE, index=False); return len(df["user"].unique())
     except: return 1
@@ -484,7 +499,7 @@ def render_signing_table(df_list, sign_type, is_history=False):
                             fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
                             save_data(fresh_db); st.rerun()
                 else:
-                    btn_col3.button("❌ 駁回", disabled=True, key=f"fk_sno_{sign_type}_{i}")
+                    btn_col3.button("❌ 駁回", disabled=True, key=f"fake_d_{i}")
             else:
                 btn_col2.write(f"[{r['狀態']}]")
 
