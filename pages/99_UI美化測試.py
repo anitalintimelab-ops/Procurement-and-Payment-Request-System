@@ -13,7 +13,7 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：仿照範例色彩主題 + 立體按鈕 + 手機防呆
+# 🎨 核心 CSS 魔法：全透明超立體玻璃按鈕 + 完美配色
 # ==========================================
 st.markdown("""
 <style>
@@ -32,79 +32,96 @@ st.markdown("""
     background-blend-mode: overlay;
 }
 
-/* ★ 修正：確保側邊欄文字是白色，但不影響特殊按鈕 */
+/* 確保側邊欄一般文字是白色 */
 [data-testid="stSidebar"] p, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
     color: white !important;
 }
 
-/* ★ 修正：「目前系統」標籤 (code) 獨立美化，避免隱形 */
+/* ★ 修正：「目前系統」標籤獨立美化，字體預設清楚可見，使用亮青色搭配紫底 */
 [data-testid="stSidebar"] code {
-    background-color: rgba(255, 255, 255, 0.95) !important;
-    color: #4A00E0 !important;
+    background-color: rgba(0, 0, 0, 0.25) !important;
+    color: #00E5FF !important; /* 亮青色，搭配紫色最完美且不突兀 */
+    border: 1px solid rgba(0, 229, 255, 0.3) !important;
     padding: 6px 12px !important;
     border-radius: 8px !important;
     font-weight: 800 !important;
-    font-size: 15px !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.15) !important;
+    font-size: 14px !important;
+    box-shadow: inset 1px 1px 3px rgba(0,0,0,0.2) !important;
 }
 
-/* ★ 修正：側邊欄導覽選單 (Radio) 化身 3D 立體按鈕 */
+/* ★ 修正：側邊欄選單 (Radio) 化身「全透明、超立體 3D 水晶按鈕」 */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label {
-    background-color: rgba(255, 255, 255, 0.1) !important;
-    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    background-color: transparent !important; /* 全透明 */
+    border-top: 1px solid rgba(255, 255, 255, 0.6) !important; /* 水晶上側反光 */
+    border-left: 1px solid rgba(255, 255, 255, 0.3) !important;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.25) !important; /* 立體底邊陰影 */
+    border-right: 1px solid rgba(0, 0, 0, 0.1) !important;
     border-radius: 12px !important;
     padding: 12px 15px !important;
-    margin-bottom: 10px !important;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+    margin-bottom: 12px !important;
+    box-shadow: -2px -2px 5px rgba(255, 255, 255, 0.2), 5px 5px 10px rgba(0, 0, 0, 0.3) !important; /* 超立體外陰影 */
+    backdrop-filter: blur(8px) !important; /* 玻璃毛玻璃效果 */
     transition: all 0.2s ease !important;
     cursor: pointer !important;
 }
-/* 滑鼠移過去：微亮、上浮 */
+/* 滑鼠移過去：按鈕微亮、上浮 */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:hover {
-    background-color: rgba(255, 255, 255, 0.25) !important;
     transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(0,0,0,0.15) !important;
+    box-shadow: -2px -2px 6px rgba(255, 255, 255, 0.3), 6px 6px 12px rgba(0, 0, 0, 0.4) !important;
 }
-/* 點選中(Active)：變成實體白底＋深紫文字＋內陰影按下感 */
+/* 點選中(Active)：呈現按壓感內凹，文字變亮青色發光 */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:has(div[data-checked="true"]) {
-    background-color: white !important;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1) !important;
-    transform: translateY(2px) !important;
-    border: 1px solid white !important;
+    background-color: rgba(0, 0, 0, 0.15) !important;
+    box-shadow: inset 3px 3px 8px rgba(0, 0, 0, 0.5), inset -2px -2px 5px rgba(255, 255, 255, 0.1) !important; /* 內凹陰影 */
+    border: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    transform: translateY(2px) !important; /* 按下去的位移 */
 }
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:has(div[data-checked="true"]) * {
-    color: #4A00E0 !important;
-    font-weight: 800 !important;
+    color: #00E5FF !important; /* 亮青色 */
+    font-weight: 900 !important;
+    text-shadow: 0 0 6px rgba(0, 229, 255, 0.5) !important; /* 輕微發光特效 */
 }
 /* 隱藏原生 Radio 的醜圓圈圈 */
 [data-testid="stSidebar"] .stRadio div[data-baseweb="radio"] > div:first-child {
     display: none !important;
 }
 
-/* ★ 修正：「登出系統」等側邊欄實體按鈕顏色 */
+/* ★ 修正：「登出系統」等實體按鈕同等水晶立體化，文字預設白色可見 */
 [data-testid="stSidebar"] .stButton > button {
-    background-color: rgba(255, 255, 255, 0.2) !important;
-    border: 1px solid rgba(255, 255, 255, 0.5) !important;
-    border-radius: 10px !important;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+    background-color: transparent !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.6) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.3) !important;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.25) !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.1) !important;
+    border-radius: 12px !important;
+    padding: 8px 15px !important;
+    box-shadow: -2px -2px 5px rgba(255, 255, 255, 0.2), 5px 5px 10px rgba(0, 0, 0, 0.3) !important;
+    backdrop-filter: blur(8px) !important;
     transition: all 0.2s ease !important;
 }
-/* 預設字體為白色，不用碰觸就看得見 */
+/* 預設字體為白色，保證不用碰觸就清晰可見 */
 [data-testid="stSidebar"] .stButton > button * {
-    color: white !important; 
+    color: rgba(255, 255, 255, 0.95) !important; 
     font-weight: 700 !important;
 }
-/* 滑鼠碰觸：變白底、字變深紫 */
+/* 滑鼠碰觸：按鈕上浮，字變亮青色 */
 [data-testid="stSidebar"] .stButton > button:hover {
-    background-color: white !important;
     transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(0,0,0,0.2) !important;
+    box-shadow: -2px -2px 6px rgba(255, 255, 255, 0.3), 6px 6px 12px rgba(0, 0, 0, 0.4) !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover * {
-    color: #4A00E0 !important; 
+    color: #00E5FF !important; 
+    text-shadow: 0 0 5px rgba(0, 229, 255, 0.4) !important;
+}
+/* 點擊瞬間內凹 */
+[data-testid="stSidebar"] .stButton > button:active {
+    transform: translateY(2px) !important;
+    box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.5), inset -2px -2px 4px rgba(255, 255, 255, 0.1) !important;
+    border: none !important;
 }
 
-/* 🎨 3. 主畫面卡片區塊 (半透明淡藍色，backdrop-filter) */
+/* 🎨 3. 主畫面卡片區塊 */
 [data-testid="stForm"], div.stExpander > div[role="button"], [data-testid="stDataFrame"] {
     background-color: rgba(240, 244, 248, 0.8) !important;
     backdrop-filter: blur(10px);
@@ -113,12 +130,9 @@ st.markdown("""
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.4);
 }
-/* 確保卡片內文字顏色為深色 */
-[data-testid="stForm"] *, div.stExpander * {
-    color: #1E293B;
-}
+[data-testid="stForm"] *, div.stExpander * { color: #1E293B; }
 
-/* 🎨 4. 輸入框與按鈕質感 */
+/* 🎨 4. 主畫面輸入框與按鈕 */
 .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput input {
     border-radius: 10px !important;
     border: 1px solid #CBD5E1 !important;
@@ -549,8 +563,14 @@ def render_signing_table(df_list, sign_type, is_history=False):
                 btn_col2.write(f"[{r['狀態']}]")
 
 # ================= 頁面邏輯 =================
-# ★ 新增：全域主畫面正中間置頂 Logo
-st.markdown("<h1 style='text-align: center; color: #1e293b; font-weight: 800; letter-spacing: 2px; margin-bottom: 30px;'>🏢 時研國際設計股份有限公司</h1>", unsafe_allow_html=True)
+# ★ 全域主畫面正中間置頂 Logo (完美仿照上傳圖片設計)
+st.markdown("""
+    <div style='text-align: center; margin-bottom: 40px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;'>
+        <span style='font-size: 38px; font-weight: 500; font-family: "Times New Roman", Times, serif; color: #3E3024;'>T<span style='color: #C19A6B;'>i</span>me Lab</span>
+        <span style='font-size: 32px; font-weight: 900; color: #2C3E50; letter-spacing: 1px; font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;'>時研國際設計股份有限公司</span>
+    </div>
+""", unsafe_allow_html=True)
+
 
 if menu == "1. 填寫申請單":
     st.subheader("📝 填寫請款申請單")
