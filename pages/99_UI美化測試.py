@@ -13,7 +13,7 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：深度復刻暗色高級選單
+# 🎨 核心 CSS 魔法：暗色高級選單 + 水晶透明按鈕 + 主程式還原
 # ==========================================
 st.markdown("""
 <style>
@@ -37,44 +37,67 @@ st.markdown("""
     color: #CCCCCC !important; 
 }
 
-/* 側邊欄「目前系統」code 標籤美化 */
+/* 側邊欄「目前系統」code 標籤美化 (亮青色) */
 [data-testid="stSidebar"] code {
     background-color: rgba(255, 255, 255, 0.1) !important;
-    color: #007BFF !important; 
-    padding: 4px 8px !important;
-    border-radius: 6px !important;
-    font-weight: 700 !important;
+    color: #00E5FF !important; 
+    padding: 6px 12px !important;
+    border-radius: 8px !important;
+    font-weight: 800 !important;
+    font-size: 14px !important;
+    box-shadow: inset 1px 1px 3px rgba(0,0,0,0.2) !important;
 }
 
-/* 側邊欄用戶資訊排版 */
+/* 側邊欄用戶資訊排版 (置中大頭貼與姓名) */
 .sb-profile-pic { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin: auto; display: block; border: 3px solid #333;}
-.sb-name { color: white !important; text-align: center; font-size: 20px; font-weight: bold !important; margin-top: 10px; margin-bottom: 2px;}
-.sb-title { color: #888 !important; text-align: center; font-size: 14px; margin-bottom: 15px;}
+.sb-name { color: white !important; text-align: center; font-size: 20px; font-weight: bold !important; margin-top: 10px; margin-bottom: 20px;}
 
-/* 側邊欄實體按鈕 */
+/* 側邊欄實體按鈕 (如：登出系統) -> 水晶透明立體化 */
 [data-testid="stSidebar"] .stButton > button {
-    background-color: #333333 !important; 
-    border: none !important;
-    border-radius: 8px !important;
-    padding: 10px 15px !important;
+    background-color: transparent !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.4) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.5) !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.2) !important;
+    border-radius: 12px !important;
+    padding: 8px 15px !important;
     width: 100%;
     margin-bottom: 8px !important;
+    box-shadow: -2px -2px 5px rgba(255, 255, 255, 0.1), 5px 5px 10px rgba(0, 0, 0, 0.5) !important;
     transition: all 0.2s ease !important;
 }
+/* 按鈕內文字預設純白可見 */
 [data-testid="stSidebar"] .stButton > button * {
-    color: white !important; 
+    color: rgba(255, 255, 255, 0.95) !important; 
     font-weight: 600 !important;
 }
+/* 按鈕滑鼠碰觸：發光上浮 */
 [data-testid="stSidebar"] .stButton > button:hover {
-    background-color: #444444 !important;
+    transform: translateY(-2px);
+    box-shadow: -2px -2px 6px rgba(255, 255, 255, 0.2), 6px 6px 12px rgba(0, 0, 0, 0.6) !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover * {
+    color: #00E5FF !important; 
+    text-shadow: 0 0 5px rgba(0, 229, 255, 0.4) !important;
+}
+/* 點擊瞬間內凹 */
+[data-testid="stSidebar"] .stButton > button:active {
+    transform: translateY(2px) !important;
+    box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.8), inset -2px -2px 4px rgba(255, 255, 255, 0.1) !important;
+    border: none !important;
 }
 
-/* 側邊欄選單 (Radio) 深度復刻 (全透明 + 亮藍高亮) */
+/* 側邊欄選單 (Radio) -> 水晶透明立體化 + 亮青色發光 */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label {
     background-color: transparent !important; 
-    border-radius: 8px !important;
-    padding: 10px 15px !important;
-    margin-bottom: 6px !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.4) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.5) !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.2) !important;
+    border-radius: 12px !important;
+    padding: 12px 15px !important;
+    margin-bottom: 12px !important;
+    box-shadow: -2px -2px 5px rgba(255, 255, 255, 0.1), 5px 5px 10px rgba(0, 0, 0, 0.5) !important;
     transition: all 0.2s ease !important;
     cursor: pointer !important;
 }
@@ -83,40 +106,34 @@ st.markdown("""
     font-weight: 500 !important;
 }
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:hover {
-    background-color: rgba(255, 255, 255, 0.05) !important;
+    transform: translateY(-2px);
+    box-shadow: -2px -2px 6px rgba(255, 255, 255, 0.2), 6px 6px 12px rgba(0, 0, 0, 0.6) !important;
 }
+/* 點選中(Active)：內凹、亮青色發光 */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:has(div[data-checked="true"]) {
-    background-color: #007BFF !important; 
+    background-color: rgba(0, 0, 0, 0.3) !important; 
+    box-shadow: inset 3px 3px 8px rgba(0, 0, 0, 0.8), inset -2px -2px 5px rgba(255, 255, 255, 0.1) !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    transform: translateY(2px) !important;
 }
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:has(div[data-checked="true"]) * {
-    color: white !important; 
-    font-weight: 700 !important;
+    color: #00E5FF !important; 
+    font-weight: 900 !important;
+    text-shadow: 0 0 6px rgba(0, 229, 255, 0.5) !important;
 }
+/* 隱藏原生 Radio 圓圈 */
 [data-testid="stSidebar"] .stRadio div[data-baseweb="radio"] > div:first-child {
     display: none !important;
 }
 
 /* 側邊欄分隔線與 Header */
 [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-    color: #666666 !important; 
+    color: #888888 !important; 
     font-size: 14px !important;
     font-weight: 700 !important;
-    text-transform: uppercase;
-    margin-top: 20px;
-    margin-bottom: 10px;
-}
-
-/* 模擬搜尋列 */
-.sb-search-sim {
-    background-color: #262626;
-    color: #666;
-    border-radius: 8px;
-    padding: 10px 15px;
     margin-top: 15px;
-    margin-bottom: 25px;
-    font-size: 14px;
-    border: 1px solid #333;
-    pointer-events: none; 
+    margin-bottom: 10px;
 }
 
 /* 🎨 3. 主畫面卡片區塊 */
@@ -131,13 +148,14 @@ st.markdown("""
 [data-testid="stForm"] *, div.stExpander * { color: #1E293B; }
 
 /* 🎨 4. 主畫面輸入框與按鈕 */
-.stTextInput input, .stSelectbox div[data-baseweb="select BAS_Web BAS_Select BAS_Select-Input"], .stTextArea textarea, .stNumberInput input {
+.stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput input {
     border-radius: 10px !important;
     border: 1px solid #CBD5E1 !important;
     background-color: rgba(224, 231, 255, 0.5) !important;
     color: #1E293B !important;
+    transition: all 0.3s ease;
 }
-.stTextInput input:focus, .stSelectbox div[data-baseweb="select BAS_Web BAS_Select BAS_Select-Input"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
+.stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
     border-color: #3b82f6 !important;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
@@ -148,12 +166,22 @@ st.markdown("""
     border: 1px solid #3b82f6 !important;
     background-color: #ffffff !important;
     color: #00BFFF !important; 
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+}
+.stButton>button:hover, .stFormSubmitButton>button:hover, .stPopover>button:hover {
+    background-color: rgba(0, 191, 255, 0.1) !important;
+    border-color: #3b82f6 !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
+    color: #00BFFF !important;
 }
 
 /* ★ 手機版防呆 */
 @media screen and (max-width: 768px) {
     .block-container { padding-top: 1.5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
     table { word-wrap: break-word !important; font-size: 13px !important; }
+    th, td { padding: 5px !important; }
     div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 5px; }
     div[data-testid="column"] { width: auto !important; flex: 1 1 auto !important; min-width: max-content !important; }
 }
@@ -206,9 +234,9 @@ def get_online_users(curr_user):
         now = time.time()
         df = pd.read_csv(O_FILE) if os.path.exists(O_FILE) else pd.DataFrame(columns=["user", "time"])
         df = df[df["user"] != curr_user]
+        df = pd.concat([df, pd.DataFrame([{"user": curr_user, "time": now}])], ignore_index=True)
         df = df[now - pd.to_numeric(df["time"], errors='coerce').fillna(0) <= 300]
-        df.to_csv(O_FILE, index=False)
-        return len(df["user"].unique())
+        df.to_csv(O_FILE, index=False); return len(df["user"].unique())
     except: return 1
 
 def get_line_credentials():
@@ -361,6 +389,27 @@ def render_html(row):
 
 def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
+def render_upload_popover(container, r, prefix):
+    with container.popover("📎 附件"):
+        st.write("**上傳附件 (圖/Excel)**")
+        nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
+        nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
+        if st.button("💾 儲存附件", key=f"{prefix}_b"):
+            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+            jd = parse_req_json(fresh_db.at[idx, "請款說明"])
+            
+            if nf_acc: 
+                fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
+                jd["acc_name"] = nf_acc.name
+            if nf_ims: 
+                fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
+                jd["ims_names"] = [f.name for f in nf_ims]
+            
+            if nf_acc or nf_ims:
+                packed_desc = "[請款單資料]\n" + json.dumps(jd, ensure_ascii=False)
+                fresh_db.at[idx, "請款說明"] = packed_desc
+                save_data(fresh_db); st.rerun()
+
 # --- 6. Session 初始化 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
 if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
@@ -373,7 +422,7 @@ if 'req_uploader_key' not in st.session_state: st.session_state.req_uploader_key
 curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
-# --- 7. 深色復刻側邊欄 ---
+# --- 7. 側邊欄：純粹套用暗色 CSS，邏輯 100% 原始 ---
 with st.sidebar:
     avatar_b64 = ""
     try: 
@@ -388,57 +437,81 @@ with st.sidebar:
         
     st.markdown(f'<p class="sb-name">{curr_name}</p>', unsafe_allow_html=True)
     
-    title = "管理員 / 設計總監" if is_admin else "在職人員 / 設計師"
-    st.markdown(f'<p class="sb-title">{title}</p>', unsafe_allow_html=True)
-    
-    with st.expander("👤 用戶與系統設定"):
-        st.info(f"🟢 在線：**{get_online_users(curr_name)}** 人")
-        st.markdown(f"目前系統：`{st.session_state.sys_choice}`")
-        st.divider()
+    st.info(f"🟢 目前在線人數：**{get_online_users(curr_name)}** 人")
+    st.markdown(f"目前系統：`{st.session_state.sys_choice}`")
+    st.divider()
 
-        f_av = st.file_uploader("📸 修改頭貼", type=["jpg", "png"], key="av_up")
-        if f_av and st.button("更新頭貼", key="av_btn"):
+    with st.expander("📸 修改大頭貼"):
+        new_avatar = st.file_uploader("上傳圖片", type=["jpg", "png"], key="req_side_avatar")
+        if st.button("更新大頭貼", key="req_update_avatar") and new_avatar:
             s_df = load_staff()
             idx = s_df[s_df["name"] == curr_name].index[0]
-            s_df.at[idx, "avatar"] = base64.b64encode(f_av.getvalue()).decode()
+            s_df.at[idx, "avatar"] = base64.b64encode(new_avatar.getvalue()).decode()
             save_staff(s_df)
+            st.session_state.staff_df = s_df
             st.rerun()
 
-        f_pw = st.text_input("🔐 修改密碼", type="password", key="pw_in")
-        if f_pw and st.button("更新密碼", key="pw_btn") and len(f_pw) >= 4:
+    with st.expander("🔐 修改我的密碼"):
+        new_pw = st.text_input("新密碼", type="password", key="req_side_pw")
+        if st.button("更新密碼", key="req_update_pw") and len(new_pw) >= 4:
             s_df = load_staff()
             idx = s_df[s_df["name"] == curr_name].index[0]
-            s_df.at[idx, "password"] = str(f_pw)
+            s_df.at[idx, "password"] = str(new_pw)
             save_staff(s_df)
-            st.success("已更新")
-            
-        if is_admin:
-            st.divider()
-            st.write("🔑 **管理員專區**")
-            rt = st.selectbox("重置密碼 (0000)", s_df["name"].tolist(), key="rt_sel")
-            if st.button("確認重置", key="rt_btn"):
+            st.success("成功")
+
+    if is_admin:
+        st.markdown("---")
+        st.success("管理員專屬區塊 (已解鎖)")
+        
+        with st.expander("🔑 所有人員密碼清單"):
+            st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
+            st.write("**恢復預設密碼 (0000)**")
+            reset_target = st.selectbox("選擇人員", st.session_state.staff_df["name"].tolist(), key="req_rst_sel")
+            if st.button("確認恢復預設", key="req_rst_btn"):
                 s_df = load_staff()
-                idx = s_df[s_df["name"] == rt].index[0]
+                idx = s_df[s_df["name"] == reset_target].index[0]
                 s_df.at[idx, "password"] = "0000"
                 save_staff(s_df)
-                st.success("已重置")
-            
-            nt = st.text_input("➕ 新增人員姓名", key="nt_in")
-            if st.button("確認新增", key="nt_btn") and nt and nt not in s_df["name"].values:
-                new_s = pd.DataFrame([{"name": nt, "status": "在職", "password": "0000"}])
-                pd.concat([load_staff(), new_s], ignore_index=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
-                st.rerun()
-            
-            es = st.data_editor(s_df[["name", "status"]], hide_index=True, column_config={"status": st.column_config.SelectboxColumn(options=["在職", "離職"])}, key="es_dt")
-            if st.button("💾 儲存人員狀態", key="es_btn"):
-                pd.merge(load_staff().drop(columns="status"), es, on="name").to_csv(S_FILE, index=False, encoding='utf-8-sig')
+                st.session_state.staff_df = s_df
+                st.success(f"{reset_target} 密碼已重置")
+                
+        with st.expander("➕ 新增人員"):
+            n = st.text_input("姓名", key="req_new_staff_name")
+            if st.button("新增", key="req_add_staff"):
+                s_df = load_staff()
+                if n and n not in s_df["name"].values:
+                    new_row = pd.DataFrame([{"name": n, "status": "在職", "password": "0000", "avatar": "", "line_uid": ""}])
+                    s_df = pd.concat([s_df, new_row], ignore_index=True)
+                    save_staff(s_df)
+                    st.session_state.staff_df = s_df
+                    st.success("人員新增成功")
+                    st.rerun()
+                elif n in s_df["name"].values:
+                    st.error("人員已存在")
+
+        with st.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
+            edited_staff = st.data_editor(
+                st.session_state.staff_df[["name", "status", "line_uid"]], 
+                column_config={
+                    "name": st.column_config.TextColumn("姓名", disabled=True),
+                    "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])
+                }, 
+                hide_index=True, 
+                key="req_staff_editor_admin"
+            )
+            if st.button("💾 儲存人員設定", key="req_save_staff_admin"):
+                s_df = load_staff()
+                for idx, row in edited_staff.iterrows():
+                    s_df.at[idx, "status"] = row["status"]
+                    s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
+                save_staff(s_df)
+                st.session_state.staff_df = s_df
                 st.rerun()
 
     if st.button("登出系統", key="req_logout"): 
         st.session_state.user_id = None
         st.switch_page("app.py")
-
-    st.markdown('<div class="sb-search-sim">🔍 搜尋請款單號/專案名稱...</div>', unsafe_allow_html=True)
     
     st.markdown("### 管理")
     menu_options = ["填寫請款申請單", "專案執行長簽核", "財務長簽核", "表單狀態總覽", "請款狀態/系統設定"]
