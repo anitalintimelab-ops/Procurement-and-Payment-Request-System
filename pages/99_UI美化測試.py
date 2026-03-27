@@ -13,7 +13,7 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：仿照範例色彩主題 全版面美化 + 手機防呆
+# 🎨 核心 CSS 魔法：仿照範例色彩主題 + 立體按鈕 + 手機防呆
 # ==========================================
 st.markdown("""
 <style>
@@ -21,76 +21,125 @@ st.markdown("""
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
 
-/* 🎨 全新美化 1：仿照上傳範例色彩主題 */
-
-/* 整體背景漸變 (倣照 image_10.png) */
+/* 🎨 1. 整體背景漸變 */
 .stApp {
     background: linear-gradient(180deg, #D9EAFB 0%, #EBDCF1 100%);
 }
 
-/* 側邊欄渐變和文字顏色 (倣照 image_10.png 深色卡片，深藍到藍紫) */
+/* 🎨 2. 側邊欄背景漸變 (深紫到深藍) */
 [data-testid="stSidebar"] {
     background: linear-gradient(135deg, #4A00E0 0%, #8E2DE2 100%), radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.1) 0%, transparent 40%);
     background-blend-mode: overlay;
-    color: white !important;
-}
-[data-testid="stSidebar"] * {
-    color: white !important;
-}
-/* 側邊欄 Logo 文字 */
-[data-testid="stSidebar"] .时研logo {
-    color: white !important;
-    font-size: 20px;
-    font-weight: 700;
-    text-align: center;
-    margin-bottom: 20px;
-}
-/* 側邊欄導航項懸停高亮 (倣照 image_10.png 亮藍色) */
-[data-testid="stSidebarNav"] ul li div:hover {
-    background-color: rgba(0, 191, 255, 0.2);
 }
 
-/* 卡片與主要內容區域 (倣照 image_10.png 淺色卡片，半透明淡藍色，backdrop-filter) */
+/* ★ 修正：確保側邊欄文字是白色，但不影響特殊按鈕 */
+[data-testid="stSidebar"] p, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+    color: white !important;
+}
+
+/* ★ 修正：「目前系統」標籤 (code) 獨立美化，避免隱形 */
+[data-testid="stSidebar"] code {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+    color: #4A00E0 !important;
+    padding: 6px 12px !important;
+    border-radius: 8px !important;
+    font-weight: 800 !important;
+    font-size: 15px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15) !important;
+}
+
+/* ★ 修正：側邊欄導覽選單 (Radio) 化身 3D 立體按鈕 */
+[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    border-radius: 12px !important;
+    padding: 12px 15px !important;
+    margin-bottom: 10px !important;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+    transition: all 0.2s ease !important;
+    cursor: pointer !important;
+}
+/* 滑鼠移過去：微亮、上浮 */
+[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:hover {
+    background-color: rgba(255, 255, 255, 0.25) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15) !important;
+}
+/* 點選中(Active)：變成實體白底＋深紫文字＋內陰影按下感 */
+[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:has(div[data-checked="true"]) {
+    background-color: white !important;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1) !important;
+    transform: translateY(2px) !important;
+    border: 1px solid white !important;
+}
+[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:has(div[data-checked="true"]) * {
+    color: #4A00E0 !important;
+    font-weight: 800 !important;
+}
+/* 隱藏原生 Radio 的醜圓圈圈 */
+[data-testid="stSidebar"] .stRadio div[data-baseweb="radio"] > div:first-child {
+    display: none !important;
+}
+
+/* ★ 修正：「登出系統」等側邊欄實體按鈕顏色 */
+[data-testid="stSidebar"] .stButton > button {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    border: 1px solid rgba(255, 255, 255, 0.5) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+    transition: all 0.2s ease !important;
+}
+/* 預設字體為白色，不用碰觸就看得見 */
+[data-testid="stSidebar"] .stButton > button * {
+    color: white !important; 
+    font-weight: 700 !important;
+}
+/* 滑鼠碰觸：變白底、字變深紫 */
+[data-testid="stSidebar"] .stButton > button:hover {
+    background-color: white !important;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2) !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover * {
+    color: #4A00E0 !important; 
+}
+
+/* 🎨 3. 主畫面卡片區塊 (半透明淡藍色，backdrop-filter) */
 [data-testid="stForm"], div.stExpander > div[role="button"], [data-testid="stDataFrame"] {
     background-color: rgba(240, 244, 248, 0.8) !important;
     backdrop-filter: blur(10px);
     border-radius: 16px;
     padding: 20px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
 }
-/* 確保卡片文字顏色為深灰色 */
+/* 確保卡片內文字顏色為深色 */
 [data-testid="stForm"] *, div.stExpander * {
     color: #1E293B;
 }
 
-/* 輸入框質感 (倣照範例淺色質感，圓角、灰底、文字深灰色) */
-.stTextInput input, .stSelectbox div[data-baseweb="select BAS_Web BAS_Select BAS_Select-Input"], .stTextArea textarea, .stNumberInput input {
+/* 🎨 4. 輸入框與按鈕質感 */
+.stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput input {
     border-radius: 10px !important;
     border: 1px solid #CBD5E1 !important;
     background-color: rgba(224, 231, 255, 0.5) !important;
     color: #1E293B !important;
     transition: all 0.3s ease;
 }
-/* 用戶上一輪滿意輸入框質感保留 (灰底、圓角、文字深灰色、點擊發光) */
-/* 我調整為半透明藍灰色背景 */
-.stTextInput input:focus, .stSelectbox div[data-baseweb="select BAS_Web BAS_Select BAS_Select-Input"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
+.stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
     border-color: #3b82f6 !important;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
 }
-
-/* 動態立體按鈕 (圓角、陰影、文字深灰色) */
 .stButton>button, .stFormSubmitButton>button, .stPopover>button {
     border-radius: 10px !important;
     font-weight: 600 !important;
     border: 1px solid #3b82f6 !important;
     background-color: #ffffff !important;
-    color: #00BFFF !important; /* 按鈕文字亮藍色，對應倣照範例高亮色 */
+    color: #00BFFF !important; 
     transition: all 0.2s ease !important;
     box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
 }
-/* 主要和次要行動按鈕統一風格。倣照範例亮藍色 */
 .stButton>button:hover, .stFormSubmitButton>button:hover, .stPopover>button:hover {
     background-color: rgba(0, 191, 255, 0.1) !important;
     border-color: #3b82f6 !important;
@@ -109,11 +158,6 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
-
-# --- 側邊欄 Logo 文字 ---
-st.sidebar.markdown("<h2 class='时研logo'>時研國際設計股份有限公司</h2>", unsafe_allow_html=True)
-
-# --- 其餘功能代碼 (原樣保留) ---
 
 # --- 2. 路徑定位 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -161,6 +205,7 @@ def get_online_users(curr_user):
         now = time.time()
         df = pd.read_csv(O_FILE) if os.path.exists(O_FILE) else pd.DataFrame(columns=["user", "time"])
         df = df[df["user"] != curr_user]
+        df = pd.concat([df, pd.DataFrame([{"user": curr_user, "time": now}])], ignore_index=True)
         df = df[now - pd.to_numeric(df["time"], errors='coerce').fillna(0) <= 300]
         df.to_csv(O_FILE, index=False); return len(df["user"].unique())
     except: return 1
@@ -289,8 +334,8 @@ def render_html(row):
         s_second = ""
 
     h = f'<div style="padding:40px;border:4px solid #000;background:#fff;color:#000;font-family:sans-serif;max-width:900px;margin:auto;">'
-    h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;">Time Lab 時研國際設計股份有限公司</h1></div>'
-    h += f'<div style="text-align:center;"><h2 style="margin-top:0px;margin-bottom:15px;font-size:24px;letter-spacing:5px;">請款單</h2></div>'
+    h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;color:#000 !important;">Time Lab 時研國際設計股份有限公司</h1></div>'
+    h += f'<div style="text-align:center;"><h2 style="margin-top:0px;margin-bottom:15px;font-size:24px;letter-spacing:5px;color:#000 !important;">請款單</h2></div>'
     h += f'<hr style="border-top: 3px solid black; margin-bottom: 3px;">'
     h += f'<hr style="border-top: 1px solid black; margin-top: 0px; margin-bottom: 20px;">'
     
@@ -310,7 +355,7 @@ def render_html(row):
     h += f'<tr><td colspan="3" align="right" style="padding:8px;">手續費</td><td align="right" style="padding:8px;">{cur} {fee:,}</td></tr>'
     h += f'<tr><td colspan="3" align="right" style="padding:8px;"><b>實付 / 請款總額</b></td><td align="right" style="padding:8px;"><b>{cur} {amt:,}</b></td></tr></table>'
     
-    h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
+    h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;color:#000 !important;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
 def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
@@ -499,13 +544,15 @@ def render_signing_table(df_list, sign_type, is_history=False):
                             fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
                             save_data(fresh_db); st.rerun()
                 else:
-                    btn_col3.button("❌ 駁回", disabled=True, key=f"fake_d_{i}")
+                    btn_col3.button("❌ 駁回", disabled=True, key=f"fk_sno_{sign_type}_{i}")
             else:
                 btn_col2.write(f"[{r['狀態']}]")
 
 # ================= 頁面邏輯 =================
+# ★ 新增：全域主畫面正中間置頂 Logo
+st.markdown("<h1 style='text-align: center; color: #1e293b; font-weight: 800; letter-spacing: 2px; margin-bottom: 30px;'>🏢 時研國際設計股份有限公司</h1>", unsafe_allow_html=True)
+
 if menu == "1. 填寫申請單":
-    st.title("時研國際設計股份有限公司")
     st.subheader("📝 填寫請款申請單")
     
     if st.session_state.get('req_last_msg'):
@@ -807,7 +854,7 @@ if menu == "1. 填寫申請單":
 
 # ================= 頁面 2: 專案執行長簽核 =================
 elif menu == "2. 專案執行長簽核":
-    st.title("👨‍💼 專案執行長簽核管理")
+    st.subheader("👨‍💼 專案執行長簽核管理")
     f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
     t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
     with t1:
@@ -822,7 +869,7 @@ elif menu == "2. 專案執行長簽核":
 
 # ================= 頁面 3: 財務長簽核 =================
 elif menu == "3. 財務長簽核":
-    st.title("💰 財務長簽核管理")
+    st.subheader("💰 財務長簽核管理")
     f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
     t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
     with t1:
@@ -844,7 +891,7 @@ elif menu == "4. 表單狀態總覽":
 
 # ================= 頁面 5: 系統設定 =================
 elif menu == "5. 請款狀態/系統設定":
-    st.title("⚙️ 請款狀態 / 系統設定")
+    st.subheader("⚙️ 請款狀態 / 系統設定")
     
     if is_admin:
         st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
