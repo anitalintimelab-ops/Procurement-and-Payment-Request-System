@@ -35,7 +35,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. 路徑定位與 GitHub 金鑰設定 ---
+# --- 2. 路徑定位 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
 D_FILE = os.path.join(B_DIR, "database.csv")
@@ -51,9 +51,9 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- ★ 核心功能：GitHub 自動同步引擎 ★ ---
-def sync_to_github(filepath):
-    """將本地檔案覆蓋上傳至 GitHub (背景靜默執行)"""
+# --- ★ 核心功能：GitHub 自動同步引擎 (加入偵錯模式) ★ ---
+def sync_to_github(filepath, show_error=False):
+    """將本地檔案覆蓋上傳至 GitHub (預設背景靜默執行，測試時可顯示錯誤)"""
     token, repo = "", ""
     if os.path.exists(G_FILE):
         try:
@@ -64,7 +64,8 @@ def sync_to_github(filepath):
         except: pass
 
     if not token or not repo or not os.path.exists(filepath): 
-        return
+        if show_error: st.error("❌ 缺少 Token 或倉庫名稱，或找不到該檔案。")
+        return False
         
     try:
         filename = os.path.basename(filepath)
@@ -82,9 +83,16 @@ def sync_to_github(filepath):
         # 3. 執行上傳覆蓋
         data = {"message": f"Auto sync {filename} from TimeLab System", "content": content}
         if sha: data["sha"] = sha
-        requests.put(url, headers=headers, json=data, timeout=8)
-    except:
-        pass 
+        
+        res = requests.put(url, headers=headers, json=data, timeout=8)
+        if res.status_code in [200, 201]:
+            return True
+        else:
+            if show_error: st.error(f"❌ GitHub 拒絕寫入！錯誤碼: {res.status_code}，原因: {res.text}")
+            return False
+    except Exception as e:
+        if show_error: st.error(f"❌ 網路連線異常: {e}")
+        return False
 
 # --- 3. 基礎工具 ---
 def get_taiwan_time(): 
@@ -167,7 +175,7 @@ def load_data():
 def save_data(df):
     try: 
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
-        sync_to_github(D_FILE) # ★ 自動同步
+        sync_to_github(D_FILE) # ★ 自動同步至 GitHub
     except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
 def load_staff():
@@ -177,7 +185,7 @@ def load_staff():
 
 def save_staff(df): 
     df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(S_FILE) # ★ 自動同步
+    sync_to_github(S_FILE) # ★ 自動同步至 GitHub
 
 def load_projects():
     if not os.path.exists(P_FILE):
@@ -186,7 +194,7 @@ def load_projects():
 
 def save_projects(df):
     df.to_csv(P_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(P_FILE) # ★ 自動同步
+    sync_to_github(P_FILE) # ★ 自動同步至 GitHub
 
 def load_vendors():
     if not os.path.exists(V_FILE):
@@ -195,7 +203,7 @@ def load_vendors():
 
 def save_vendors(df):
     df.to_csv(V_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(V_FILE) # ★ 自動同步
+    sync_to_github(V_FILE) # ★ 自動同步至 GitHub
 
 # --- 4. 請款單資料打包解析器 ---
 def parse_req_json(desc_raw):
@@ -339,7 +347,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 
 if is_admin:
     st.sidebar.markdown("---")
-    st.sidebar.success("管理員專屬區塊 (已解鎖)")
+    st.sidebar.success("管理員專屬區塊")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
@@ -810,7 +818,7 @@ elif menu == "5. 請款狀態/系統設定":
     st.title("⚙️ 請款狀態 / 系統設定")
     
     if is_admin:
-        # ★ 這裡新增了：GitHub 自動同步設定 UI ★
+        # ★ 新增：GitHub 自動同步設定測試區塊 ★
         with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
             st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
             g_token, g_repo = "", ""
@@ -825,13 +833,23 @@ elif menu == "5. 請款狀態/系統設定":
             i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
             i_repo = st.text_input("GitHub 倉庫名稱 (格式: 帳號/倉庫名，例如 anitalin/timelab-ops)", value=g_repo)
             
-            if st.button("💾 儲存 GitHub 設定"):
+            if st.button("💾 測試連線並儲存設定"):
                 with open(G_FILE, "w", encoding="utf-8") as f:
                     f.write(f"{i_token.strip()}\n{i_repo.strip()}")
-                sync_to_github(G_FILE)
-                st.success("✅ GitHub 同步設定已啟用！未來的每一次存檔都會自動備份到雲端。")
-                time.sleep(1)
-                st.rerun()
+                
+                # 測試讀取權限
+                url = f"https://api.github.com/repos/{i_repo.strip()}"
+                headers = {"Authorization": f"token {i_token.strip()}"}
+                res = requests.get(url, headers=headers)
+                if res.status_code != 200:
+                    st.error(f"❌ 讀取倉庫失敗！請檢查倉庫名稱是否正確，或 Token 權限是否不足。錯誤碼：{res.status_code}")
+                else:
+                    st.info("✅ 成功找到倉庫，正在測試上傳權限...")
+                    success = sync_to_github(G_FILE, show_error=True)
+                    if success:
+                        st.success("🎉 連線與上傳測試 100% 成功！自動備份引擎已正式啟動。")
+                        time.sleep(2)
+                        st.rerun()
 
         st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。有設定 GitHub 自動備份則無須擔心！")
 
