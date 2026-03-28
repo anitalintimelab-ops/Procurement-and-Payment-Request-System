@@ -35,13 +35,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. 路徑定位 ---
+# --- 2. 路徑定位與 GitHub 金鑰設定 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
 D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "online.csv")
 L_FILE = os.path.join(B_DIR, "line_credentials.txt") 
+G_FILE = os.path.join(B_DIR, "github_credentials.txt") # ★ 新增：GitHub 金鑰暫存檔
 
 P_FILE = os.path.join(B_DIR, "projects.csv")
 V_FILE = os.path.join(B_DIR, "vendors.csv")
@@ -49,6 +50,41 @@ V_FILE = os.path.join(B_DIR, "vendors.csv")
 ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
+
+# --- ★ 核心功能：GitHub 自動同步引擎 ★ ---
+def sync_to_github(filepath):
+    """將本地檔案覆蓋上傳至 GitHub (背景靜默執行)"""
+    token, repo = "", ""
+    if os.path.exists(G_FILE):
+        try:
+            with open(G_FILE, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+                token = lines[0].strip() if len(lines)>0 else ""
+                repo = lines[1].strip() if len(lines)>1 else ""
+        except: pass
+
+    if not token or not repo or not os.path.exists(filepath): 
+        return
+        
+    try:
+        filename = os.path.basename(filepath)
+        url = f"https://api.github.com/repos/{repo}/contents/{filename}"
+        headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+        
+        # 1. 取得目前 GitHub 上該檔案的 SHA
+        r = requests.get(url, headers=headers, timeout=5)
+        sha = r.json().get("sha") if r.status_code == 200 else None
+        
+        # 2. 讀取本地端最新檔案並轉 Base64
+        with open(filepath, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
+            
+        # 3. 執行上傳覆蓋
+        data = {"message": f"Auto sync {filename} from TimeLab System", "content": content}
+        if sha: data["sha"] = sha
+        requests.put(url, headers=headers, json=data, timeout=8)
+    except:
+        pass 
 
 # --- 3. 基礎工具 ---
 def get_taiwan_time(): 
@@ -129,7 +165,9 @@ def load_data():
         return pd.DataFrame(columns=cols)
 
 def save_data(df):
-    try: df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
+    try: 
+        df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
+        sync_to_github(D_FILE) # ★ 自動同步
     except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
 def load_staff():
@@ -137,7 +175,9 @@ def load_staff():
     if df is None or df.empty: return pd.DataFrame({"name": DEFAULT_STAFF, "status":["在職"]*5, "password":["0000"]*5})
     return df
 
-def save_staff(df): df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
+def save_staff(df): 
+    df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
+    sync_to_github(S_FILE) # ★ 自動同步
 
 def load_projects():
     if not os.path.exists(P_FILE):
@@ -146,6 +186,7 @@ def load_projects():
 
 def save_projects(df):
     df.to_csv(P_FILE, index=False, encoding='utf-8-sig')
+    sync_to_github(P_FILE) # ★ 自動同步
 
 def load_vendors():
     if not os.path.exists(V_FILE):
@@ -154,6 +195,7 @@ def load_vendors():
 
 def save_vendors(df):
     df.to_csv(V_FILE, index=False, encoding='utf-8-sig')
+    sync_to_github(V_FILE) # ★ 自動同步
 
 # --- 4. 請款單資料打包解析器 ---
 def parse_req_json(desc_raw):
@@ -297,7 +339,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 
 if is_admin:
     st.sidebar.markdown("---")
-    st.sidebar.success("管理員專屬區塊")
+    st.sidebar.success("管理員專屬區塊 (已解鎖)")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
@@ -363,13 +405,12 @@ if menu != st.session_state.req_prev_state_menu or st.session_state.user_id != s
     st.rerun()
 
 
-# --- 8. 簽核列表渲染模組 (★ 動態判斷是否顯示負責執行長欄位) ---
+# --- 8. 簽核列表渲染模組 ---
 def render_signing_table(df_list, sign_type, is_history=False):
     if df_list.empty:
         st.info("目前無相關紀錄")
         return
     
-    # 在「專案執行長簽核(EXE)」中，非管理員不顯示「負責執行長」欄位
     show_exe = True
     if sign_type == "EXE" and not is_admin:
         show_exe = False
@@ -421,7 +462,7 @@ def render_signing_table(df_list, sign_type, is_history=False):
                             fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
                             save_data(fresh_db); st.rerun()
                 else:
-                    btn_col3.button("❌ 駁回", disabled=True, key=f"fk_sno_{sign_type}_{i}")
+                    btn_col3.button("❌ 駁回", disabled=True, key=f"fake_d_{i}")
             else:
                 btn_col2.write(f"[{r['狀態']}]")
 
@@ -769,7 +810,30 @@ elif menu == "5. 請款狀態/系統設定":
     st.title("⚙️ 請款狀態 / 系統設定")
     
     if is_admin:
-        st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。請管理員務必在下班前下載備份！")
+        # ★ 這裡新增了：GitHub 自動同步設定 UI ★
+        with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
+            st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
+            g_token, g_repo = "", ""
+            if os.path.exists(G_FILE):
+                try:
+                    with open(G_FILE, "r", encoding="utf-8") as f:
+                        lines = f.read().splitlines()
+                        g_token = lines[0].strip() if len(lines)>0 else ""
+                        g_repo = lines[1].strip() if len(lines)>1 else ""
+                except: pass
+                    
+            i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
+            i_repo = st.text_input("GitHub 倉庫名稱 (格式: 帳號/倉庫名，例如 anitalin/timelab-ops)", value=g_repo)
+            
+            if st.button("💾 儲存 GitHub 設定"):
+                with open(G_FILE, "w", encoding="utf-8") as f:
+                    f.write(f"{i_token.strip()}\n{i_repo.strip()}")
+                sync_to_github(G_FILE)
+                st.success("✅ GitHub 同步設定已啟用！未來的每一次存檔都會自動備份到雲端。")
+                time.sleep(1)
+                st.rerun()
+
+        st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。有設定 GitHub 自動備份則無須擔心！")
 
         with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
             col_down, col_up = st.columns(2)
