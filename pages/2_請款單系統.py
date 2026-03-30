@@ -7,7 +7,7 @@ import time
 import requests  
 import json
 import io
-import threading # ★ 新增：背景非同步執行引擎，解決存檔變慢的問題
+import threading
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "請款單系統"
@@ -36,7 +36,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. 路徑定位 ---
+# --- 2. 路徑定位與 GitHub 金鑰設定 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
 D_FILE = os.path.join(B_DIR, "database.csv")
@@ -82,7 +82,7 @@ def _background_github_sync(filepath):
         if sha: data["sha"] = sha
         requests.put(url, headers=headers, json=data, timeout=10)
     except:
-        pass # 背景靜默執行，即使網路瞬斷也不影響用戶操作
+        pass 
 
 def sync_to_github(filepath):
     """呼叫此函數會啟動背景上傳，畫面零卡頓"""
@@ -179,7 +179,7 @@ def load_staff():
 
 def save_staff(df): 
     df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(S_FILE) # ★ 背景自動同步
+    sync_to_github(S_FILE) # ★ 背景自動同步 (包含密碼)
 
 def load_projects():
     if not os.path.exists(P_FILE):
@@ -263,7 +263,7 @@ def render_html(row):
     h += f'<tr><td width="15%" style="padding:8px;">單號</td><td width="35%" style="padding:8px;">{safe_str(row.get("單號"))}</td><td width="15%" style="padding:8px;">負責執行長</td><td width="35%" style="padding:8px;">{safe_str(row.get("專案負責人"))}</td></tr>'
     h += f'<tr><td style="padding:8px;">專案</td><td style="padding:8px;">{safe_str(row.get("專案名稱"))}</td><td style="padding:8px;">編號</td><td style="padding:8px;">{safe_str(row.get("專案編號"))}</td></tr>'
     h += f'<tr><td style="padding:8px;">申請人</td><td style="padding:8px;">{display_app}</td><td style="padding:8px;">廠商</td><td style="padding:8px;">{safe_str(row.get("請款廠商"))}</td></tr>'
-    h += f'<tr><td style="padding:8px;">匯款帳戶</td><td colspan="3" style="padding:8px;">{safe_str(row.get("匯款帳戶"))}</td></tr>'
+    h += f'<tr><td style="padding:8px;">汇款帳戶</td><td colspan="3" style="padding:8px;">{safe_str(row.get("匯款帳戶"))}</td></tr>'
     
     desc_html = data.get("desc","").replace("\n", "<br>")
     inv_str = f"發票/憑證: {safe_str(data.get('inv_no',''))}<br>" if safe_str(data.get('inv_no','')) else ""
@@ -341,7 +341,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 
 if is_admin:
     st.sidebar.markdown("---")
-    st.sidebar.success("管理員專屬區塊 (已解鎖)")
+    st.sidebar.success("管理員專屬區塊")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
@@ -812,7 +812,6 @@ elif menu == "5. 請款狀態/系統設定":
     st.title("⚙️ 請款狀態 / 系統設定")
     
     if is_admin:
-        # ★ 這裡新增了您最需要的：GitHub 自動同步設定 UI (加入防錯字過濾功能) ★
         with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
             st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
             g_token, g_repo = "", ""
@@ -829,32 +828,38 @@ elif menu == "5. 請款狀態/系統設定":
             i_repo = st.text_input("GitHub 倉庫名稱 (格式: 帳號/倉庫名，例如 anitalin/timelab-ops)", value=g_repo)
             
             if st.button("💾 測試連線並儲存設定"):
-                # ★ 防呆過濾：把複製貼上帶來的隱形字元/全形空白全部拔除
                 clean_token = "".join(c for c in i_token if c.isascii()).strip()
                 clean_repo = "".join(c for c in i_repo if c.isascii()).strip()
                 
                 if not clean_token or not clean_repo:
                     st.error("❌ 請輸入有效的 Token 與倉庫名稱。")
                 else:
-                    # 寫入乾淨的設定檔
                     with open(G_FILE, "w", encoding="utf-8") as f:
                         f.write(f"{clean_token}\n{clean_repo}")
                     
                     try:
-                        # 測試連線
                         url = f"https://api.github.com/repos/{clean_repo}"
                         headers = {"Authorization": f"token {clean_token}"}
                         res = requests.get(url, headers=headers, timeout=5)
                         
                         if res.status_code == 200:
                             st.success("🎉 連線測試成功！自動備份引擎已正式啟動。")
-                            sync_to_github(G_FILE) # 順便把密碼檔備份上去
+                            sync_to_github(G_FILE)
                             time.sleep(2)
                             st.rerun()
                         else:
                             st.error(f"❌ 連線被 GitHub 拒絕 (錯誤碼 {res.status_code})。請確認倉庫名稱是否有錯字，或 Token 是否有勾選 'repo' 權限。")
                     except Exception as e:
                         st.error(f"❌ 網路連線異常：{e}")
+
+            st.markdown("---")
+            st.write("💡 **如果您的密碼或名單沒有更新到雲端，可以點擊下方按鈕強制上傳：**")
+            if st.button("🚀 一鍵強制同步所有資料 (包含人員密碼) 至 GitHub"):
+                sync_to_github(D_FILE)
+                sync_to_github(S_FILE)
+                sync_to_github(P_FILE)
+                sync_to_github(V_FILE)
+                st.success("✅ 表單、人員密碼、專案與廠商資料已全部發送至 GitHub 同步！")
 
         st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。有設定 GitHub 自動備份則無須擔心！")
 
