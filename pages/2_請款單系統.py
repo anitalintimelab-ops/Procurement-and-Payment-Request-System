@@ -169,7 +169,7 @@ def load_data():
 def save_data(df):
     try: 
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
-        sync_to_github(D_FILE) # ★ 背景自動同步
+        sync_to_github(D_FILE) # ★ 自動同步
     except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
 def load_staff():
@@ -179,7 +179,7 @@ def load_staff():
 
 def save_staff(df): 
     df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(S_FILE) # ★ 背景自動同步 (包含密碼)
+    sync_to_github(S_FILE) # ★ 自動同步
 
 def load_projects():
     if not os.path.exists(P_FILE):
@@ -188,7 +188,7 @@ def load_projects():
 
 def save_projects(df):
     df.to_csv(P_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(P_FILE) # ★ 背景自動同步
+    sync_to_github(P_FILE) # ★ 自動同步
 
 def load_vendors():
     if not os.path.exists(V_FILE):
@@ -197,7 +197,7 @@ def load_vendors():
 
 def save_vendors(df):
     df.to_csv(V_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(V_FILE) # ★ 背景自動同步
+    sync_to_github(V_FILE) # ★ 自動同步
 
 # --- 4. 請款單資料打包解析器 ---
 def parse_req_json(desc_raw):
@@ -263,7 +263,7 @@ def render_html(row):
     h += f'<tr><td width="15%" style="padding:8px;">單號</td><td width="35%" style="padding:8px;">{safe_str(row.get("單號"))}</td><td width="15%" style="padding:8px;">負責執行長</td><td width="35%" style="padding:8px;">{safe_str(row.get("專案負責人"))}</td></tr>'
     h += f'<tr><td style="padding:8px;">專案</td><td style="padding:8px;">{safe_str(row.get("專案名稱"))}</td><td style="padding:8px;">編號</td><td style="padding:8px;">{safe_str(row.get("專案編號"))}</td></tr>'
     h += f'<tr><td style="padding:8px;">申請人</td><td style="padding:8px;">{display_app}</td><td style="padding:8px;">廠商</td><td style="padding:8px;">{safe_str(row.get("請款廠商"))}</td></tr>'
-    h += f'<tr><td style="padding:8px;">汇款帳戶</td><td colspan="3" style="padding:8px;">{safe_str(row.get("匯款帳戶"))}</td></tr>'
+    h += f'<tr><td style="padding:8px;">匯款帳戶</td><td colspan="3" style="padding:8px;">{safe_str(row.get("匯款帳戶"))}</td></tr>'
     
     desc_html = data.get("desc","").replace("\n", "<br>")
     inv_str = f"發票/憑證: {safe_str(data.get('inv_no',''))}<br>" if safe_str(data.get('inv_no','')) else ""
@@ -819,7 +819,6 @@ elif menu == "5. 請款狀態/系統設定":
                 try:
                     with open(G_FILE, "r", encoding="utf-8") as f:
                         lines = f.read().splitlines()
-                        # 清洗舊的可能存在的亂碼
                         g_token = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
                         g_repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
                 except: pass
@@ -852,14 +851,33 @@ elif menu == "5. 請款狀態/系統設定":
                     except Exception as e:
                         st.error(f"❌ 網路連線異常：{e}")
 
-            st.markdown("---")
-            st.write("💡 **如果您的密碼或名單沒有更新到雲端，可以點擊下方按鈕強制上傳：**")
-            if st.button("🚀 一鍵強制同步所有資料 (包含人員密碼) 至 GitHub"):
-                sync_to_github(D_FILE)
-                sync_to_github(S_FILE)
-                sync_to_github(P_FILE)
-                sync_to_github(V_FILE)
-                st.success("✅ 表單、人員密碼、專案與廠商資料已全部發送至 GitHub 同步！")
+        # ★ 本次升級救援按鈕：歷史資料打撈重建 ★
+        with st.expander("🧰 3. 專案與廠商資料庫 (備份、還原與重建)", expanded=False):
+            st.write("💡 **資料不見了怎麼辦？** 如果雲端重啟導致您之前建檔的廠商與專案消失，只要點擊下方按鈕，系統就會自動去「歷史表單 (database.csv)」裡面，把您曾經打過的專案跟廠商全部抓出來重建！")
+            if st.button("🪄 一鍵從歷史單據找回/重建專案與廠商"):
+                with st.spinner("正在從歷史單據中打撈資料..."):
+                    f_db = load_data()
+                    if not f_db.empty:
+                        # 找回專案
+                        p_data = f_db[["專案負責人", "專案名稱", "專案編號"]].drop_duplicates().dropna()
+                        p_data = p_data[(p_data["專案名稱"] != "") & (p_data["專案編號"] != "")]
+                        p_data = p_data.rename(columns={"專案負責人": "負責執行長"})
+                        old_p = load_projects()
+                        new_p = pd.concat([old_p, p_data]).drop_duplicates(subset=["專案名稱"]).reset_index(drop=True)
+                        save_projects(new_p)
+
+                        # 找回廠商
+                        v_data = f_db[["請款廠商", "匯款帳戶"]].drop_duplicates().dropna()
+                        v_data = v_data[(v_data["請款廠商"] != "")]
+                        old_v = load_vendors()
+                        new_v = pd.concat([old_v, v_data]).drop_duplicates(subset=["請款廠商"]).reset_index(drop=True)
+                        save_vendors(new_v)
+
+                        st.success("✅ 太棒了！已成功從歷史單據中找回您的專案與廠商名單，並自動備份到 GitHub！")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ 目前歷史單據沒有資料，無法打撈。")
 
         st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。有設定 GitHub 自動備份則無須擔心！")
 
