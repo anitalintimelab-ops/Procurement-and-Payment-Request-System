@@ -4,9 +4,10 @@ import datetime
 import os
 import base64
 import time
-import requests
+import requests  
 import json
 import io
+import threading # ★ 結合正式版功能：背景非同步執行引擎
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "請款單系統"
@@ -37,6 +38,41 @@ st.markdown("""
 [data-testid="stSidebar"] * {
     color: white !important;
 }
+
+/* ★ 修正 1：「目前系統」標籤，拿掉背景框，直接白字，解決滑鼠過去才顯示的問題 */
+[data-testid="stSidebar"] code {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    color: white !important;
+    padding: 0 !important;
+    font-size: 15px !important;
+    box-shadow: none !important;
+}
+
+/* ★ 修正 2：側邊欄按鈕 (如：登出系統)，變成淺綠色，字體黑色，解決懸停空白問題 */
+[data-testid="stSidebar"] .stButton > button {
+    background-color: #9DC350 !important; /* 仿照截圖的淺綠色 */
+    border: none !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+    transition: all 0.2s ease !important;
+}
+[data-testid="stSidebar"] .stButton > button, 
+[data-testid="stSidebar"] .stButton > button * {
+    color: black !important;
+    font-weight: 700 !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background-color: #8bb340 !important; /* 懸停時稍微加深的綠色 */
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover,
+[data-testid="stSidebar"] .stButton > button:hover * {
+    color: black !important;
+}
+
 /* 側邊欄 Logo 文字 */
 [data-testid="stSidebar"] .时研logo {
     color: white !important;
@@ -72,7 +108,6 @@ st.markdown("""
     color: #1E293B !important;
     transition: all 0.3s ease;
 }
-/* 用戶上一輪滿意輸入框質感保留 (灰底、圓角、文字深灰色、點擊發光) */
 /* 我調整為半透明藍灰色背景 */
 .stTextInput input:focus, .stSelectbox div[data-baseweb="select BAS_Web BAS_Select BAS_Select-Input"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
     border-color: #3b82f6 !important;
@@ -113,6 +148,7 @@ st.markdown("""
 # --- 側邊欄 Logo 文字 ---
 st.sidebar.markdown("<h2 class='时研logo'>時研國際設計股份有限公司</h2>", unsafe_allow_html=True)
 
+
 # --- 2. 路徑定位與 GitHub 金鑰設定 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
@@ -120,7 +156,7 @@ D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "online.csv")
 L_FILE = os.path.join(B_DIR, "line_credentials.txt") 
-G_FILE = os.path.join(B_DIR, "github_credentials.txt") # ★ 新增：GitHub 金鑰暫存檔
+G_FILE = os.path.join(B_DIR, "github_credentials.txt") # ★ 結合正式版功能
 
 P_FILE = os.path.join(B_DIR, "projects.csv")
 V_FILE = os.path.join(B_DIR, "vendors.csv")
@@ -129,16 +165,16 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- ★ 核心功能：GitHub 自動同步引擎 ★ ---
-def sync_to_github(filepath):
-    """將本地檔案覆蓋上傳至 GitHub (背景靜默執行)"""
+# --- ★ 結合正式版功能：GitHub 自動同步引擎 (Threading 背景不卡頓版) ★ ---
+def _background_github_sync(filepath):
+    """真正在背景執行的同步工作"""
     token, repo = "", ""
     if os.path.exists(G_FILE):
         try:
             with open(G_FILE, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
-                token = lines[0].strip() if len(lines)>0 else ""
-                repo = lines[1].strip() if len(lines)>1 else ""
+                token = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
+                repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
         except: pass
 
     if not token or not repo or not os.path.exists(filepath): 
@@ -149,20 +185,21 @@ def sync_to_github(filepath):
         url = f"https://api.github.com/repos/{repo}/contents/{filename}"
         headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
         
-        # 1. 取得目前 GitHub 上該檔案的 SHA (必須有 SHA 才能覆蓋)
         r = requests.get(url, headers=headers, timeout=5)
         sha = r.json().get("sha") if r.status_code == 200 else None
         
-        # 2. 讀取本地端最新檔案並轉 Base64
         with open(filepath, "rb") as f:
             content = base64.b64encode(f.read()).decode()
             
-        # 3. 執行上傳覆蓋
         data = {"message": f"Auto sync {filename} from TimeLab System", "content": content}
         if sha: data["sha"] = sha
-        requests.put(url, headers=headers, json=data, timeout=8)
+        requests.put(url, headers=headers, json=data, timeout=10)
     except:
-        pass # 背景靜默失敗不影響使用者體驗
+        pass 
+
+def sync_to_github(filepath):
+    """呼叫此函數會啟動背景上傳，畫面零卡頓"""
+    threading.Thread(target=_background_github_sync, args=(filepath,), daemon=True).start()
 
 # --- 3. 基礎工具 ---
 def get_taiwan_time(): 
@@ -245,7 +282,7 @@ def load_data():
 def save_data(df):
     try: 
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
-        sync_to_github(D_FILE) # ★ 新增：自動同步至 GitHub
+        sync_to_github(D_FILE) # ★ 結合正式版功能
     except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
 def load_staff():
@@ -255,7 +292,7 @@ def load_staff():
 
 def save_staff(df): 
     df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(S_FILE) # ★ 新增：自動同步至 GitHub
+    sync_to_github(S_FILE) # ★ 結合正式版功能
 
 def load_projects():
     if not os.path.exists(P_FILE):
@@ -264,7 +301,7 @@ def load_projects():
 
 def save_projects(df):
     df.to_csv(P_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(P_FILE) # ★ 新增：自動同步至 GitHub
+    sync_to_github(P_FILE) # ★ 結合正式版功能
 
 def load_vendors():
     if not os.path.exists(V_FILE):
@@ -273,7 +310,7 @@ def load_vendors():
 
 def save_vendors(df):
     df.to_csv(V_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(V_FILE) # ★ 新增：自動同步至 GitHub
+    sync_to_github(V_FILE) # ★ 結合正式版功能
 
 # --- 4. 請款單資料打包解析器 ---
 def parse_req_json(desc_raw):
@@ -390,7 +427,8 @@ curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADM
 is_active = (st.session_state.user_status == "在職")
 
 # --- 7. 左側側邊欄 ---
-st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
+# ★ 修正 1：移除原本包在 code ` ` 裡的標籤，確保配合 CSS 不會有怪異的框
+st.sidebar.markdown(f"**📌 目前系統：** {st.session_state.sys_choice}")
 st.sidebar.divider()
 
 avatar_b64 = ""
@@ -417,7 +455,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 
 if is_admin:
     st.sidebar.markdown("---")
-    st.sidebar.success("管理員專屬區塊 (已解鎖)")
+    st.sidebar.success("管理員專屬區塊")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
@@ -888,7 +926,7 @@ elif menu == "5. 請款狀態/系統設定":
     st.title("⚙️ 請款狀態 / 系統設定")
     
     if is_admin:
-        # ★ 這裡新增了您最需要的：GitHub 自動同步設定 UI ★
+        # ★ GitHub 自動同步設定 UI (加入防亂碼) ★
         with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
             st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
             g_token, g_repo = "", ""
@@ -896,21 +934,79 @@ elif menu == "5. 請款狀態/系統設定":
                 try:
                     with open(G_FILE, "r", encoding="utf-8") as f:
                         lines = f.read().splitlines()
-                        g_token = lines[0].strip() if len(lines)>0 else ""
-                        g_repo = lines[1].strip() if len(lines)>1 else ""
+                        g_token = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
+                        g_repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
                 except: pass
                     
             i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
             i_repo = st.text_input("GitHub 倉庫名稱 (格式: 帳號/倉庫名，例如 anitalin/timelab-ops)", value=g_repo)
             
-            if st.button("💾 儲存 GitHub 設定"):
-                with open(G_FILE, "w", encoding="utf-8") as f:
-                    f.write(f"{i_token.strip()}\n{i_repo.strip()}")
-                sync_to_github(G_FILE)
-                st.success("✅ GitHub 同步設定已啟用！未來的每一次存檔都會自動備份到雲端。")
-                time.sleep(1)
-                st.rerun()
+            c_btn1, c_btn2 = st.columns([1, 1])
+            if c_btn1.button("💾 測試連線並儲存設定"):
+                clean_token = "".join(c for c in i_token if c.isascii()).strip()
+                clean_repo = "".join(c for c in i_repo if c.isascii()).strip()
                 
+                if not clean_token or not clean_repo:
+                    st.error("❌ 請輸入有效的 Token 與倉庫名稱。")
+                else:
+                    with open(G_FILE, "w", encoding="utf-8") as f:
+                        f.write(f"{clean_token}\n{clean_repo}")
+                    
+                    try:
+                        url = f"https://api.github.com/repos/{clean_repo}"
+                        headers = {"Authorization": f"token {clean_token}"}
+                        res = requests.get(url, headers=headers, timeout=5)
+                        
+                        if res.status_code == 200:
+                            st.success("🎉 連線測試成功！自動備份引擎已正式啟動。")
+                            sync_to_github(G_FILE)
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ 連線被 GitHub 拒絕 (錯誤碼 {res.status_code})。請確認倉庫名稱是否有錯字，或 Token 是否有勾選 'repo' 權限。")
+                    except Exception as e:
+                        st.error(f"❌ 網路連線異常：{e}")
+
+            # ★ 解決舊資料沒上傳的終極按鈕 ★
+            st.markdown("---")
+            st.write("💡 **如果您的舊單據或人員密碼還沒上傳到 GitHub，請點擊下方按鈕強制備份：**")
+            if c_btn2.button("🚀 一鍵強制同步所有資料至 GitHub"):
+                with st.spinner("正在將所有資料（包含舊單據與密碼）傳送至 GitHub，請稍候..."):
+                    if os.path.exists(D_FILE): sync_to_github(D_FILE)
+                    if os.path.exists(S_FILE): sync_to_github(S_FILE)
+                    if os.path.exists(P_FILE): sync_to_github(P_FILE)
+                    if os.path.exists(V_FILE): sync_to_github(V_FILE)
+                    time.sleep(1.5) # 稍微等待背景執行
+                st.success("✅ 資料庫、人員密碼、專案與廠商資料已全部發送至 GitHub 同步！")
+
+        # ★ 本次升級救援按鈕：歷史資料打撈重建 ★
+        with st.expander("🧰 3. 專案與廠商資料庫 (備份、還原與重建)", expanded=False):
+            st.write("💡 **資料不見了怎麼辦？** 如果雲端重啟導致您之前建檔的廠商與專案消失，只要點擊下方按鈕，系統就會自動去「歷史表單 (database.csv)」裡面，把您曾經打過的專案跟廠商全部抓出來重建！")
+            if st.button("🪄 一鍵從歷史單據找回/重建專案與廠商"):
+                with st.spinner("正在從歷史單據中打撈資料..."):
+                    f_db = load_data()
+                    if not f_db.empty:
+                        # 找回專案
+                        p_data = f_db[["專案負責人", "專案名稱", "專案編號"]].drop_duplicates().dropna()
+                        p_data = p_data[(p_data["專案名稱"] != "") & (p_data["專案編號"] != "")]
+                        p_data = p_data.rename(columns={"專案負責人": "負責執行長"})
+                        old_p = load_projects()
+                        new_p = pd.concat([old_p, p_data]).drop_duplicates(subset=["專案名稱"]).reset_index(drop=True)
+                        save_projects(new_p)
+
+                        # 找回廠商
+                        v_data = f_db[["請款廠商", "匯款帳戶"]].drop_duplicates().dropna()
+                        v_data = v_data[(v_data["請款廠商"] != "")]
+                        old_v = load_vendors()
+                        new_v = pd.concat([old_v, v_data]).drop_duplicates(subset=["請款廠商"]).reset_index(drop=True)
+                        save_vendors(new_v)
+
+                        st.success("✅ 太棒了！已成功從歷史單據中找回您的專案與廠商名單，並自動備份到 GitHub！")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ 目前歷史單據沒有資料，無法打撈。")
+
         st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。有設定 GitHub 自動備份則無須擔心！")
 
         with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
