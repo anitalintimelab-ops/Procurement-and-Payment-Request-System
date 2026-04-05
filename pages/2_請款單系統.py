@@ -58,22 +58,21 @@ st.markdown("""
 }
 
 /* 所有上傳區塊 (Upload) 包含側邊欄與主頁，文字與圖示絕對強制黑色 */
-div[data-testid="stFileUploader"] *,
-div[data-testid="stFileUploadDropzone"] *,
-div[data-testid="stFileUploadDropzone"] span,
-div[data-testid="stFileUploadDropzone"] small,
-div[data-testid="stFileUploadDropzone"] p,
-div[data-testid="stFileUploadDropzone"] button {
+div[data-testid="stFileUploader"] * {
     color: #000000 !important; 
     fill: #000000 !important;
 }
-div[data-testid="stFileUploadDropzone"] {
+div[data-testid="stFileUploader"] section {
     background-color: #ffffff !important; 
 }
-div[data-testid="stFileUploadDropzone"] button {
+div[data-testid="stFileUploader"] button {
     background-color: #f0f2f6 !important;
     border: 1px solid #c0c4cc !important;
     color: #000000 !important;
+}
+div[data-testid="stFileUploader"] button * {
+    color: #000000 !important;
+    font-weight: bold !important;
 }
 
 /* 「目前系統」標籤，直接白字 */
@@ -173,7 +172,7 @@ div[data-testid="stFileUploadDropzone"] button {
     color: #00BFFF !important;
 }
 
-/* 手機版直式排版 */
+/* 手機版直式排版拒絕拉伸 */
 @media screen and (max-width: 768px) {
     .block-container { padding-top: 1rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
     div[data-testid="stHorizontalBlock"] { 
@@ -182,7 +181,7 @@ div[data-testid="stFileUploadDropzone"] button {
         flex-wrap: nowrap !important; 
         overflow-x: auto !important; 
         padding-bottom: 5px; 
-        gap: 10px !important; 
+        gap: 6px !important; 
         justify-content: flex-start !important; 
     }
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { 
@@ -609,14 +608,21 @@ st.markdown("""
     }
     @media screen and (max-width: 768px) {
         .global-logo-container { 
-            flex-direction: column; 
-            gap: 5px; 
-            padding: 0 5px; 
+            flex-direction: column !important; 
+            gap: 5px !important; 
+            width: 100% !important;
+            max-width: 100vw !important;
+        }
+        .global-logo-en {
+            font-size: 26px !important;
+            white-space: normal !important;
         }
         .global-logo-tw { 
-            margin-left: 0; 
-            display: block; 
-            text-align: center; 
+            font-size: 18px !important;
+            margin-left: 0 !important; 
+            display: block !important; 
+            text-align: center !important; 
+            white-space: normal !important; 
         }
     }
     </style>
@@ -626,7 +632,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# ================= ★ 獨立全螢幕簽核視窗邏輯 ★ =================
+# ================= ★ 獨立全螢幕簽核視窗邏輯 (已縮小按鈕) ★ =================
 if st.session_state.get('req_review_id'):
     st.subheader(f"📝 簽核預覽視窗 - 單號: {st.session_state.req_review_id}")
     r_df = load_data()
@@ -696,7 +702,7 @@ if st.session_state.get('req_review_id'):
 
 # 如果沒有進入簽核視窗，則顯示正常選單頁面
 else:
-    # --- 8. 簽核列表渲染模組 (★ 終極改版：表單式 Dataframe 顯示 + 左側勾選框) ---
+    # --- 8. 簽核列表渲染模組 (★ 終極改版：保留最右側原本操作 + 新增左側批次勾選) ---
     def render_signing_table(df_list, sign_type, is_history=False):
         if df_list.empty:
             st.info("目前無相關紀錄")
@@ -706,30 +712,28 @@ else:
         chk_disabled = (curr_name == "Anita")
         
         if not is_history:
-            # 加入全選按鈕
+            # ★ 待簽核清單：完美 Dataframe 化
             col_all, _ = st.columns([1, 9])
             select_all = col_all.checkbox("☑️ 全選", key=f"sel_all_{sign_type}", disabled=chk_disabled)
             
-            # 準備 Dataframe
-            display_df = df_list[["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式"]].copy()
-            display_df.insert(0, "選擇", select_all) # 第一欄插入選擇狀態
+            # ★ 嚴格依照指令：裡面只要有：單號、專案名稱、金額
+            display_df = df_list[["單號", "專案名稱", "總金額"]].copy()
             display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,}")
+            display_df = display_df.rename(columns={"總金額": "金額"}) # 改名為金額符合需求
+            display_df.insert(0, "選擇", select_all)
             
-            # 渲染可編輯的 Dataframe (保留原始風格且可勾選)
             edited_df = st.data_editor(
                 display_df,
                 column_config={"選擇": st.column_config.CheckboxColumn("選擇", default=False, disabled=chk_disabled)},
-                disabled=["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式"],
+                disabled=["單號", "專案名稱", "金額"],
                 hide_index=True,
                 use_container_width=True,
-                key=f"editor_{sign_type}_{select_all}" # 使用動態 key 確保全選能重新渲染
+                key=f"editor_{sign_type}_{select_all}"
             )
             
-            # 抓出被勾選的單號清單
             selected_ids = edited_df[edited_df["選擇"] == True]["單號"].tolist()
 
             st.markdown("---")
-            # ★ 縮減批次操作按鈕與下拉選單大小
             batch_c1, batch_c2, _ = st.columns([2.5, 2.5, 5])
             
             # ★ 管理員 (Anita) 無法操作防呆：按鈕強制反灰
@@ -752,6 +756,7 @@ else:
                 if success_count > 0:
                     save_data(fresh_db); st.success(f"成功核准 {success_count} 筆單據！"); time.sleep(1); st.rerun()
 
+            # 針對 Popover 也能防護禁用
             if is_btn_disabled:
                 batch_c2.button(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=True, key=f"fake_rej_{sign_type}")
             else:
@@ -779,7 +784,7 @@ else:
                 st.rerun()
                 
         else:
-            # ★ 歷史紀錄 100% 保持原樣 (包含原來的操作欄與預覽按鈕)
+            # ★ 歷史紀錄維持原樣不動 (原本的 Columns 顯示與操作按鈕)
             if is_admin:
                 cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                 headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
