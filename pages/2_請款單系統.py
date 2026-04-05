@@ -133,7 +133,7 @@ st.markdown("""
     color: #00BFFF !important;
 }
 
-/* ★ 手機版防呆與縮減間距極致版 (修正欄位過大比例失衡) */
+/* ★ 手機版防呆與縮減間距終極版 (徹底解決欄位無限拉伸問題) */
 @media screen and (max-width: 768px) {
     .block-container { padding-top: 1rem !important; padding-left: 0.3rem !important; padding-right: 0.3rem !important; }
     table { word-wrap: break-word !important; font-size: 13px !important; }
@@ -142,20 +142,17 @@ st.markdown("""
         flex-wrap: nowrap !important; 
         overflow-x: auto !important; 
         padding-bottom: 5px; 
-        gap: 3px !important; /* ★ 縮減區塊間隙 */
+        gap: 4px !important; /* 縮減區塊間隙 */
+        justify-content: flex-start !important; /* 強制靠左對齊，不均分多餘空間 */
     }
     div[data-testid="column"] { 
-        /* 移除 width: auto 與 flex，讓 Streamlit 原本的精準比例生效 */
-        min-width: 0 !important; /* 拔除 100% 強制堆疊 */
-        padding: 0 2px !important; /* 縮減內部留白 */
-    }
-    /* 縮小文字，允許長單號自然換行，防止撐爆版面 */
-    div[data-testid="column"] p {
-        font-size: 13px !important;
-        word-break: break-word !important;
+        flex: 0 0 auto !important; /* ★ 絕對禁止欄位自動彈性放大 */
+        width: auto !important; 
+        min-width: max-content !important; /* 寬度剛好包住裡面的字就好 */
+        padding: 0 4px !important; 
     }
     .stButton > button {
-        padding: 2px 4px !important;
+        padding: 2px 6px !important;
         font-size: 12px !important;
         min-height: 32px !important;
     }
@@ -561,8 +558,8 @@ def render_signing_table(df_list, sign_type, is_history=False):
         cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
         headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
     else:
-        # ★ 非管理員：僅顯示 單號、專案名稱、金額、操作 (縮減欄位，比例微調)
-        cols_header = st.columns([1.3, 1.8, 1.0, 2.4])
+        # ★ 非管理員：僅顯示 單號、專案名稱、金額、操作
+        cols_header = st.columns([1.0, 1.5, 1.0, 2.0])
         headers = ["單號", "專案名稱", "金額", "操作"]
         
     for c, h in zip(cols_header, headers): c.write(f"**{h}**")
@@ -574,7 +571,7 @@ def render_signing_table(df_list, sign_type, is_history=False):
             c[4].write(f"${clean_amount(r['總金額']):,}")
             btn_c = c[5]
         else:
-            c = st.columns([1.3, 1.8, 1.0, 2.4])
+            c = st.columns([1.0, 1.5, 1.0, 2.0])
             c[0].write(r["單號"]); c[1].write(r["專案名稱"])
             c[2].write(f"${clean_amount(r['總金額']):,}")
             btn_c = c[3]
@@ -952,7 +949,7 @@ elif menu == "5. 請款狀態/系統設定":
     st.subheader("⚙️ 請款狀態 / 系統設定")
     
     if is_admin:
-        # ★ GitHub 自動同步設定 UI (加入防亂碼) ★
+        # ★ GitHub 自動同步設定 UI ★
         with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
             st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
             g_token, g_repo = "", ""
