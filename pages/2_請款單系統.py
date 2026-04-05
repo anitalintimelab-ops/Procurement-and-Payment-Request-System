@@ -133,22 +133,31 @@ st.markdown("""
     color: #00BFFF !important;
 }
 
-/* ★ 手機版防呆與縮減間距 */
+/* ★ 手機版防呆與縮減間距極致版 (修正欄位過大比例失衡) */
 @media screen and (max-width: 768px) {
-    .block-container { padding-top: 1.5rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .block-container { padding-top: 1rem !important; padding-left: 0.3rem !important; padding-right: 0.3rem !important; }
     table { word-wrap: break-word !important; font-size: 13px !important; }
     th, td { padding: 5px !important; }
     div[data-testid="stHorizontalBlock"] { 
         flex-wrap: nowrap !important; 
         overflow-x: auto !important; 
         padding-bottom: 5px; 
-        gap: 5px !important; /* ★ 縮減橫向區塊間的間隙 */
+        gap: 3px !important; /* ★ 縮減區塊間隙 */
     }
     div[data-testid="column"] { 
-        width: auto !important; 
-        flex: 1 1 auto !important; 
-        min-width: max-content !important; 
-        padding: 0 3px !important; /* ★ 縮減欄位內部的左右留白 */
+        /* 移除 width: auto 與 flex，讓 Streamlit 原本的精準比例生效 */
+        min-width: 0 !important; /* 拔除 100% 強制堆疊 */
+        padding: 0 2px !important; /* 縮減內部留白 */
+    }
+    /* 縮小文字，允許長單號自然換行，防止撐爆版面 */
+    div[data-testid="column"] p {
+        font-size: 13px !important;
+        word-break: break-word !important;
+    }
+    .stButton > button {
+        padding: 2px 4px !important;
+        font-size: 12px !important;
+        min-height: 32px !important;
     }
 }
 </style>
@@ -533,9 +542,9 @@ if menu != st.session_state.req_prev_state_menu or st.session_state.user_id != s
     st.rerun()
 
 
-# ================= 頁面邏輯開始前：插入全域 Logo =================
+# ================= ★ 全域霸氣 Logo (每一頁皆顯示) ★ =================
 st.markdown("""
-    <div style='text-align: center; margin-bottom: 30px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;'>
+    <div style='text-align: center; margin-bottom: 25px; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;'>
         <span style='font-size: 38px; font-weight: 500; font-family: "Times New Roman", Times, serif; color: #3E3024;'>T<span style='color: #C19A6B;'>i</span>me Lab</span>
         <span style='font-size: 32px; font-weight: 900; color: #2C3E50; letter-spacing: 1px; font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;'>時研國際設計股份有限公司</span>
     </div>
@@ -552,8 +561,8 @@ def render_signing_table(df_list, sign_type, is_history=False):
         cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
         headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
     else:
-        # ★ 非管理員：僅顯示單號、專案名稱、金額、操作 (縮減欄位)
-        cols_header = st.columns([1.2, 2.0, 1.2, 2.5])
+        # ★ 非管理員：僅顯示 單號、專案名稱、金額、操作 (縮減欄位，比例微調)
+        cols_header = st.columns([1.3, 1.8, 1.0, 2.4])
         headers = ["單號", "專案名稱", "金額", "操作"]
         
     for c, h in zip(cols_header, headers): c.write(f"**{h}**")
@@ -565,7 +574,7 @@ def render_signing_table(df_list, sign_type, is_history=False):
             c[4].write(f"${clean_amount(r['總金額']):,}")
             btn_c = c[5]
         else:
-            c = st.columns([1.2, 2.0, 1.2, 2.5])
+            c = st.columns([1.3, 1.8, 1.0, 2.4])
             c[0].write(r["單號"]); c[1].write(r["專案名稱"])
             c[2].write(f"${clean_amount(r['總金額']):,}")
             btn_c = c[3]
