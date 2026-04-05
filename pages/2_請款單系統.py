@@ -57,26 +57,22 @@ st.markdown("""
     color: black !important;
 }
 
-/* ★ 終極修正：大頭貼上傳區塊 (Upload) 所有文字與圖示絕對強制黑色 */
-[data-testid="stSidebar"] .stFileUploader * {
+/* ★ 終極修正 1：所有上傳區塊 (Upload) 包含側邊欄與主頁，文字與圖示絕對強制黑色 */
+div[data-testid="stFileUploader"] *,
+div[data-testid="stFileUploadDropzone"] *,
+div[data-testid="stFileUploadDropzone"] span,
+div[data-testid="stFileUploadDropzone"] small,
+div[data-testid="stFileUploadDropzone"] p,
+div[data-testid="stFileUploadDropzone"] button {
     color: #000000 !important; 
+    fill: #000000 !important;
 }
-[data-testid="stSidebar"] .stFileUploader span,
-[data-testid="stSidebar"] .stFileUploader small,
-[data-testid="stSidebar"] .stFileUploader p,
-[data-testid="stSidebar"] .stFileUploader div {
-    color: #000000 !important; 
-}
-[data-testid="stSidebar"] .stFileUploader section {
+div[data-testid="stFileUploadDropzone"] {
     background-color: #ffffff !important; 
 }
-[data-testid="stSidebar"] .stFileUploader button {
+div[data-testid="stFileUploadDropzone"] button {
     background-color: #f0f2f6 !important;
     border: 1px solid #c0c4cc !important;
-    color: #000000 !important; 
-}
-[data-testid="stSidebar"] .stFileUploader svg {
-    fill: #000000 !important;
     color: #000000 !important;
 }
 
@@ -138,12 +134,16 @@ st.markdown("""
     color: #1E293B;
 }
 
-/* 輸入框質感 */
+/* ★ 終極修正 2：縮小輸入框、下拉選單與按鈕，使其貼合文字 */
 .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput input {
-    border-radius: 10px !important;
+    border-radius: 8px !important;
     border: 1px solid #CBD5E1 !important;
     background-color: rgba(224, 231, 255, 0.5) !important;
     color: #1E293B !important;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    min-height: 32px !important; /* 降低輸入框高度 */
+    height: auto !important;
     transition: all 0.3s ease;
 }
 .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
@@ -153,13 +153,17 @@ st.markdown("""
 }
 
 .stButton>button, .stFormSubmitButton>button, .stPopover>button {
-    border-radius: 10px !important;
+    border-radius: 8px !important;
     font-weight: 600 !important;
     border: 1px solid #3b82f6 !important;
     background-color: #ffffff !important;
     color: #00BFFF !important; 
     transition: all 0.2s ease !important;
     box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+    padding: 4px 12px !important; /* 縮減內部按鈕文字留白 */
+    min-height: 32px !important;  /* 降低按鈕最小高度 */
+    height: auto !important;
+    line-height: 1.4 !important;
 }
 .stButton>button:hover, .stFormSubmitButton>button:hover, .stPopover>button:hover {
     background-color: rgba(0, 191, 255, 0.1) !important;
@@ -190,7 +194,7 @@ st.markdown("""
     }
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: max-content !important; }
     div[data-testid="column"] p { font-size: 13px !important; white-space: nowrap !important; margin-bottom: 0 !important; }
-    .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 30px !important; }
+    .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -225,39 +229,53 @@ def _background_github_sync(filepath):
                 repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
         except: pass
 
-    if not token or not repo or not os.path.exists(filepath): return
+    if not token or not repo or not os.path.exists(filepath): 
+        return
         
     try:
         filename = os.path.basename(filepath)
         url = f"https://api.github.com/repos/{repo}/contents/{filename}"
         headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+        
         r = requests.get(url, headers=headers, timeout=5)
         sha = r.json().get("sha") if r.status_code == 200 else None
-        with open(filepath, "rb") as f: content = base64.b64encode(f.read()).decode()
+        
+        with open(filepath, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
+            
         data = {"message": f"Auto sync {filename} from TimeLab System", "content": content}
         if sha: data["sha"] = sha
         requests.put(url, headers=headers, json=data, timeout=10)
-    except: pass 
+    except:
+        pass 
 
-def sync_to_github(filepath): threading.Thread(target=_background_github_sync, args=(filepath,), daemon=True).start()
+def sync_to_github(filepath):
+    threading.Thread(target=_background_github_sync, args=(filepath,), daemon=True).start()
 
 # --- 3. 基礎工具 ---
-def get_taiwan_time(): return (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')
+def get_taiwan_time(): 
+    return (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')
+
 def clean_amount(val):
     if pd.isna(val) or val is None or str(val).strip() == "": return 0
     try: return int(float(str(val).replace(",", "").replace("$", "").replace(" ", "")))
     except: return 0
-def clean_name(val): return str(val).strip().split(" ")[0] if pd.notna(val) and str(val).strip() != "" else ""
+
+def clean_name(val): 
+    return str(val).strip().split(" ")[0] if pd.notna(val) and str(val).strip() != "" else ""
+
 def safe_str(val): 
     if pd.isna(val) or val is None: return ""
     s = str(val).strip()
     if s.lower() in ["nan", "none", ""]: return ""
     return s
+
 def get_fallback_date(r):
     d = safe_str(r.get("日期")).replace("/", "-")
     if d: return d
     d = safe_str(r.get("單號"))[:8]
-    if len(d) == 8 and d.isdigit(): return f"{d[:4]}-{d[4:6]}-{d[6:]}"
+    if len(d) == 8 and d.isdigit():
+        return f"{d[:4]}-{d[4:6]}-{d[6:]}"
     return "2026-03-18"
 
 def get_online_users(curr_user):
@@ -307,9 +325,11 @@ def load_data():
         if "專案執行人" in df.columns: df = df.rename(columns={"專案執行人": "專案負責人"})
         for c in cols:
             if c not in df.columns: df[c] = ""
-        for c in ["總金額", "已請款金額", "尚未請款金額"]: df[c] = df[c].apply(clean_amount)
+        for c in ["總金額", "已請款金額", "尚未請款金額"]:
+            df[c] = df[c].apply(clean_amount)
         return df[cols]
-    except: return pd.DataFrame(columns=cols)
+    except:
+        return pd.DataFrame(columns=cols)
 
 def save_data(df):
     try: 
@@ -321,20 +341,34 @@ def load_staff():
     df = read_csv_robust(S_FILE)
     if df is None or df.empty: return pd.DataFrame({"name": DEFAULT_STAFF, "status":["在職"]*5, "password":["0000"]*5})
     return df
-def save_staff(df): df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig'); sync_to_github(S_FILE) 
+
+def save_staff(df): 
+    df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
+    sync_to_github(S_FILE) 
+
 def load_projects():
-    if not os.path.exists(P_FILE): pd.DataFrame(columns=["負責執行長", "專案名稱", "專案編號"]).to_csv(P_FILE, index=False, encoding='utf-8-sig')
+    if not os.path.exists(P_FILE):
+        pd.DataFrame(columns=["負責執行長", "專案名稱", "專案編號"]).to_csv(P_FILE, index=False, encoding='utf-8-sig')
     return read_csv_robust(P_FILE)
-def save_projects(df): df.to_csv(P_FILE, index=False, encoding='utf-8-sig'); sync_to_github(P_FILE) 
+
+def save_projects(df):
+    df.to_csv(P_FILE, index=False, encoding='utf-8-sig')
+    sync_to_github(P_FILE) 
+
 def load_vendors():
-    if not os.path.exists(V_FILE): pd.DataFrame(columns=["請款廠商", "匯款帳戶"]).to_csv(V_FILE, index=False, encoding='utf-8-sig')
+    if not os.path.exists(V_FILE):
+        pd.DataFrame(columns=["請款廠商", "匯款帳戶"]).to_csv(V_FILE, index=False, encoding='utf-8-sig')
     return read_csv_robust(V_FILE)
-def save_vendors(df): df.to_csv(V_FILE, index=False, encoding='utf-8-sig'); sync_to_github(V_FILE) 
+
+def save_vendors(df):
+    df.to_csv(V_FILE, index=False, encoding='utf-8-sig')
+    sync_to_github(V_FILE) 
 
 # --- 4. 請款單資料打包解析器 ---
 def parse_req_json(desc_raw):
     try:
-        if "[請款單資料]" in desc_raw: return json.loads(desc_raw.split("[請款單資料]")[1].strip())
+        if "[請款單資料]" in desc_raw:
+            return json.loads(desc_raw.split("[請款單資料]")[1].strip())
     except: pass
     return {"desc": desc_raw, "net_amt": 0, "tax_amt": 0, "fee": 0, "inv_no": "", "acc_name": "", "ims_names": []}
 
@@ -342,55 +376,70 @@ def parse_req_json(desc_raw):
 def render_html(row):
     amt = clean_amount(row['總金額'])
     data = parse_req_json(row.get("請款說明", ""))
-    app_name = safe_str(row.get('申請人')); proxy_name = safe_str(row.get('代申請人'))
+    
+    app_name = safe_str(row.get('申請人'))
+    proxy_name = safe_str(row.get('代申請人'))
     display_app = f"{app_name} ({proxy_name} 代申請)" if proxy_name and proxy_name != app_name else app_name
     if not display_app: display_app = "尚未指定"
+        
     legacy_net = amt if data.get("net_amt", 0) == 0 and data.get("tax_amt", 0) == 0 else data.get("net_amt", 0)
-    fee = data.get("fee", 0); tax = data.get("tax_amt", 0)
+    fee = data.get("fee", 0)
+    tax = data.get("tax_amt", 0)
     stt = safe_str(row.get("狀態")).strip()
+
     sub_time = safe_str(row.get("提交時間"))[:16].strip()
-    fst_appr = clean_name(row.get("初審人")).strip(); fst_time = safe_str(row.get("初審時間"))[:16].strip()
-    sec_appr = clean_name(row.get("複審人")).strip(); sec_time = safe_str(row.get("複審時間"))[:16].strip()
+    fst_appr = clean_name(row.get("初審人")).strip()
+    fst_time = safe_str(row.get("初審時間"))[:16].strip()
+    sec_appr = clean_name(row.get("複審人")).strip()
+    sec_time = safe_str(row.get("複審時間"))[:16].strip()
+
     fallback_date = get_fallback_date(row)
 
     if stt in ["待簽核", "待初審", "待複審", "已核准", "已駁回"]:
         if not sub_time: sub_time = f"{fallback_date} 12:00"
         elif len(sub_time) <= 10: sub_time = f"{sub_time} 12:00"
         s_submit = f"{display_app} {sub_time}".strip()
-    else: s_submit = "" 
+    else:
+        s_submit = "" 
 
     if stt in ["待複審", "已核准"]:
         if not fst_appr: fst_appr = clean_name(row.get("專案負責人"))
         if not fst_time: fst_time = f"{fallback_date} 13:00"
         elif len(fst_time) <= 10: fst_time = f"{fst_time} 13:00"
         s_first = f"{fst_appr} {fst_time}".strip()
-    else: s_first = ""
+    else:
+        s_first = ""
 
     if stt == "已核准":
         if not sec_appr: sec_appr = CFO_NAME
         if not sec_time: sec_time = f"{fallback_date} 14:00"
         elif len(sec_time) <= 10: sec_time = f"{sec_time} 14:00"
         s_second = f"{sec_appr} {sec_time}".strip()
-    else: s_second = ""
+    else:
+        s_second = ""
 
     h = f'<div style="padding:40px;border:4px solid #000;background:#fff;color:#000;font-family:sans-serif;max-width:900px;margin:auto;">'
     h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;">Time Lab 時研國際設計股份有限公司</h1></div>'
     h += f'<div style="text-align:center;"><h2 style="margin-top:0px;margin-bottom:15px;font-size:24px;letter-spacing:5px;">請款單</h2></div>'
     h += f'<hr style="border-top: 3px solid black; margin-bottom: 3px;">'
     h += f'<hr style="border-top: 1px solid black; margin-top: 0px; margin-bottom: 20px;">'
+    
     h += '<table style="width:100%;border-collapse:collapse;font-size:15px;border:2px solid black;" border="1">'
     h += f'<tr><td width="15%" style="padding:8px;">單號</td><td width="35%" style="padding:8px;">{safe_str(row.get("單號"))}</td><td width="15%" style="padding:8px;">負責執行長</td><td width="35%" style="padding:8px;">{safe_str(row.get("專案負責人"))}</td></tr>'
     h += f'<tr><td style="padding:8px;">專案</td><td style="padding:8px;">{safe_str(row.get("專案名稱"))}</td><td style="padding:8px;">編號</td><td style="padding:8px;">{safe_str(row.get("專案編號"))}</td></tr>'
     h += f'<tr><td style="padding:8px;">申請人</td><td style="padding:8px;">{display_app}</td><td style="padding:8px;">廠商</td><td style="padding:8px;">{safe_str(row.get("請款廠商"))}</td></tr>'
     h += f'<tr><td style="padding:8px;">匯款帳戶</td><td colspan="3" style="padding:8px;">{safe_str(row.get("匯款帳戶"))}</td></tr>'
+    
     desc_html = data.get("desc","").replace("\n", "<br>")
     inv_str = f"發票/憑證: {safe_str(data.get('inv_no',''))}<br>" if safe_str(data.get('inv_no','')) else ""
     h += f'<tr><td style="padding:8px;">說明</td><td colspan="3" style="padding:8px;">{inv_str}{desc_html}</td></tr>'
+    
     cur = safe_str(row.get("幣別")) or "TWD"
     h += f'<tr><td colspan="3" align="right" style="padding:8px;">金額 (未稅)</td><td align="right" style="padding:8px;">{cur} {legacy_net:,}</td></tr>'
     h += f'<tr><td colspan="3" align="right" style="padding:8px;">稅額</td><td align="right" style="padding:8px;">{cur} {tax:,}</td></tr>'
     h += f'<tr><td colspan="3" align="right" style="padding:8px;">手續費</td><td align="right" style="padding:8px;">{cur} {fee:,}</td></tr>'
     h += f'<tr><td colspan="3" align="right" style="padding:8px;"><b>實付 / 請款總額</b></td><td align="right" style="padding:8px;"><b>{cur} {amt:,}</b></td></tr></table>'
+    
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
@@ -404,12 +453,14 @@ def render_upload_popover(container, r, prefix):
         if st.button("💾 儲存附件", key=f"{prefix}_b"):
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
             jd = parse_req_json(fresh_db.at[idx, "請款說明"])
+            
             if nf_acc: 
                 fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
                 jd["acc_name"] = nf_acc.name
             if nf_ims: 
                 fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
                 jd["ims_names"] = [f.name for f in nf_ims]
+            
             if nf_acc or nf_ims:
                 packed_desc = "[請款單資料]\n" + json.dumps(jd, ensure_ascii=False)
                 fresh_db.at[idx, "請款說明"] = packed_desc
@@ -480,45 +531,93 @@ if is_admin:
                 st.session_state.staff_df = s_df
                 st.success("人員新增成功")
                 st.rerun()
-            elif n in s_df["name"].values: st.error("人員已存在")
+            elif n in s_df["name"].values:
+                st.error("人員已存在")
 
     with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
         edited_staff = st.data_editor(
             st.session_state.staff_df[["name", "status", "line_uid"]], 
-            column_config={"name": st.column_config.TextColumn("姓名", disabled=True), "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])}, 
-            hide_index=True, key="req_staff_editor_admin"
+            column_config={
+                "name": st.column_config.TextColumn("姓名", disabled=True),
+                "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])
+            }, 
+            hide_index=True, 
+            key="req_staff_editor_admin"
         )
         if st.button("💾 儲存人員設定", key="req_save_staff_admin"):
             s_df = load_staff()
             for idx, row in edited_staff.iterrows():
-                s_df.at[idx, "status"] = row["status"]; s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
-            save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
+                s_df.at[idx, "status"] = row["status"]
+                s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
+            save_staff(s_df)
+            st.session_state.staff_df = s_df
+            st.rerun()
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
-if is_admin: menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
-else: menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
+if is_admin:
+    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
+else:
+    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
     
 menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
 
-if "req_prev_state_menu" not in st.session_state: st.session_state.req_prev_state_menu = menu
-if "req_prev_state_user" not in st.session_state: st.session_state.req_prev_state_user = st.session_state.user_id
+if "req_prev_state_menu" not in st.session_state:
+    st.session_state.req_prev_state_menu = menu
+if "req_prev_state_user" not in st.session_state:
+    st.session_state.req_prev_state_user = st.session_state.user_id
 
 if menu != st.session_state.req_prev_state_menu or st.session_state.user_id != st.session_state.req_prev_state_user:
-    st.session_state.req_view_id = None; st.session_state.req_print_id = None; st.session_state.req_edit_id = None
-    st.session_state.req_review_id = None # 清除簽核視窗狀態
-    st.session_state.req_prev_state_menu = menu; st.session_state.req_prev_state_user = st.session_state.user_id
+    st.session_state.req_view_id = None
+    st.session_state.req_print_id = None
+    st.session_state.req_edit_id = None
+    st.session_state.req_review_id = None 
+    st.session_state.req_prev_state_menu = menu
+    st.session_state.req_prev_state_user = st.session_state.user_id
     st.rerun()
 
-# ================= ★ 全域霸氣 Logo (針對手機版 RWD 優化) ★ =================
+# ================= ★ 終極修正 3：全域霸氣 Logo (RWD 完美自適應) ★ =================
 st.markdown("""
     <style>
-    .global-logo-container { text-align: center; margin-bottom: 25px; margin-top: 5px; }
-    .global-logo-en { font-size: 38px; font-weight: 500; font-family: "Times New Roman", Times, serif; color: #3E3024; }
-    .global-logo-tw { font-size: 32px; font-weight: 900; color: #2C3E50; letter-spacing: 1px; font-family: "Microsoft JhengHei", "PingFang TC", sans-serif; margin-left: 15px;}
+    .global-logo-container { 
+        width: 100%; 
+        text-align: center; 
+        margin-bottom: 25px; 
+        margin-top: 5px; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        gap: 15px; 
+        flex-wrap: wrap; 
+        box-sizing: border-box; 
+    }
+    .global-logo-en { 
+        font-size: clamp(24px, 5vw, 38px); /* 響應式縮放縮小字體 */
+        font-weight: 500; 
+        font-family: "Times New Roman", Times, serif; 
+        color: #3E3024; 
+        white-space: nowrap; 
+    }
+    .global-logo-tw { 
+        font-size: clamp(16px, 4vw, 32px); /* 響應式縮放縮小字體 */
+        font-weight: 900; 
+        color: #2C3E50; 
+        letter-spacing: 1px; 
+        font-family: "Microsoft JhengHei", "PingFang TC", sans-serif; 
+        word-break: break-word; 
+        line-height: 1.2;
+    }
     @media screen and (max-width: 768px) {
-        .global-logo-en { font-size: 26px !important; }
-        .global-logo-tw { font-size: 20px !important; margin-left: 0; display: block; margin-top: 5px;}
+        .global-logo-container { 
+            flex-direction: column; 
+            gap: 5px; 
+            padding: 0 5px; 
+        }
+        .global-logo-tw { 
+            margin-left: 0; 
+            display: block; 
+            text-align: center; 
+        }
     }
     </style>
     <div class='global-logo-container'>
@@ -527,8 +626,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-
-# ================= ★ 獨立全螢幕簽核視窗邏輯 ★ =================
+# ================= ★ 獨立全螢幕簽核視窗邏輯 (已縮小按鈕) ★ =================
 if st.session_state.get('req_review_id'):
     st.subheader(f"📝 簽核預覽視窗 - 單號: {st.session_state.req_review_id}")
     r_df = load_data()
@@ -541,14 +639,14 @@ if st.session_state.get('req_review_id'):
         r = r_df.iloc[0]
         sign_type = st.session_state.req_review_type
         
-        # 頂部控制按鈕列
-        c_btn1, c_btn2, c_btn3 = st.columns(3)
-        if c_btn1.button("⬅️ 關閉視窗", use_container_width=True): 
+        # 移除了 use_container_width=True 使按鈕不再填滿
+        c_btn1, c_btn2, c_btn3, _ = st.columns([1, 1, 1, 3])
+        if c_btn1.button("⬅️ 關閉視窗"): 
             st.session_state.req_review_id = None; st.rerun()
             
         can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active
         
-        if c_btn2.button("✅ 確認核准", disabled=not can_sign, use_container_width=True):
+        if c_btn2.button("✅ 確認核准", disabled=not can_sign):
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
             if sign_type == "EXE":
                 fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
@@ -560,7 +658,7 @@ if st.session_state.get('req_review_id'):
             st.session_state.req_review_id = None; st.rerun()
             
         if can_sign:
-            with c_btn3.popover("❌ 駁回單據", use_container_width=True):
+            with c_btn3.popover("❌ 駁回單據"):
                 reason = st.text_input("請輸入駁回原因")
                 if st.button("確認駁回", key="btn_rej_conf"):
                     fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
@@ -569,12 +667,11 @@ if st.session_state.get('req_review_id'):
                     save_data(fresh_db); st.success("已駁回！"); time.sleep(0.5)
                     st.session_state.req_review_id = None; st.rerun()
         else:
-            c_btn3.button("❌ 駁回單據", disabled=True, use_container_width=True)
+            c_btn3.button("❌ 駁回單據", disabled=True)
 
         st.divider()
         st.markdown(render_html(r), unsafe_allow_html=True)
         
-        # 附件預覽
         all_files = []
         acc_img = safe_str(r.get("帳戶影像Base64"))
         if acc_img: all_files.append(acc_img)
@@ -599,27 +696,88 @@ if st.session_state.get('req_review_id'):
 
 # 如果沒有進入簽核視窗，則顯示正常選單頁面
 else:
-    # --- 8. 簽核列表渲染模組 (★ 終極改版：套用表單狀態總覽樣式 (Dataframe)) ---
+    # --- 8. 簽核列表渲染模組 (★ 終極改版：套用表單狀態總覽樣式 (Dataframe) + 批次勾選功能) ---
     def render_signing_table(df_list, sign_type, is_history=False):
         if df_list.empty:
             st.info("目前無相關紀錄")
             return
         
-        # ★ 全部改為 Dataframe 顯示 (與表單總覽同風格)
-        display_df = df_list[["單號", "專案名稱", "申請人", "總金額", "狀態"]].copy()
+        # 建立一個有勾選框的 Dataframe
+        display_df = df_list[["單號", "專案名稱", "申請人", "總金額", "狀態", "專案負責人"]].copy()
         display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${x:,}")
-        st.dataframe(display_df, hide_index=True, use_container_width=True)
         
-        # 若在待簽核清單，提供下拉選擇單號並開啟視窗
         if not is_history:
+            # 插入一個名為「選擇」的布林值欄位 (預設為 False)
+            display_df.insert(0, "選擇", False)
+            
+            # 使用 st.data_editor 讓使用者可以勾選
+            edited_df = st.data_editor(
+                display_df,
+                column_config={"選擇": st.column_config.CheckboxColumn("選擇", default=False)},
+                disabled=["單號", "專案名稱", "申請人", "總金額", "狀態", "專案負責人"],
+                hide_index=True,
+                use_container_width=True,
+                key=f"editor_{sign_type}"
+            )
+            
+            # 取得被勾選的單號
+            selected_ids = edited_df[edited_df["選擇"] == True]["單號"].tolist()
+            
             st.markdown("---")
-            st.write("👉 **請選擇單號進行預覽與簽核：**")
-            col_sel, col_btn = st.columns([3, 1])
-            sel_id = col_sel.selectbox("待簽核單號", df_list["單號"].tolist(), label_visibility="collapsed")
-            if col_btn.button("📄 開啟預覽/簽核", use_container_width=True):
-                st.session_state.req_review_id = sel_id
+            # ★ 按鈕縮小版 (不再佔滿整行)
+            col_btn1, col_btn2, col_btn3, _ = st.columns([1, 1, 1.5, 2])
+            
+            # 批次核准
+            if col_btn1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=len(selected_ids)==0):
+                fresh_db = load_data()
+                success_count = 0
+                for sel_id in selected_ids:
+                    # 再次確認權限
+                    r = df_list[df_list["單號"] == sel_id].iloc[0]
+                    if (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active:
+                        idx = fresh_db[fresh_db["單號"]==sel_id].index[0]
+                        if sign_type == "EXE":
+                            fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
+                            sys_name = st.session_state.get('sys_choice', '請款單系統')
+                            send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{sel_id}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
+                        else:
+                            fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
+                        success_count += 1
+                if success_count > 0:
+                    save_data(fresh_db)
+                    st.success(f"成功核准 {success_count} 筆單據！")
+                    time.sleep(1); st.rerun()
+
+            # 批次駁回
+            with col_btn2.popover(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=len(selected_ids)==0):
+                reason = st.text_input("請統一輸入駁回原因", key=f"rej_batch_{sign_type}")
+                if st.button("確認批次駁回"):
+                    fresh_db = load_data()
+                    success_count = 0
+                    for sel_id in selected_ids:
+                        r = df_list[df_list["單號"] == sel_id].iloc[0]
+                        if (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active:
+                            idx = fresh_db[fresh_db["單號"]==sel_id].index[0]
+                            field_prefix = "初審" if sign_type == "EXE" else "複審"
+                            fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
+                            success_count += 1
+                    if success_count > 0:
+                        save_data(fresh_db)
+                        st.success(f"成功駁回 {success_count} 筆單據！")
+                        time.sleep(1); st.rerun()
+            
+            # 原本的預覽功能
+            st.write("👉 **或選擇單號進入專屬簽核視窗：**")
+            col_sel, col_btn_v, _ = st.columns([2, 1, 3])
+            sel_id_view = col_sel.selectbox("選擇預覽單號", df_list["單號"].tolist(), label_visibility="collapsed", key=f"sel_v_{sign_type}")
+            if col_btn_v.button("📄 開啟預覽/簽核"):
+                st.session_state.req_review_id = sel_id_view
                 st.session_state.req_review_type = sign_type
                 st.rerun()
+                
+        else:
+            # 歷史紀錄不顯示勾選框，只顯示資料
+            st.dataframe(display_df.drop(columns=["專案負責人"]), hide_index=True, use_container_width=True)
 
     # ================= 各頁面顯示邏輯 =================
     if menu == "1. 填寫申請單":
@@ -800,54 +958,41 @@ else:
         f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
         if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
         
-        # 申請追蹤清單也套用手機防呆縮小邏輯
+        # ★ 申請追蹤清單也改用 Dataframe 以防撐爆手機版面
         if is_admin:
-            cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
-            headers = ["申請單號", "專案名稱", "負責執行長", "申請人", "請款總金額", "狀態", "操作"]
+            display_my_df = my_db[["單號", "專案名稱", "申請人", "總金額", "狀態"]].copy()
         else:
-            cols = st.columns([1.2, 1.8, 1.0, 1.5, 2.5])
-            headers = ["單號", "專案名稱", "金額", "狀態", "操作"]
-
-        for c, h in zip(cols, headers): c.write(f"**{h}**")
+            display_my_df = my_db[["單號", "專案名稱", "總金額", "狀態"]].copy()
+            
+        display_my_df["總金額"] = display_my_df["總金額"].apply(lambda x: f"${x:,}")
+        st.dataframe(display_my_df, hide_index=True, use_container_width=True)
         
-        for i, r in my_db.iterrows():
-            if is_admin:
-                c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
-                c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
-                stt_col, btn_col = c[5], c[6]
-            else:
-                p_name = str(r["專案名稱"])
-                if len(p_name) > 8: p_name = p_name[:7] + "..."
-                c = st.columns([1.2, 1.8, 1.0, 1.5, 2.5])
-                c[0].write(r["單號"]); c[1].write(p_name); c[2].write(f"${clean_amount(r['總金額']):,}")
-                stt_col, btn_col = c[3], c[4]
+        st.write("👉 **請選擇單號進行預覽、列印、修改或提交：**")
+        col_s1, col_s2, col_s3, col_s4, col_s5, col_s6 = st.columns(6)
+        
+        sel_my_id = col_s1.selectbox("選擇單號", my_db["單號"].tolist(), label_visibility="collapsed", key="sel_my_id")
+        
+        if sel_my_id:
+            r_sel = my_db[my_db["單號"] == sel_my_id].iloc[0]
+            stt_raw = safe_str(r_sel.get("狀態")).strip()
+            app_name = safe_str(r_sel.get("申請人")); proxy_name = safe_str(r_sel.get("代申請人"))
+            is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
+            can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
             
-            stt_raw = safe_str(r.get("狀態")).strip()
-            stt_display = "已存檔未提交" if stt_raw in ["已儲存", "草稿"] else stt_raw
-            color = "blue" if stt_display == "已存檔未提交" else "orange" if "待" in stt_display else "green" if stt_display == "已核准" else "red" if stt_display == "已駁回" else "gray"
-            stt_col.markdown(f":{color}[**{stt_display}**]")
-            
-            with btn_col:
-                b1, b2, b3, b4, b5, b6 = st.columns(6)
-                app_name = safe_str(r.get("申請人")); proxy_name = safe_str(r.get("代申請人"))
-                is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
-                can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
-                
-                if b1.button("提交", key=f"s{i}", disabled=not can_edit):
-                    fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
-                    sys_name = st.session_state.get('sys_choice', '請款單系統')
-                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"); st.rerun()
-                if b2.button("預覽", key=f"v{i}"): st.session_state.req_view_id = r["單號"]; st.rerun()
-                if b3.button("列印", key=f"p{i}"): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
-                if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.req_edit_id = r["單號"]; st.rerun()
-                if can_edit:
-                    with b5.popover("刪除"):
-                        reason = st.text_input("刪除原因", key=f"d_res_{i}")
-                        if st.button("確認", key=f"d{i}"):
-                            if reason: fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); st.rerun()
-                            else: st.error("請輸入原因")
-                else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
-                render_upload_popover(b6, r, f"up{i}")
+            if col_s2.button("🚀 提交", disabled=not can_edit, use_container_width=True):
+                fdb = load_data(); fdb.loc[fdb["單號"]==sel_my_id, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
+                sys_name = st.session_state.get('sys_choice', '請款單系統')
+                send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{sel_my_id}\n專案名稱：{r_sel['專案名稱']}\n有一筆新的表單需要執行長 ({r_sel['專案負責人']}) 進行簽核！"); st.rerun()
+            if col_s3.button("📄 預覽", use_container_width=True): st.session_state.req_view_id = sel_my_id; st.rerun()
+            if col_s4.button("🖨️ 列印", use_container_width=True): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r_sel))}');w.print();w.close();</script>", height=0)
+            if col_s5.button("✏️ 修改", disabled=not can_edit, use_container_width=True): st.session_state.req_edit_id = sel_my_id; st.rerun()
+            if can_edit:
+                with col_s6.popover("❌ 刪除", use_container_width=True):
+                    reason = st.text_input("刪除原因", key=f"d_res_my")
+                    if st.button("確認刪除", key=f"d_my"):
+                        if reason: fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==sel_my_id, ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); st.rerun()
+                        else: st.error("請輸入原因")
+            else: col_s6.button("❌ 刪除", disabled=True, use_container_width=True)
 
     # ================= 頁面 2: 專案執行長簽核 =================
     elif menu == "2. 專案執行長簽核":
