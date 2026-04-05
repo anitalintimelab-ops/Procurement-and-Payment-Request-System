@@ -57,7 +57,7 @@ st.markdown("""
     color: black !important;
 }
 
-/* ★ 終極修正 1：側邊欄大頭貼 Upload 按鈕改深底白字，提示文字改黑字 */
+/* ★ 側邊欄大頭貼 Upload 按鈕改深底白字，提示文字改黑字 */
 [data-testid="stSidebar"] div[data-testid="stFileUploadDropzone"] p,
 [data-testid="stSidebar"] div[data-testid="stFileUploadDropzone"] small,
 [data-testid="stSidebar"] div[data-testid="stFileUploadDropzone"] span {
@@ -67,9 +67,9 @@ st.markdown("""
     background-color: #ffffff !important; 
 }
 [data-testid="stSidebar"] div[data-testid="stFileUploadDropzone"] button {
-    background-color: #374151 !important; /* 深灰色背景 */
+    background-color: #374151 !important; 
     border: none !important;
-    color: #ffffff !important; /* 白色字體 */
+    color: #ffffff !important; 
 }
 [data-testid="stSidebar"] div[data-testid="stFileUploadDropzone"] button * {
     color: #ffffff !important;
@@ -174,7 +174,7 @@ st.markdown("""
     color: #00BFFF !important;
 }
 
-/* 手機版直式排版 */
+/* 手機版直式排版拒絕放拉伸 */
 @media screen and (max-width: 768px) {
     .block-container { padding-top: 1rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
     div[data-testid="stHorizontalBlock"] { 
@@ -556,6 +556,7 @@ if is_admin:
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
+# ★ 權限過濾，非管理員僅顯示 1-4 項
 if is_admin:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
 else:
@@ -577,22 +578,23 @@ if menu != st.session_state.req_prev_state_menu or st.session_state.user_id != s
     st.session_state.req_prev_state_user = st.session_state.user_id
     st.rerun()
 
-# ================= ★ 終極修正 3：全域霸氣 Logo (RWD 完美自適應不變形) ★ =================
+# ================= ★ 全域霸氣 Logo (RWD 完美自適應) ★ =================
 st.markdown("""
     <style>
     .global-logo-container { 
         width: 100%; 
         text-align: center; 
-        margin-bottom: 20px; 
+        margin-bottom: 25px; 
         margin-top: 5px; 
         display: flex; 
         align-items: center; 
         justify-content: center; 
-        gap: 10px; 
+        gap: 15px; 
         flex-wrap: wrap; 
+        box-sizing: border-box; 
     }
     .global-logo-en { 
-        font-size: clamp(22px, 5vw, 38px); 
+        font-size: clamp(24px, 5vw, 38px); 
         font-weight: 500; 
         font-family: "Times New Roman", Times, serif; 
         color: #3E3024; 
@@ -604,17 +606,19 @@ st.markdown("""
         color: #2C3E50; 
         letter-spacing: 1px; 
         font-family: "Microsoft JhengHei", "PingFang TC", sans-serif; 
+        word-break: break-word; 
+        line-height: 1.2;
     }
     @media screen and (max-width: 768px) {
         .global-logo-container { 
-            flex-direction: column !important; 
-            gap: 2px !important; 
+            flex-direction: column; 
+            gap: 5px; 
+            padding: 0 5px; 
         }
         .global-logo-tw { 
+            margin-left: 0; 
             display: block; 
             text-align: center; 
-            white-space: normal; 
-            word-break: keep-all; 
         }
     }
     </style>
@@ -637,12 +641,13 @@ if st.session_state.get('req_review_id'):
         r = r_df.iloc[0]
         sign_type = st.session_state.req_review_type
         
-        # ★ 修正 2：按鈕不使用 use_container_width=True，並以緊湊比例排列
+        # 縮小按鈕比例
         c_btn1, c_btn2, c_btn3, _ = st.columns([1.5, 1.5, 1.5, 5])
         if c_btn1.button("⬅️ 關閉視窗"): 
             st.session_state.req_review_id = None; st.rerun()
             
-        can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active
+        # ★ 管理員 (Anita) 無法操作防呆
+        can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita"
         
         if c_btn2.button("✅ 確認核准", disabled=not can_sign):
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
@@ -694,7 +699,7 @@ if st.session_state.get('req_review_id'):
 
 # 如果沒有進入簽核視窗，則顯示正常選單頁面
 else:
-    # --- 8. 簽核列表渲染模組 (★ 終極改版：保留原列按鈕 + 左側勾選批次處理) ---
+    # --- 8. 簽核列表渲染模組 (★ 終極改版：保留最右側原本操作 + 新增左側批次勾選) ---
     def render_signing_table(df_list, sign_type, is_history=False):
         if df_list.empty:
             st.info("目前無相關紀錄")
@@ -709,15 +714,15 @@ else:
             
         if is_admin:
             if not is_history:
-                cols_header = st.columns([0.6, 1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
-                headers = ["勾選", "單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
+                cols_header = st.columns([0.6, 1.5, 2.5, 1.5, 1.5, 1.5])
+                headers = ["勾選", "單號", "專案名稱", "負責執行長", "申請人", "請款金額"]
             else:
                 cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                 headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
         else:
             if not is_history:
-                cols_header = st.columns([0.8, 1.2, 1.8, 1.0, 2.4])
-                headers = ["選取", "單號", "專案名稱", "金額", "操作"]
+                cols_header = st.columns([0.8, 1.5, 2.5, 1.5])
+                headers = ["選取", "單號", "專案名稱", "金額"]
             else:
                 cols_header = st.columns([1.2, 1.8, 1.0, 2.4])
                 headers = ["單號", "專案名稱", "金額", "操作"]
@@ -727,24 +732,23 @@ else:
         for i, r in df_list.iterrows():
             if is_admin:
                 if not is_history:
-                    c = st.columns([0.6, 1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
-                    is_chk = c[0].checkbox(" ", value=select_all, key=f"chk_{sign_type}_{i}", label_visibility="collapsed")
+                    c = st.columns([0.6, 1.5, 2.5, 1.5, 1.5, 1.5])
+                    # 強制利用 select_all 更新狀態
+                    is_chk = c[0].checkbox(" ", value=select_all, key=f"chk_{sign_type}_{i}_{select_all}", label_visibility="collapsed")
                     if is_chk: selected_ids.append(r["單號"])
                     c[1].write(r["單號"]); c[2].write(r["專案名稱"]); c[3].write(clean_name(r["專案負責人"])); c[4].write(r["申請人"]); c[5].write(f"${clean_amount(r['總金額']):,}")
-                    btn_c = c[6]
                 else:
                     c = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                     c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"${clean_amount(r['總金額']):,}")
                     btn_c = c[5]
             else:
                 if not is_history:
-                    c = st.columns([0.8, 1.2, 1.8, 1.0, 2.4])
-                    is_chk = c[0].checkbox(" ", value=select_all, key=f"chk_{sign_type}_{i}", label_visibility="collapsed")
+                    c = st.columns([0.8, 1.5, 2.5, 1.5])
+                    is_chk = c[0].checkbox(" ", value=select_all, key=f"chk_{sign_type}_{i}_{select_all}", label_visibility="collapsed")
                     if is_chk: selected_ids.append(r["單號"])
                     p_name = str(r["專案名稱"])
                     if len(p_name) > 8: p_name = p_name[:7] + "..."
                     c[1].write(r["單號"]); c[2].write(p_name); c[3].write(f"${clean_amount(r['總金額']):,}")
-                    btn_c = c[4]
                 else:
                     c = st.columns([1.2, 1.8, 1.0, 2.4])
                     p_name = str(r["專案名稱"])
@@ -752,48 +756,26 @@ else:
                     c[0].write(r["單號"]); c[1].write(p_name); c[2].write(f"${clean_amount(r['總金額']):,}")
                     btn_c = c[3]
                     
-            with btn_c:
-                # 100% 原汁原味的列按鈕
-                btn_col1, btn_col2, btn_col3 = st.columns(3)
-                if btn_col1.button("預覽", key=f"sv_{sign_type}_{i}_{is_history}"):
-                    st.session_state.req_view_id = r["單號"]; st.rerun()
-                
-                if not is_history:
-                    can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active
-                    if btn_col2.button("✅ 核准", key=f"sok_{sign_type}_{i}", disabled=not can_sign):
-                        fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                        if sign_type == "EXE":
-                            fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
-                            sys_name = st.session_state.get('sys_choice', '請款單系統')
-                            send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
-                        else:
-                            fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
-                        save_data(fresh_db); st.success("已核准！"); time.sleep(0.5); st.rerun()
-                    
-                    if can_sign:
-                        with btn_col3.popover("❌ 駁回"):
-                            reason = st.text_input("駁回原因", key=f"sr_{sign_type}_{i}")
-                            if st.button("確認", key=f"sno_{sign_type}_{i}"):
-                                fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-                                field_prefix = "初審" if sign_type == "EXE" else "複審"
-                                fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
-                                save_data(fresh_db); st.rerun()
-                    else:
-                        btn_col3.button("❌ 駁回", disabled=True, key=f"fake_d_{i}")
-                else:
+            if is_history:
+                with btn_c:
+                    btn_col1, btn_col2, btn_col3 = st.columns(3)
+                    if btn_col1.button("預覽", key=f"sv_{sign_type}_{i}_{is_history}"):
+                        st.session_state.req_view_id = r["單號"]; st.rerun()
                     btn_col2.write(f"[{r['狀態']}]")
 
         if not is_history:
             st.markdown("---")
-            # ★ 縮減批次操作按鈕與下拉選單大小
-            batch_c1, batch_c2, _ = st.columns([2, 2, 6])
+            batch_c1, batch_c2, _ = st.columns([2.5, 2.5, 5])
             
-            if batch_c1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=len(selected_ids)==0, key=f"bat_ok_{sign_type}"):
+            # ★ 管理員 (Anita) 無法操作防呆
+            is_disabled = (len(selected_ids) == 0) or (curr_name == "Anita")
+            
+            if batch_c1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=is_disabled, key=f"bat_ok_{sign_type}"):
                 fresh_db = load_data()
                 success_count = 0
                 for sel_id in selected_ids:
                     r_match = df_list[df_list["單號"] == sel_id].iloc[0]
-                    if (r_match["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active:
+                    if (r_match["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita":
                         idx = fresh_db[fresh_db["單號"]==sel_id].index[0]
                         if sign_type == "EXE":
                             fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
@@ -805,14 +787,14 @@ else:
                 if success_count > 0:
                     save_data(fresh_db); st.success(f"成功核准 {success_count} 筆單據！"); time.sleep(1); st.rerun()
 
-            with batch_c2.popover(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=len(selected_ids)==0):
+            with batch_c2.popover(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=is_disabled):
                 reason = st.text_input("請統一輸入駁回原因", key=f"rej_batch_{sign_type}")
                 if st.button("確認批次駁回"):
                     fresh_db = load_data()
                     success_count = 0
                     for sel_id in selected_ids:
                         r_match = df_list[df_list["單號"] == sel_id].iloc[0]
-                        if (r_match["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active:
+                        if (r_match["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita":
                             idx = fresh_db[fresh_db["單號"]==sel_id].index[0]
                             field_prefix = "初審" if sign_type == "EXE" else "複審"
                             fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
@@ -821,7 +803,7 @@ else:
                         save_data(fresh_db); st.success(f"成功駁回 {success_count} 筆單據！"); time.sleep(1); st.rerun()
                         
             st.write("👉 **或選擇單號進入專屬簽核視窗：**")
-            col_sel, col_btn_v, _ = st.columns([1.5, 1.5, 7])
+            col_sel, col_btn_v, _ = st.columns([2.5, 2.5, 5])
             sel_id_view = col_sel.selectbox("選擇預覽單號", df_list["單號"].tolist(), label_visibility="collapsed", key=f"sel_v_{sign_type}")
             if col_btn_v.button("📄 開啟預覽/簽核"):
                 st.session_state.req_review_id = sel_id_view
