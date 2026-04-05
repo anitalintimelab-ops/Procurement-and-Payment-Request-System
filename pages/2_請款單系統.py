@@ -39,6 +39,30 @@ st.markdown("""
     color: white !important;
 }
 
+/* ★ 修正 1：管理員區塊 / 修改密碼 (Expander) 點開後維持紫色底、白字 */
+[data-testid="stSidebar"] [data-testid="stExpander"] div[role="button"] {
+    background-color: transparent !important;
+    border: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] div[data-testid="stExpanderDetails"] {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border-radius: 10px;
+    padding: 10px;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] p, 
+[data-testid="stSidebar"] [data-testid="stExpander"] span, 
+[data-testid="stSidebar"] [data-testid="stExpander"] div[role="button"] * {
+    color: white !important;
+}
+
+/* ★ 修正 2：更改大頭貼的 Upload 文字改為黑色 */
+[data-testid="stSidebar"] .stFileUploader * {
+    color: #1E293B !important; 
+}
+[data-testid="stSidebar"] .stFileUploader div[data-testid="stText"] {
+    color: #1E293B !important; 
+}
+
 /* 「目前系統」標籤，直接白字 */
 [data-testid="stSidebar"] code {
     background: transparent !important;
@@ -50,7 +74,7 @@ st.markdown("""
     box-shadow: none !important;
 }
 
-/* 側邊欄按鈕 (如：登出系統)，變成淺綠色，字體黑色 */
+/* 側邊欄一般按鈕 (包含登出)，淺綠色，字體黑色 */
 [data-testid="stSidebar"] .stButton > button {
     background-color: #9DC350 !important; 
     border: none !important;
@@ -67,10 +91,6 @@ st.markdown("""
     background-color: #8bb340 !important; 
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
-}
-[data-testid="stSidebar"] .stButton > button:hover,
-[data-testid="stSidebar"] .stButton > button:hover * {
-    color: black !important;
 }
 
 /* 側邊欄 Logo 文字 */
@@ -133,28 +153,39 @@ st.markdown("""
     color: #00BFFF !important;
 }
 
-/* ★ 手機版防呆與縮減間距終極版 (徹底解決欄位無限拉伸問題) */
+/* ★ 修正 3：手機版直式「拒絕放大」終極鎖定版 */
 @media screen and (max-width: 768px) {
-    .block-container { padding-top: 1rem !important; padding-left: 0.3rem !important; padding-right: 0.3rem !important; }
-    table { word-wrap: break-word !important; font-size: 13px !important; }
-    th, td { padding: 5px !important; }
+    .block-container { padding-top: 1rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
+    
     div[data-testid="stHorizontalBlock"] { 
         flex-wrap: nowrap !important; 
         overflow-x: auto !important; 
         padding-bottom: 5px; 
-        gap: 4px !important; /* 縮減區塊間隙 */
-        justify-content: flex-start !important; /* 強制靠左對齊，不均分多餘空間 */
+        gap: 0px !important; /* 拔除所有間隙 */
+        justify-content: flex-start !important; 
     }
+    
+    /* 強制每一欄只能剛好包住內容，不准放大 */
     div[data-testid="column"] { 
-        flex: 0 0 auto !important; /* ★ 絕對禁止欄位自動彈性放大 */
+        flex: 0 0 auto !important; 
         width: auto !important; 
-        min-width: max-content !important; /* 寬度剛好包住裡面的字就好 */
-        padding: 0 4px !important; 
+        max-width: fit-content !important; 
+        min-width: 0 !important; 
+        padding: 0 2px !important; 
     }
+    
+    /* 縮小文字，嚴格禁止文字換行，確保寬度被極致壓縮 */
+    div[data-testid="column"] p {
+        font-size: 13px !important;
+        white-space: nowrap !important;
+        margin-bottom: 0 !important;
+    }
+    
+    /* 按鈕極致壓縮 */
     .stButton > button {
-        padding: 2px 6px !important;
-        font-size: 12px !important;
-        min-height: 32px !important;
+        padding: 2px 4px !important;
+        font-size: 11px !important;
+        min-height: 28px !important;
     }
 }
 </style>
@@ -949,7 +980,7 @@ elif menu == "5. 請款狀態/系統設定":
     st.subheader("⚙️ 請款狀態 / 系統設定")
     
     if is_admin:
-        # ★ GitHub 自動同步設定 UI ★
+        # ★ GitHub 自動同步設定 UI (加入防亂碼) ★
         with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
             st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
             g_token, g_repo = "", ""
