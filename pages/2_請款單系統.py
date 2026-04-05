@@ -27,7 +27,7 @@ st.markdown("""
     background: linear-gradient(180deg, #D9EAFB 0%, #EBDCF1 100%);
 }
 
-/* 側邊欄渐变和文字顏色 */
+/* 側邊欄渐變和文字顏色 */
 [data-testid="stSidebar"] {
     background: linear-gradient(135deg, #4A00E0 0%, #8E2DE2 100%), radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.1) 0%, transparent 40%);
     background-blend-mode: overlay;
@@ -57,22 +57,23 @@ st.markdown("""
     color: black !important;
 }
 
-/* ★ 終極修正 1：所有上傳區塊 (Upload) 包含側邊欄與主頁，文字與圖示絕對強制黑色 */
-div[data-testid="stFileUploader"] * {
+/* 所有上傳區塊 (Upload) 包含側邊欄與主頁，文字與圖示絕對強制黑色 */
+div[data-testid="stFileUploader"] *,
+div[data-testid="stFileUploadDropzone"] *,
+div[data-testid="stFileUploadDropzone"] span,
+div[data-testid="stFileUploadDropzone"] small,
+div[data-testid="stFileUploadDropzone"] p,
+div[data-testid="stFileUploadDropzone"] button {
     color: #000000 !important; 
     fill: #000000 !important;
 }
-div[data-testid="stFileUploader"] section {
+div[data-testid="stFileUploadDropzone"] {
     background-color: #ffffff !important; 
 }
-div[data-testid="stFileUploader"] button {
+div[data-testid="stFileUploadDropzone"] button {
     background-color: #f0f2f6 !important;
     border: 1px solid #c0c4cc !important;
     color: #000000 !important;
-}
-div[data-testid="stFileUploader"] button * {
-    color: #000000 !important;
-    font-weight: bold !important;
 }
 
 /* 「目前系統」標籤，直接白字 */
@@ -695,79 +696,40 @@ if st.session_state.get('req_review_id'):
 
 # 如果沒有進入簽核視窗，則顯示正常選單頁面
 else:
-    # --- 8. 簽核列表渲染模組 (★ 終極改版：取消右側操作，新增左側批次勾選) ---
+    # --- 8. 簽核列表渲染模組 (★ 終極改版：表單式 Dataframe 顯示 + 左側勾選框) ---
     def render_signing_table(df_list, sign_type, is_history=False):
         if df_list.empty:
             st.info("目前無相關紀錄")
             return
         
-        selected_ids = []
-        select_all = False
-        
         # ★ Anita 無法勾選防呆設定
         chk_disabled = (curr_name == "Anita")
         
         if not is_history:
+            # 加入全選按鈕
             col_all, _ = st.columns([1, 9])
-            # ★ 綁定動態 Key 強制觸發全選狀態，Anita 不能選
             select_all = col_all.checkbox("☑️ 全選", key=f"sel_all_{sign_type}", disabled=chk_disabled)
             
-        if not is_history:
-            if is_admin:
-                cols_header = st.columns([0.6, 1.5, 2.5, 1.5, 1.5, 1.5])
-                headers = ["勾選", "單號", "專案名稱", "負責執行長", "申請人", "請款金額"] # ★ 移除操作欄
-            else:
-                cols_header = st.columns([0.8, 1.5, 2.5, 1.5])
-                headers = ["選取", "單號", "專案名稱", "金額"] # ★ 移除操作欄
-        else:
-            # 歷史紀錄維持原樣
-            if is_admin:
-                cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
-                headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
-            else:
-                cols_header = st.columns([1.2, 1.8, 1.0, 2.4])
-                headers = ["單號", "專案名稱", "金額", "操作"]
-                
-        for c, h in zip(cols_header, headers): c.write(f"**{h}**")
-        
-        for i, r in df_list.iterrows():
-            if not is_history:
-                if is_admin:
-                    c = st.columns([0.6, 1.5, 2.5, 1.5, 1.5, 1.5])
-                    # ★ 使用單號做 Key 綁定全選，Anita 不能選
-                    is_chk = c[0].checkbox(" ", value=select_all, key=f"chk_{sign_type}_{r['單號']}_{select_all}", label_visibility="collapsed", disabled=chk_disabled)
-                    if is_chk: selected_ids.append(r["單號"])
-                    c[1].write(r["單號"]); c[2].write(r["專案名稱"]); c[3].write(clean_name(r["專案負責人"])); c[4].write(r["申請人"]); c[5].write(f"${clean_amount(r['總金額']):,}")
-                else:
-                    c = st.columns([0.8, 1.5, 2.5, 1.5])
-                    # ★ 使用單號做 Key 綁定全選，Anita 不能選
-                    is_chk = c[0].checkbox(" ", value=select_all, key=f"chk_{sign_type}_{r['單號']}_{select_all}", label_visibility="collapsed", disabled=chk_disabled)
-                    if is_chk: selected_ids.append(r["單號"])
-                    p_name = str(r["專案名稱"])
-                    if len(p_name) > 8: p_name = p_name[:7] + "..."
-                    c[1].write(r["單號"]); c[2].write(p_name); c[3].write(f"${clean_amount(r['總金額']):,}")
-            else:
-                # 歷史紀錄維持原樣
-                if is_admin:
-                    c = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
-                    c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"${clean_amount(r['總金額']):,}")
-                    btn_c = c[5]
-                else:
-                    c = st.columns([1.2, 1.8, 1.0, 2.4])
-                    p_name = str(r["專案名稱"])
-                    if len(p_name) > 8: p_name = p_name[:7] + "..."
-                    c[0].write(r["單號"]); c[1].write(p_name); c[2].write(f"${clean_amount(r['總金額']):,}")
-                    btn_c = c[3]
-                    
-                with btn_c:
-                    btn_col1, btn_col2, btn_col3 = st.columns(3)
-                    if btn_col1.button("預覽", key=f"sv_{sign_type}_{r['單號']}_{is_history}"):
-                        st.session_state.req_view_id = r["單號"]; st.rerun()
-                    btn_col2.write(f"[{r['狀態']}]")
+            # 準備 Dataframe
+            display_df = df_list[["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式"]].copy()
+            display_df.insert(0, "選擇", select_all) # 第一欄插入選擇狀態
+            display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${clean_amount(x):,}")
+            
+            # 渲染可編輯的 Dataframe (保留原始風格且可勾選)
+            edited_df = st.data_editor(
+                display_df,
+                column_config={"選擇": st.column_config.CheckboxColumn("選擇", default=False, disabled=chk_disabled)},
+                disabled=["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式"],
+                hide_index=True,
+                use_container_width=True,
+                key=f"editor_{sign_type}_{select_all}" # 使用動態 key 確保全選能重新渲染
+            )
+            
+            # 抓出被勾選的單號清單
+            selected_ids = edited_df[edited_df["選擇"] == True]["單號"].tolist()
 
-        # 待簽核清單底部的操作按鈕
-        if not is_history:
             st.markdown("---")
+            # ★ 縮減批次操作按鈕與下拉選單大小
             batch_c1, batch_c2, _ = st.columns([2.5, 2.5, 5])
             
             # ★ 管理員 (Anita) 無法操作防呆：按鈕強制反灰
@@ -790,7 +752,6 @@ else:
                 if success_count > 0:
                     save_data(fresh_db); st.success(f"成功核准 {success_count} 筆單據！"); time.sleep(1); st.rerun()
 
-            # 針對 Popover 也能防護禁用
             if is_btn_disabled:
                 batch_c2.button(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=True, key=f"fake_rej_{sign_type}")
             else:
@@ -816,6 +777,35 @@ else:
                 st.session_state.req_review_id = sel_id_view
                 st.session_state.req_review_type = sign_type
                 st.rerun()
+                
+        else:
+            # ★ 歷史紀錄 100% 保持原樣 (包含原來的操作欄與預覽按鈕)
+            if is_admin:
+                cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
+                headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
+            else:
+                cols_header = st.columns([1.2, 1.8, 1.0, 2.4])
+                headers = ["單號", "專案名稱", "金額", "操作"]
+
+            for c, h in zip(cols_header, headers): c.write(f"**{h}**")
+
+            for i, r in df_list.iterrows():
+                if is_admin:
+                    c = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
+                    c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"${clean_amount(r['總金額']):,}")
+                    btn_c = c[5]
+                else:
+                    c = st.columns([1.2, 1.8, 1.0, 2.4])
+                    p_name = str(r["專案名稱"])
+                    if len(p_name) > 8: p_name = p_name[:7] + "..."
+                    c[0].write(r["單號"]); c[1].write(p_name); c[2].write(f"${clean_amount(r['總金額']):,}")
+                    btn_c = c[3]
+
+                with btn_c:
+                    btn_col1, btn_col2, btn_col3 = st.columns(3)
+                    if btn_col1.button("預覽", key=f"sv_{sign_type}_{r['單號']}_{is_history}"):
+                        st.session_state.req_view_id = r["單號"]; st.rerun()
+                    btn_col2.write(f"[{r['狀態']}]")
 
     # ================= 各頁面顯示邏輯 =================
     if menu == "1. 填寫申請單":
