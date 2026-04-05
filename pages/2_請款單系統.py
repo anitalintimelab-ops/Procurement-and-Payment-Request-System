@@ -531,93 +531,45 @@ if is_admin:
                 st.session_state.staff_df = s_df
                 st.success("人員新增成功")
                 st.rerun()
-            elif n in s_df["name"].values:
-                st.error("人員已存在")
+            elif n in s_df["name"].values: st.error("人員已存在")
 
     with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
         edited_staff = st.data_editor(
             st.session_state.staff_df[["name", "status", "line_uid"]], 
-            column_config={
-                "name": st.column_config.TextColumn("姓名", disabled=True),
-                "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])
-            }, 
-            hide_index=True, 
-            key="req_staff_editor_admin"
+            column_config={"name": st.column_config.TextColumn("姓名", disabled=True), "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])}, 
+            hide_index=True, key="req_staff_editor_admin"
         )
         if st.button("💾 儲存人員設定", key="req_save_staff_admin"):
             s_df = load_staff()
             for idx, row in edited_staff.iterrows():
-                s_df.at[idx, "status"] = row["status"]
-                s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
-            save_staff(s_df)
-            st.session_state.staff_df = s_df
-            st.rerun()
+                s_df.at[idx, "status"] = row["status"]; s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
+            save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
-if is_admin:
-    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
-else:
-    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
+if is_admin: menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
+else: menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
     
 menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
 
-if "req_prev_state_menu" not in st.session_state:
-    st.session_state.req_prev_state_menu = menu
-if "req_prev_state_user" not in st.session_state:
-    st.session_state.req_prev_state_user = st.session_state.user_id
+if "req_prev_state_menu" not in st.session_state: st.session_state.req_prev_state_menu = menu
+if "req_prev_state_user" not in st.session_state: st.session_state.req_prev_state_user = st.session_state.user_id
 
 if menu != st.session_state.req_prev_state_menu or st.session_state.user_id != st.session_state.req_prev_state_user:
-    st.session_state.req_view_id = None
-    st.session_state.req_print_id = None
-    st.session_state.req_edit_id = None
+    st.session_state.req_view_id = None; st.session_state.req_print_id = None; st.session_state.req_edit_id = None
     st.session_state.req_review_id = None 
-    st.session_state.req_prev_state_menu = menu
-    st.session_state.req_prev_state_user = st.session_state.user_id
+    st.session_state.req_prev_state_menu = menu; st.session_state.req_prev_state_user = st.session_state.user_id
     st.rerun()
 
-# ================= ★ 終極修正 3：全域霸氣 Logo (RWD 完美自適應) ★ =================
+# ================= ★ 終極修正 3：全域霸氣 Logo (RWD 響應式動態縮放) ★ =================
 st.markdown("""
     <style>
-    .global-logo-container { 
-        width: 100%; 
-        text-align: center; 
-        margin-bottom: 25px; 
-        margin-top: 5px; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center; 
-        gap: 15px; 
-        flex-wrap: wrap; 
-        box-sizing: border-box; 
-    }
-    .global-logo-en { 
-        font-size: clamp(24px, 5vw, 38px); /* 響應式縮放縮小字體 */
-        font-weight: 500; 
-        font-family: "Times New Roman", Times, serif; 
-        color: #3E3024; 
-        white-space: nowrap; 
-    }
-    .global-logo-tw { 
-        font-size: clamp(16px, 4vw, 32px); /* 響應式縮放縮小字體 */
-        font-weight: 900; 
-        color: #2C3E50; 
-        letter-spacing: 1px; 
-        font-family: "Microsoft JhengHei", "PingFang TC", sans-serif; 
-        word-break: break-word; 
-        line-height: 1.2;
-    }
+    .global-logo-container { width: 100%; text-align: center; margin-bottom: 25px; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap; box-sizing: border-box; }
+    .global-logo-en { font-size: clamp(26px, 6vw, 38px); font-weight: 500; font-family: "Times New Roman", Times, serif; color: #3E3024; white-space: nowrap; }
+    .global-logo-tw { font-size: clamp(18px, 4.5vw, 32px); font-weight: 900; color: #2C3E50; letter-spacing: 1px; font-family: "Microsoft JhengHei", "PingFang TC", sans-serif; word-break: break-word; line-height: 1.2;}
     @media screen and (max-width: 768px) {
-        .global-logo-container { 
-            flex-direction: column; 
-            gap: 5px; 
-            padding: 0 5px; 
-        }
-        .global-logo-tw { 
-            margin-left: 0; 
-            display: block; 
-            text-align: center; 
-        }
+        .global-logo-container { flex-direction: column; gap: 5px; padding: 0 10px; }
+        .global-logo-tw { margin-left: 0; display: block; text-align: center; }
     }
     </style>
     <div class='global-logo-container'>
@@ -626,7 +578,8 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# ================= ★ 獨立全螢幕簽核視窗邏輯 (已縮小按鈕) ★ =================
+
+# ================= ★ 獨立全螢幕簽核視窗邏輯 ★ =================
 if st.session_state.get('req_review_id'):
     st.subheader(f"📝 簽核預覽視窗 - 單號: {st.session_state.req_review_id}")
     r_df = load_data()
@@ -639,14 +592,13 @@ if st.session_state.get('req_review_id'):
         r = r_df.iloc[0]
         sign_type = st.session_state.req_review_type
         
-        # 移除了 use_container_width=True 使按鈕不再填滿
-        c_btn1, c_btn2, c_btn3, _ = st.columns([1, 1, 1, 3])
-        if c_btn1.button("⬅️ 關閉視窗"): 
+        c_btn1, c_btn2, c_btn3 = st.columns(3)
+        if c_btn1.button("⬅️ 關閉視窗", use_container_width=True): 
             st.session_state.req_review_id = None; st.rerun()
             
         can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active
         
-        if c_btn2.button("✅ 確認核准", disabled=not can_sign):
+        if c_btn2.button("✅ 確認核准", disabled=not can_sign, use_container_width=True):
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
             if sign_type == "EXE":
                 fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
@@ -658,7 +610,7 @@ if st.session_state.get('req_review_id'):
             st.session_state.req_review_id = None; st.rerun()
             
         if can_sign:
-            with c_btn3.popover("❌ 駁回單據"):
+            with c_btn3.popover("❌ 駁回單據", use_container_width=True):
                 reason = st.text_input("請輸入駁回原因")
                 if st.button("確認駁回", key="btn_rej_conf"):
                     fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
@@ -667,7 +619,7 @@ if st.session_state.get('req_review_id'):
                     save_data(fresh_db); st.success("已駁回！"); time.sleep(0.5)
                     st.session_state.req_review_id = None; st.rerun()
         else:
-            c_btn3.button("❌ 駁回單據", disabled=True)
+            c_btn3.button("❌ 駁回單據", disabled=True, use_container_width=True)
 
         st.divider()
         st.markdown(render_html(r), unsafe_allow_html=True)
@@ -696,88 +648,24 @@ if st.session_state.get('req_review_id'):
 
 # 如果沒有進入簽核視窗，則顯示正常選單頁面
 else:
-    # --- 8. 簽核列表渲染模組 (★ 終極改版：套用表單狀態總覽樣式 (Dataframe) + 批次勾選功能) ---
     def render_signing_table(df_list, sign_type, is_history=False):
         if df_list.empty:
             st.info("目前無相關紀錄")
             return
         
-        # 建立一個有勾選框的 Dataframe
-        display_df = df_list[["單號", "專案名稱", "申請人", "總金額", "狀態", "專案負責人"]].copy()
+        display_df = df_list[["單號", "專案名稱", "申請人", "總金額", "狀態"]].copy()
         display_df["總金額"] = display_df["總金額"].apply(lambda x: f"${x:,}")
+        st.dataframe(display_df, hide_index=True, use_container_width=True)
         
         if not is_history:
-            # 插入一個名為「選擇」的布林值欄位 (預設為 False)
-            display_df.insert(0, "選擇", False)
-            
-            # 使用 st.data_editor 讓使用者可以勾選
-            edited_df = st.data_editor(
-                display_df,
-                column_config={"選擇": st.column_config.CheckboxColumn("選擇", default=False)},
-                disabled=["單號", "專案名稱", "申請人", "總金額", "狀態", "專案負責人"],
-                hide_index=True,
-                use_container_width=True,
-                key=f"editor_{sign_type}"
-            )
-            
-            # 取得被勾選的單號
-            selected_ids = edited_df[edited_df["選擇"] == True]["單號"].tolist()
-            
             st.markdown("---")
-            # ★ 按鈕縮小版 (不再佔滿整行)
-            col_btn1, col_btn2, col_btn3, _ = st.columns([1, 1, 1.5, 2])
-            
-            # 批次核准
-            if col_btn1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=len(selected_ids)==0):
-                fresh_db = load_data()
-                success_count = 0
-                for sel_id in selected_ids:
-                    # 再次確認權限
-                    r = df_list[df_list["單號"] == sel_id].iloc[0]
-                    if (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active:
-                        idx = fresh_db[fresh_db["單號"]==sel_id].index[0]
-                        if sign_type == "EXE":
-                            fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
-                            sys_name = st.session_state.get('sys_choice', '請款單系統')
-                            send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{sel_id}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
-                        else:
-                            fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
-                        success_count += 1
-                if success_count > 0:
-                    save_data(fresh_db)
-                    st.success(f"成功核准 {success_count} 筆單據！")
-                    time.sleep(1); st.rerun()
-
-            # 批次駁回
-            with col_btn2.popover(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=len(selected_ids)==0):
-                reason = st.text_input("請統一輸入駁回原因", key=f"rej_batch_{sign_type}")
-                if st.button("確認批次駁回"):
-                    fresh_db = load_data()
-                    success_count = 0
-                    for sel_id in selected_ids:
-                        r = df_list[df_list["單號"] == sel_id].iloc[0]
-                        if (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active:
-                            idx = fresh_db[fresh_db["單號"]==sel_id].index[0]
-                            field_prefix = "初審" if sign_type == "EXE" else "複審"
-                            fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
-                            success_count += 1
-                    if success_count > 0:
-                        save_data(fresh_db)
-                        st.success(f"成功駁回 {success_count} 筆單據！")
-                        time.sleep(1); st.rerun()
-            
-            # 原本的預覽功能
-            st.write("👉 **或選擇單號進入專屬簽核視窗：**")
-            col_sel, col_btn_v, _ = st.columns([2, 1, 3])
-            sel_id_view = col_sel.selectbox("選擇預覽單號", df_list["單號"].tolist(), label_visibility="collapsed", key=f"sel_v_{sign_type}")
-            if col_btn_v.button("📄 開啟預覽/簽核"):
-                st.session_state.req_review_id = sel_id_view
+            st.write("👉 **請選擇單號進行預覽與簽核：**")
+            col_sel, col_btn = st.columns([3, 1])
+            sel_id = col_sel.selectbox("待簽核單號", df_list["單號"].tolist(), label_visibility="collapsed")
+            if col_btn.button("📄 開啟預覽/簽核", use_container_width=True):
+                st.session_state.req_review_id = sel_id
                 st.session_state.req_review_type = sign_type
                 st.rerun()
-                
-        else:
-            # 歷史紀錄不顯示勾選框，只顯示資料
-            st.dataframe(display_df.drop(columns=["專案負責人"]), hide_index=True, use_container_width=True)
 
     # ================= 各頁面顯示邏輯 =================
     if menu == "1. 填寫申請單":
@@ -958,41 +846,54 @@ else:
         f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
         if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
         
-        # ★ 申請追蹤清單也改用 Dataframe 以防撐爆手機版面
+        # 申請追蹤清單也套用手機防呆縮小邏輯
         if is_admin:
-            display_my_df = my_db[["單號", "專案名稱", "申請人", "總金額", "狀態"]].copy()
+            cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
+            headers = ["申請單號", "專案名稱", "負責執行長", "申請人", "請款總金額", "狀態", "操作"]
         else:
-            display_my_df = my_db[["單號", "專案名稱", "總金額", "狀態"]].copy()
+            cols = st.columns([1.2, 1.8, 1.0, 1.5, 2.5])
+            headers = ["單號", "專案名稱", "金額", "狀態", "操作"]
+
+        for c, h in zip(cols, headers): c.write(f"**{h}**")
+        
+        for i, r in my_db.iterrows():
+            if is_admin:
+                c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
+                c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
+                stt_col, btn_col = c[5], c[6]
+            else:
+                p_name = str(r["專案名稱"])
+                if len(p_name) > 8: p_name = p_name[:7] + "..."
+                c = st.columns([1.2, 1.8, 1.0, 1.5, 2.5])
+                c[0].write(r["單號"]); c[1].write(p_name); c[2].write(f"${clean_amount(r['總金額']):,}")
+                stt_col, btn_col = c[3], c[4]
             
-        display_my_df["總金額"] = display_my_df["總金額"].apply(lambda x: f"${x:,}")
-        st.dataframe(display_my_df, hide_index=True, use_container_width=True)
-        
-        st.write("👉 **請選擇單號進行預覽、列印、修改或提交：**")
-        col_s1, col_s2, col_s3, col_s4, col_s5, col_s6 = st.columns(6)
-        
-        sel_my_id = col_s1.selectbox("選擇單號", my_db["單號"].tolist(), label_visibility="collapsed", key="sel_my_id")
-        
-        if sel_my_id:
-            r_sel = my_db[my_db["單號"] == sel_my_id].iloc[0]
-            stt_raw = safe_str(r_sel.get("狀態")).strip()
-            app_name = safe_str(r_sel.get("申請人")); proxy_name = safe_str(r_sel.get("代申請人"))
-            is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
-            can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
+            stt_raw = safe_str(r.get("狀態")).strip()
+            stt_display = "已存檔未提交" if stt_raw in ["已儲存", "草稿"] else stt_raw
+            color = "blue" if stt_display == "已存檔未提交" else "orange" if "待" in stt_display else "green" if stt_display == "已核准" else "red" if stt_display == "已駁回" else "gray"
+            stt_col.markdown(f":{color}[**{stt_display}**]")
             
-            if col_s2.button("🚀 提交", disabled=not can_edit, use_container_width=True):
-                fdb = load_data(); fdb.loc[fdb["單號"]==sel_my_id, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
-                sys_name = st.session_state.get('sys_choice', '請款單系統')
-                send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{sel_my_id}\n專案名稱：{r_sel['專案名稱']}\n有一筆新的表單需要執行長 ({r_sel['專案負責人']}) 進行簽核！"); st.rerun()
-            if col_s3.button("📄 預覽", use_container_width=True): st.session_state.req_view_id = sel_my_id; st.rerun()
-            if col_s4.button("🖨️ 列印", use_container_width=True): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r_sel))}');w.print();w.close();</script>", height=0)
-            if col_s5.button("✏️ 修改", disabled=not can_edit, use_container_width=True): st.session_state.req_edit_id = sel_my_id; st.rerun()
-            if can_edit:
-                with col_s6.popover("❌ 刪除", use_container_width=True):
-                    reason = st.text_input("刪除原因", key=f"d_res_my")
-                    if st.button("確認刪除", key=f"d_my"):
-                        if reason: fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==sel_my_id, ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); st.rerun()
-                        else: st.error("請輸入原因")
-            else: col_s6.button("❌ 刪除", disabled=True, use_container_width=True)
+            with btn_col:
+                b1, b2, b3, b4, b5, b6 = st.columns(6)
+                app_name = safe_str(r.get("申請人")); proxy_name = safe_str(r.get("代申請人"))
+                is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
+                can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
+                
+                if b1.button("提交", key=f"s{i}", disabled=not can_edit):
+                    fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
+                    sys_name = st.session_state.get('sys_choice', '請款單系統')
+                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"); st.rerun()
+                if b2.button("預覽", key=f"v{i}"): st.session_state.req_view_id = r["單號"]; st.rerun()
+                if b3.button("列印", key=f"p{i}"): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
+                if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.req_edit_id = r["單號"]; st.rerun()
+                if can_edit:
+                    with b5.popover("刪除"):
+                        reason = st.text_input("刪除原因", key=f"d_res_{i}")
+                        if st.button("確認", key=f"d{i}"):
+                            if reason: fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); st.rerun()
+                            else: st.error("請輸入原因")
+                else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
+                render_upload_popover(b6, r, f"up{i}")
 
     # ================= 頁面 2: 專案執行長簽核 =================
     elif menu == "2. 專案執行長簽核":
