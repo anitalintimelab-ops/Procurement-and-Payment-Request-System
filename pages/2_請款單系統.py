@@ -7,34 +7,147 @@ import time
 import requests  
 import json
 import io
-import threading
+import threading # ★ 結合正式版功能：背景非同步執行引擎
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
+# ==========================================
+# 🎨 核心 CSS 魔法：仿照範例色彩主題 全版面美化 + 手機防呆
+# ==========================================
 st.markdown("""
 <style>
+/* 隱藏預設導覽列與防止 x 軸溢出 */
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
+
+/* 🎨 全新美化 1：仿照上傳範例色彩主題 */
+
+/* 整體背景漸變 (倣照 image_10.png) */
+.stApp {
+    background: linear-gradient(180deg, #D9EAFB 0%, #EBDCF1 100%);
+}
+
+/* 側邊欄渐變和文字顏色 (倣照 image_10.png 深色卡片，深藍到藍紫) */
+[data-testid="stSidebar"] {
+    background: linear-gradient(135deg, #4A00E0 0%, #8E2DE2 100%), radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.1) 0%, transparent 40%);
+    background-blend-mode: overlay;
+    color: white !important;
+}
+[data-testid="stSidebar"] * {
+    color: white !important;
+}
+
+/* ★ 修正 1：「目前系統」標籤，拿掉背景框，直接白字，解決滑鼠過去才顯示的問題 */
+[data-testid="stSidebar"] code {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    color: white !important;
+    padding: 0 !important;
+    font-size: 15px !important;
+    box-shadow: none !important;
+}
+
+/* ★ 修正 2：側邊欄按鈕 (如：登出系統)，變成淺綠色，字體黑色，解決懸停空白問題 */
+[data-testid="stSidebar"] .stButton > button {
+    background-color: #9DC350 !important; /* 仿照截圖的淺綠色 */
+    border: none !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+    transition: all 0.2s ease !important;
+}
+[data-testid="stSidebar"] .stButton > button, 
+[data-testid="stSidebar"] .stButton > button * {
+    color: black !important;
+    font-weight: 700 !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background-color: #8bb340 !important; /* 懸停時稍微加深的綠色 */
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover,
+[data-testid="stSidebar"] .stButton > button:hover * {
+    color: black !important;
+}
+
+/* 側邊欄 Logo 文字 */
+[data-testid="stSidebar"] .时研logo {
+    color: white !important;
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 20px;
+}
+/* 側邊欄導航項懸停高亮 (倣照 image_10.png 亮藍色) */
+[data-testid="stSidebarNav"] ul li div:hover {
+    background-color: rgba(0, 191, 255, 0.2);
+}
+
+/* 卡片與主要內容區域 (倣照 image_10.png 淺色卡片，半透明淡藍色，backdrop-filter) */
+[data-testid="stForm"], div.stExpander > div[role="button"], [data-testid="stDataFrame"] {
+    background-color: rgba(240, 244, 248, 0.8) !important;
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+/* 確保卡片文字顏色為深灰色 */
+[data-testid="stForm"] *, div.stExpander * {
+    color: #1E293B;
+}
+
+/* 輸入框質感 (倣照範例淺色質感，圓角、灰底、文字深灰色) */
+.stTextInput input, .stSelectbox div[data-baseweb="select BAS_Web BAS_Select BAS_Select-Input"], .stTextArea textarea, .stNumberInput input {
+    border-radius: 10px !important;
+    border: 1px solid #CBD5E1 !important;
+    background-color: rgba(224, 231, 255, 0.5) !important;
+    color: #1E293B !important;
+    transition: all 0.3s ease;
+}
+/* 我調整為半透明藍灰色背景 */
+.stTextInput input:focus, .stSelectbox div[data-baseweb="select BAS_Web BAS_Select BAS_Select-Input"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+    background-color: #ffffff !important;
+}
+
+/* 動態立體按鈕 (圓角、陰影、文字深灰色) */
+.stButton>button, .stFormSubmitButton>button, .stPopover>button {
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    border: 1px solid #3b82f6 !important;
+    background-color: #ffffff !important;
+    color: #00BFFF !important; /* 按鈕文字亮藍色，對應倣照範例高亮色 */
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+}
+/* 主要和次要行動按鈕統一風格。倣照範例亮藍色 */
+.stButton>button:hover, .stFormSubmitButton>button:hover, .stPopover>button:hover {
+    background-color: rgba(0, 191, 255, 0.1) !important;
+    border-color: #3b82f6 !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
+    color: #00BFFF !important;
+}
+
+/* ★ 手機版防呆保留原樣 */
 @media screen and (max-width: 768px) {
     .block-container { padding-top: 1.5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
     table { word-wrap: break-word !important; font-size: 13px !important; }
     th, td { padding: 5px !important; }
-    /* ★ 強制手機版所有分欄保持橫式，改為左右滑動避免上下堆疊誤按 */
-    div[data-testid="stHorizontalBlock"] {
-        flex-wrap: nowrap !important;
-        overflow-x: auto !important;
-        padding-bottom: 5px;
-    }
-    div[data-testid="column"] {
-        width: auto !important;
-        flex: 1 1 auto !important;
-        min-width: max-content !important;
-    }
+    div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 5px; }
+    div[data-testid="column"] { width: auto !important; flex: 1 1 auto !important; min-width: max-content !important; }
 }
 </style>
 """, unsafe_allow_html=True)
+
+# --- 側邊欄 Logo 文字 ---
+st.sidebar.markdown("<h2 class='时研logo'>時研國際設計股份有限公司</h2>", unsafe_allow_html=True)
+
 
 # --- 2. 路徑定位與 GitHub 金鑰設定 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,7 +156,7 @@ D_FILE = os.path.join(B_DIR, "database.csv")
 S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "online.csv")
 L_FILE = os.path.join(B_DIR, "line_credentials.txt") 
-G_FILE = os.path.join(B_DIR, "github_credentials.txt")
+G_FILE = os.path.join(B_DIR, "github_credentials.txt") # ★ 結合正式版功能
 
 P_FILE = os.path.join(B_DIR, "projects.csv")
 V_FILE = os.path.join(B_DIR, "vendors.csv")
@@ -52,7 +165,7 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- ★ 核心功能：GitHub 自動同步引擎 (Threading 背景不卡頓版) ★ ---
+# --- ★ 結合正式版功能：GitHub 自動同步引擎 (Threading 背景不卡頓版) ★ ---
 def _background_github_sync(filepath):
     """真正在背景執行的同步工作"""
     token, repo = "", ""
@@ -169,7 +282,7 @@ def load_data():
 def save_data(df):
     try: 
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
-        sync_to_github(D_FILE) # ★ 自動同步
+        sync_to_github(D_FILE) # ★ 結合正式版功能
     except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
 def load_staff():
@@ -179,7 +292,7 @@ def load_staff():
 
 def save_staff(df): 
     df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(S_FILE) # ★ 自動同步
+    sync_to_github(S_FILE) # ★ 結合正式版功能
 
 def load_projects():
     if not os.path.exists(P_FILE):
@@ -188,7 +301,7 @@ def load_projects():
 
 def save_projects(df):
     df.to_csv(P_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(P_FILE) # ★ 自動同步
+    sync_to_github(P_FILE) # ★ 結合正式版功能
 
 def load_vendors():
     if not os.path.exists(V_FILE):
@@ -197,7 +310,7 @@ def load_vendors():
 
 def save_vendors(df):
     df.to_csv(V_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(V_FILE) # ★ 自動同步
+    sync_to_github(V_FILE) # ★ 結合正式版功能
 
 # --- 4. 請款單資料打包解析器 ---
 def parse_req_json(desc_raw):
@@ -314,7 +427,8 @@ curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADM
 is_active = (st.session_state.user_status == "在職")
 
 # --- 7. 左側側邊欄 ---
-st.sidebar.markdown(f"**📌 目前系統：** `{st.session_state.sys_choice}`")
+# ★ 修正 1：移除原本包在 code ` ` 裡的標籤，確保配合 CSS 不會有怪異的框
+st.sidebar.markdown(f"**📌 目前系統：** {st.session_state.sys_choice}")
 st.sidebar.divider()
 
 avatar_b64 = ""
@@ -390,7 +504,12 @@ if is_admin:
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
-menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
+# ★ 本次修改重點：權限過濾，非管理員僅顯示 1-4 項
+if is_admin:
+    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
+else:
+    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
+    
 menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
 
 if "req_prev_state_menu" not in st.session_state:
@@ -812,6 +931,7 @@ elif menu == "5. 請款狀態/系統設定":
     st.title("⚙️ 請款狀態 / 系統設定")
     
     if is_admin:
+        # ★ GitHub 自動同步設定 UI (加入防亂碼) ★
         with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
             st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
             g_token, g_repo = "", ""
@@ -826,7 +946,8 @@ elif menu == "5. 請款狀態/系統設定":
             i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
             i_repo = st.text_input("GitHub 倉庫名稱 (格式: 帳號/倉庫名，例如 anitalin/timelab-ops)", value=g_repo)
             
-            if st.button("💾 測試連線並儲存設定"):
+            c_btn1, c_btn2 = st.columns([1, 1])
+            if c_btn1.button("💾 測試連線並儲存設定"):
                 clean_token = "".join(c for c in i_token if c.isascii()).strip()
                 clean_repo = "".join(c for c in i_repo if c.isascii()).strip()
                 
@@ -850,6 +971,18 @@ elif menu == "5. 請款狀態/系統設定":
                             st.error(f"❌ 連線被 GitHub 拒絕 (錯誤碼 {res.status_code})。請確認倉庫名稱是否有錯字，或 Token 是否有勾選 'repo' 權限。")
                     except Exception as e:
                         st.error(f"❌ 網路連線異常：{e}")
+
+            # ★ 解決舊資料沒上傳的終極按鈕 ★
+            st.markdown("---")
+            st.write("💡 **如果您的舊單據或人員密碼還沒上傳到 GitHub，請點擊下方按鈕強制備份：**")
+            if c_btn2.button("🚀 一鍵強制同步所有資料至 GitHub"):
+                with st.spinner("正在將所有資料（包含舊單據與密碼）傳送至 GitHub，請稍候..."):
+                    if os.path.exists(D_FILE): sync_to_github(D_FILE)
+                    if os.path.exists(S_FILE): sync_to_github(S_FILE)
+                    if os.path.exists(P_FILE): sync_to_github(P_FILE)
+                    if os.path.exists(V_FILE): sync_to_github(V_FILE)
+                    time.sleep(1.5) # 稍微等待背景執行
+                st.success("✅ 資料庫、人員密碼、專案與廠商資料已全部發送至 GitHub 同步！")
 
         # ★ 本次升級救援按鈕：歷史資料打撈重建 ★
         with st.expander("🧰 3. 專案與廠商資料庫 (備份、還原與重建)", expanded=False):
