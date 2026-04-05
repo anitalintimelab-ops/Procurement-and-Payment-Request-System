@@ -249,6 +249,7 @@ def get_line_credentials():
 def save_line_credentials(token, user_id):
     try:
         with open(L_FILE, "w", encoding="utf-8") as f: f.write(f"{token.strip()}\n{user_id.strip()}")
+        sync_to_github(L_FILE) # ★ 確保 LINE 設定也自動同步上 GitHub，防止睡醒不見
     except: pass
 
 def send_line_message(msg):
@@ -931,7 +932,7 @@ elif menu == "5. 請款狀態/系統設定":
     st.title("⚙️ 請款狀態 / 系統設定")
     
     if is_admin:
-        # ★ GitHub 自動同步設定 UI (加入防亂碼) ★
+        # ★ GitHub 自動同步設定 UI ★
         with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
             st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
             g_token, g_repo = "", ""
@@ -981,36 +982,10 @@ elif menu == "5. 請款狀態/系統設定":
                     if os.path.exists(S_FILE): sync_to_github(S_FILE)
                     if os.path.exists(P_FILE): sync_to_github(P_FILE)
                     if os.path.exists(V_FILE): sync_to_github(V_FILE)
-                    time.sleep(1.5) # 稍微等待背景執行
-                st.success("✅ 資料庫、人員密碼、專案與廠商資料已全部發送至 GitHub 同步！")
-
-        # ★ 本次升級救援按鈕：歷史資料打撈重建 ★
-        with st.expander("🧰 3. 專案與廠商資料庫 (備份、還原與重建)", expanded=False):
-            st.write("💡 **資料不見了怎麼辦？** 如果雲端重啟導致您之前建檔的廠商與專案消失，只要點擊下方按鈕，系統就會自動去「歷史表單 (database.csv)」裡面，把您曾經打過的專案跟廠商全部抓出來重建！")
-            if st.button("🪄 一鍵從歷史單據找回/重建專案與廠商"):
-                with st.spinner("正在從歷史單據中打撈資料..."):
-                    f_db = load_data()
-                    if not f_db.empty:
-                        # 找回專案
-                        p_data = f_db[["專案負責人", "專案名稱", "專案編號"]].drop_duplicates().dropna()
-                        p_data = p_data[(p_data["專案名稱"] != "") & (p_data["專案編號"] != "")]
-                        p_data = p_data.rename(columns={"專案負責人": "負責執行長"})
-                        old_p = load_projects()
-                        new_p = pd.concat([old_p, p_data]).drop_duplicates(subset=["專案名稱"]).reset_index(drop=True)
-                        save_projects(new_p)
-
-                        # 找回廠商
-                        v_data = f_db[["請款廠商", "匯款帳戶"]].drop_duplicates().dropna()
-                        v_data = v_data[(v_data["請款廠商"] != "")]
-                        old_v = load_vendors()
-                        new_v = pd.concat([old_v, v_data]).drop_duplicates(subset=["請款廠商"]).reset_index(drop=True)
-                        save_vendors(new_v)
-
-                        st.success("✅ 太棒了！已成功從歷史單據中找回您的專案與廠商名單，並自動備份到 GitHub！")
-                        time.sleep(2)
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ 目前歷史單據沒有資料，無法打撈。")
+                    if os.path.exists(L_FILE): sync_to_github(L_FILE) # ★ 確保 LINE 設定被強制上傳
+                    if os.path.exists(G_FILE): sync_to_github(G_FILE)
+                    time.sleep(2) # 稍微等待背景執行
+                st.success("✅ 資料庫、人員密碼、專案、廠商與「設定參數」已全部發送至 GitHub 同步！")
 
         st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。有設定 GitHub 自動備份則無須擔心！")
 
@@ -1048,8 +1023,8 @@ elif menu == "5. 請款狀態/系統設定":
             nu = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=cu)
             if st.button("💾 儲存 LINE 設定"): 
                 save_line_credentials(nt, nu)
-                st.success("LINE 推播設定已成功儲存並啟用！")
-                time.sleep(1)
+                st.success("LINE 推播設定已成功儲存並啟用！(並已同步至雲端)")
+                time.sleep(2) # ★ 等待背景同步完成
                 st.rerun()
         st.divider()
 
