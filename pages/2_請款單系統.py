@@ -14,7 +14,7 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：解決白字、按鈕與排版問題
+# 🎨 核心 CSS 魔法：終極解決文字空白與手機排版問題
 # ==========================================
 st.markdown("""
 <style>
@@ -37,26 +37,39 @@ st.markdown("""
     color: white !important;
 }
 
-/* ★ 終極修正 1：側邊欄展開區塊 (Expander) 標題列保持紫底白字 */
-[data-testid="stSidebar"] details summary {
+/* ★ 終極修正 1：側邊欄展開區塊 (Expander) 強制透明背景與白字 */
+[data-testid="stSidebar"] details,
+[data-testid="stSidebar"] details summary,
+[data-testid="stSidebar"] div[data-testid="stExpanderDetails"] {
     background-color: transparent !important;
-    color: white !important;
-}
-[data-testid="stSidebar"] details summary:hover {
-    background-color: rgba(255, 255, 255, 0.1) !important;
+    background: transparent !important;
+    border: none !important;
 }
 [data-testid="stSidebar"] details summary * {
     color: white !important;
 }
-
-/* ★ 終極修正 2：側邊欄大頭貼上傳 (Upload) 按鈕與文字強制黑色 */
-[data-testid="stSidebar"] .stFileUploader section * {
-    color: #1E293B !important; /* 強制深色字 */
+/* 針對展開內容區的文字強制白色 */
+[data-testid="stSidebar"] div[data-testid="stExpanderDetails"] p,
+[data-testid="stSidebar"] div[data-testid="stExpanderDetails"] label,
+[data-testid="stSidebar"] div[data-testid="stExpanderDetails"] span {
+    color: white !important;
 }
-[data-testid="stSidebar"] .stFileUploader section button {
+/* 但保護內部資料表 (Dataframe) 的文字，避免白底白字 */
+[data-testid="stSidebar"] [data-testid="stDataFrame"] * {
+    color: black !important;
+}
+
+/* ★ 終極修正 2：大頭貼上傳區塊 (Upload) 按鈕與圖示強制黑色 */
+[data-testid="stSidebar"] .stFileUploader * {
+    color: black !important;
+}
+[data-testid="stSidebar"] .stFileUploader button {
     background-color: #f0f2f6 !important;
-    color: #1E293B !important;
     border: 1px solid #c0c4cc !important;
+}
+[data-testid="stSidebar"] .stFileUploader svg {
+    fill: black !important;
+    color: black !important;
 }
 
 /* 「目前系統」標籤，直接白字 */
@@ -97,6 +110,7 @@ st.markdown("""
     text-align: center;
     margin-bottom: 20px;
 }
+/* 側邊欄導航項懸停高亮 */
 [data-testid="stSidebarNav"] ul li div:hover {
     background-color: rgba(0, 191, 255, 0.2);
 }
@@ -110,11 +124,12 @@ st.markdown("""
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
+/* 確保卡片文字顏色為深灰色 */
 [data-testid="stForm"] *, div.stExpander * {
     color: #1E293B;
 }
 
-/* 輸入框與按鈕質感 */
+/* 輸入框質感 */
 .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput input {
     border-radius: 10px !important;
     border: 1px solid #CBD5E1 !important;
@@ -127,6 +142,8 @@ st.markdown("""
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
 }
+
+/* 動態立體按鈕 */
 .stButton>button, .stFormSubmitButton>button, .stPopover>button {
     border-radius: 10px !important;
     font-weight: 600 !important;
@@ -144,34 +161,38 @@ st.markdown("""
     color: #00BFFF !important;
 }
 
-/* ★ 終極修正 3：手機版直式「拒絕欄位無限拉伸」 */
+/* ★ 終極修正 3：手機版直式「徹底拒絕欄位放大」，寬度緊貼文字 */
 @media screen and (max-width: 768px) {
     .block-container { padding-top: 1rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
     
-    /* 讓列 (Row) 的 flex 佈局失效，改用最原始的 inline-block 來阻止等比撐大 */
     div[data-testid="stHorizontalBlock"] { 
-        display: block !important; /* 打破 Flexbox 的撐大魔咒 */
-        white-space: nowrap !important; /* 強制不換行，允許橫向捲動 */
+        display: flex !important;
+        flex-direction: row !important; 
+        flex-wrap: nowrap !important; 
         overflow-x: auto !important; 
-        padding-bottom: 8px; 
+        padding-bottom: 5px; 
+        gap: 10px !important; 
+        justify-content: flex-start !important; 
     }
     
+    /* 拔除 Streamlit 的分配比例，強制欄位寬度僅與文字等寬 */
     div[data-testid="column"] { 
-        display: inline-block !important; /* 把欄位變成 inline，寬度由內容決定 */
-        width: auto !important; 
-        vertical-align: top !important; /* 對齊頂部 */
-        padding: 0 5px !important; /* 縮減留白 */
+        flex: 0 0 auto !important; 
+        width: max-content !important; 
+        min-width: 0 !important; 
+        padding: 0 !important; 
     }
     
     div[data-testid="column"] p {
         font-size: 13px !important;
+        white-space: nowrap !important; /* 強制文字不換行，確保不變形 */
         margin-bottom: 0 !important;
     }
     
     .stButton > button {
-        padding: 2px 4px !important;
-        font-size: 12px !important;
-        min-height: 28px !important;
+        padding: 2px 8px !important;
+        font-size: 13px !important;
+        min-height: 30px !important;
     }
 }
 </style>
@@ -196,7 +217,7 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- GitHub 自動同步引擎 ---
+# --- ★ 結合正式版功能：GitHub 自動同步引擎 (Threading 背景不卡頓版) ★ ---
 def _background_github_sync(filepath):
     token, repo = "", ""
     if os.path.exists(G_FILE):
@@ -207,34 +228,40 @@ def _background_github_sync(filepath):
                 repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
         except: pass
 
-    if not token or not repo or not os.path.exists(filepath): return
+    if not token or not repo or not os.path.exists(filepath): 
+        return
         
     try:
         filename = os.path.basename(filepath)
         url = f"https://api.github.com/repos/{repo}/contents/{filename}"
         headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+        
         r = requests.get(url, headers=headers, timeout=5)
         sha = r.json().get("sha") if r.status_code == 200 else None
         
-        with open(filepath, "rb") as f: content = base64.b64encode(f.read()).decode()
+        with open(filepath, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
             
         data = {"message": f"Auto sync {filename} from TimeLab System", "content": content}
         if sha: data["sha"] = sha
         requests.put(url, headers=headers, json=data, timeout=10)
-    except: pass 
+    except:
+        pass 
 
 def sync_to_github(filepath):
     threading.Thread(target=_background_github_sync, args=(filepath,), daemon=True).start()
 
 # --- 3. 基礎工具 ---
-def get_taiwan_time(): return (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')
+def get_taiwan_time(): 
+    return (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')
 
 def clean_amount(val):
     if pd.isna(val) or val is None or str(val).strip() == "": return 0
     try: return int(float(str(val).replace(",", "").replace("$", "").replace(" ", "")))
     except: return 0
 
-def clean_name(val): return str(val).strip().split(" ")[0] if pd.notna(val) and str(val).strip() != "" else ""
+def clean_name(val): 
+    return str(val).strip().split(" ")[0] if pd.notna(val) and str(val).strip() != "" else ""
 
 def safe_str(val): 
     if pd.isna(val) or val is None: return ""
@@ -246,7 +273,8 @@ def get_fallback_date(r):
     d = safe_str(r.get("日期")).replace("/", "-")
     if d: return d
     d = safe_str(r.get("單號"))[:8]
-    if len(d) == 8 and d.isdigit(): return f"{d[:4]}-{d[4:6]}-{d[6:]}"
+    if len(d) == 8 and d.isdigit():
+        return f"{d[:4]}-{d[4:6]}-{d[6:]}"
     return "2026-03-18"
 
 def get_online_users(curr_user):
@@ -299,7 +327,8 @@ def load_data():
         for c in ["總金額", "已請款金額", "尚未請款金額"]:
             df[c] = df[c].apply(clean_amount)
         return df[cols]
-    except: return pd.DataFrame(columns=cols)
+    except:
+        return pd.DataFrame(columns=cols)
 
 def save_data(df):
     try: 
@@ -519,7 +548,6 @@ if is_admin:
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
-# ★ 權限過濾，非管理員僅顯示 1-4 項
 if is_admin: menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
 else: menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
     
@@ -541,7 +569,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# --- 8. 簽核列表渲染模組 (★ 動態判斷與極致防呆縮小) ---
+# --- 8. 簽核列表渲染模組 ---
 def render_signing_table(df_list, sign_type, is_history=False):
     if df_list.empty:
         st.info("目前無相關紀錄")
@@ -551,7 +579,6 @@ def render_signing_table(df_list, sign_type, is_history=False):
         cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
         headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
     else:
-        # ★ 程式端縮減：只分 4 欄
         cols_header = st.columns([1.2, 1.8, 1.0, 2.0])
         headers = ["單號", "專案名稱", "金額", "操作"]
         
@@ -563,7 +590,6 @@ def render_signing_table(df_list, sign_type, is_history=False):
             c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"${clean_amount(r['總金額']):,}")
             btn_c = c[5]
         else:
-            # ★ 程式端暴力防呆：如果專案名稱過長，強制截斷，防止撐爆版面
             p_name = str(r["專案名稱"])
             if len(p_name) > 8: p_name = p_name[:7] + "..."
             
@@ -777,7 +803,6 @@ if menu == "1. 填寫申請單":
     f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
     if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
     
-    # ★ 追蹤清單也套用手機防呆縮小邏輯
     if is_admin:
         cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
         headers = ["申請單號", "專案名稱", "負責執行長", "申請人", "請款總金額", "狀態", "操作"]
