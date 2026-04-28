@@ -57,23 +57,15 @@ st.markdown("""
     color: black !important;
 }
 
-/* ★ 精準修復：只黑化文字與上傳雲朵，解除對 Excel/圖片 原生檔案圖示的黑化封印 */
-div[data-testid="stFileUploader"] label,
-div[data-testid="stFileUploader"] p,
-div[data-testid="stFileUploader"] span,
-div[data-testid="stFileUploader"] small {
+/* ★ 精準修復：只針對 Upload 區塊的文字與雲朵黑化，絕對避開檔案原生圖示 */
+div[data-testid="stFileUploadDropzone"] p,
+div[data-testid="stFileUploadDropzone"] span,
+div[data-testid="stFileUploadDropzone"] small {
     color: #000000 !important; 
 }
 div[data-testid="stFileUploadDropzone"] > div > svg {
     fill: #000000 !important; 
 }
-/* 確保已上傳檔案的原生圖示 (SVG) 不受干擾，還原 Excel 與圖片圖示 */
-div[data-testid="stUploadedFile"] svg,
-div[data-testid="stUploadedFile"] svg * {
-    fill: initial !important;
-    color: initial !important;
-}
-
 div[data-testid="stFileUploader"] section {
     background-color: #ffffff !important; 
 }
@@ -82,9 +74,11 @@ div[data-testid="stFileUploader"] button {
     border: 1px solid #c0c4cc !important;
     color: #000000 !important;
 }
-div[data-testid="stFileUploader"] button * {
-    color: #000000 !important;
-    font-weight: bold !important;
+/* 強制還原已上傳檔案的原生彩色圖示 (Excel/圖片) */
+div[data-testid="stUploadedFile"] svg,
+div[data-testid="stUploadedFile"] svg * {
+    fill: unset !important;
+    color: unset !important;
 }
 
 /* 「目前系統」標籤，直接白字 */
@@ -480,6 +474,7 @@ def render_html_with_attachments(row):
                         df_ex = pd.read_excel(io.BytesIO(raw))
                         html_table = df_ex.to_html(index=False).replace('\n', '')
                         
+                        # ★ 加入防止表格溢出、防跨頁切字的專屬 CSS
                         css_rules = "<style>.xls-tbl { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; } .xls-tbl th, .xls-tbl td { border: 1px solid #000; padding: 4px; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; word-break: break-all; } .xls-tbl th { background-color: #f0f0f0; } .xls-tbl tr { page-break-inside: avoid !important; }</style>"
                         html_table = html_table.replace('<table', f'{css_rules}<table class="xls-tbl"')
                         h += f"{html_table}<br><br>"
