@@ -442,7 +442,7 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
-# ★ 無干擾文字的列印版 HTML (修復 Excel 無法預覽問題)
+# ★ 終極無干擾 HTML：完全移除多餘文字，只列印最純粹的附件內容
 def render_html_with_attachments(row):
     h = render_html(row)
     all_files = []
@@ -471,8 +471,8 @@ def render_html_with_attachments(row):
                         html_table = html_table.replace('<th>', '<th style="padding:5px;background-color:#f0f0f0;">')
                         html_table = html_table.replace('<td>', '<td style="padding:5px;">')
                         h += f"{html_table}<br><br>"
-                    except:
-                        h += f"<div style='padding:10px; border:1px solid red; color:red;'>⚠️ Excel 解析失敗，請於系統內下載附件查看。</div><br><br>"
+                    except Exception as e:
+                        h += f"<div style='color:red;'>⚠️ Excel轉換列印失敗。請確保您的 GitHub `requirements.txt` 中已加入 `openpyxl` 套件。</div><br>"
                 else:
                     mime = "image/png" if raw.startswith(b'\x89PNG') else "image/jpeg"
                     h += f'<img src="data:{mime};base64,{pad}" style="max-width:100%; margin-bottom:20px; border:none;"><br><br>'
@@ -712,11 +712,10 @@ if st.session_state.get('req_review_id'):
                     st.session_state.req_review_id = None; st.rerun()
         else:
             c_btn3.button("❌ 駁回單據", disabled=True)
-
+            
         st.divider()
         st.markdown(render_html(r), unsafe_allow_html=True)
         
-        # 附件預覽 (加入 Excel 智慧防呆下載功能)
         all_files = []
         acc_img = safe_str(r.get("帳戶影像Base64"))
         if acc_img: all_files.append(acc_img)
@@ -728,19 +727,15 @@ if st.session_state.get('req_review_id'):
                 if c.startswith('data:'): c = c.split('base64,')[-1]
                 if c: all_files.append(c)
         if all_files:
-            st.write("#### 📎 附件內容預覽")
             for f_b64 in all_files:
                 try:
                     pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
                     raw = base64.b64decode(pad)
                     if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
-                        st.info("📊 偵測到 Excel 檔案：")
                         try:
                             st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
                         except:
-                            ext = "xlsx" if raw.startswith(b'PK\x03\x04') else "xls"
-                            dl_key = f"dl_rev_{hash(f_b64[:20])}"
-                            st.download_button("📥 點擊下載 Excel 附件", data=raw, file_name=f"attachment.{ext}", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=dl_key)
+                            st.error("⚠️ 無法預覽此 Excel。請確保 requirements.txt 包含 openpyxl。")
                     else: st.image(raw, use_container_width=True)
                 except Exception: pass 
 
@@ -881,7 +876,6 @@ else:
 
         db = load_data(); staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
         
-        # ★ 取得目前獨立的 Uploader Key
         up_key = st.session_state.req_uploader_key
         net_key = f"n_{up_key}"
         tax_key = f"t_{up_key}"
@@ -895,11 +889,10 @@ else:
                 legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
                 dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", ""), "acc_name": jd.get("acc_name", ""), "ims_names": jd.get("ims_names", [])})
 
-        # 初始化 Session State (讓手動修改不會被蓋掉)
+        # 初始化 Session State
         if net_key not in st.session_state: st.session_state[net_key] = int(dv["net_amt"])
         if tax_key not in st.session_state: st.session_state[tax_key] = int(dv["tax_amt"])
 
-        # 稅金自動換算邏輯 Callback
         def calc_tax():
             st.session_state[tax_key] = int(st.session_state[net_key] * 0.05)
 
@@ -923,7 +916,6 @@ else:
             cx1, cx2, cx3, cx4 = st.columns(4)
             curr = cx1.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
             
-            # ★ 結合 on_change 自動連動計算
             net_amt = cx2.number_input("金額 (未稅)", min_value=0, key=net_key, on_change=calc_tax)
             tax_amt = cx3.number_input("稅額", min_value=0, key=tax_key)
             cx4.text_input("總計金額 (未稅+稅額)", value=f"{int(net_amt) + int(tax_amt):,}", disabled=True)
@@ -1002,7 +994,7 @@ else:
                     if f_acc: b_acc = base64.b64encode(f_acc.getvalue()).decode(); acc_name_save = f_acc.name
                     else: b_acc = "" if del_acc else safe_str(dv["ab64"]); acc_name_save = "" if del_acc else dv["acc_name"]
 
-                    retained_ims = [img for i, img in enumerate(existing_ims) if i not in del_ims]
+                    retained_ims = [img for i, enumerate(existing_ims) if i not in del_ims]
                     safe_existing_names = dv["ims_names"] + [f"舊版憑證 {i+1}" for i in range(len(existing_ims) - len(dv["ims_names"]))]
                     retained_names = [name for i, name in enumerate(safe_existing_names[:len(existing_ims)]) if i not in del_ims]
                     new_ims_b64 = [base64.b64encode(f.getvalue()).decode() for f in f_ims] if f_ims else []
@@ -1262,7 +1254,7 @@ else:
         else:
             r = r_df.iloc[0]
             # ★ 移除預覽視窗的列印按鈕
-            if st.button("❌ 關閉預覽", use_container_width=True): st.session_state.req_view_id = None; st.rerun()
+            if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
             
@@ -1279,18 +1271,14 @@ else:
                     if c: all_files.append(c)
             
             if all_files:
-                st.write("#### 📎 附件內容預覽")
                 for f_b64 in all_files:
                     try:
                         pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
                         raw = base64.b64decode(pad)
                         if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
-                            st.info("📊 偵測到 Excel 檔案：")
                             try:
                                 st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
                             except:
-                                ext = "xlsx" if raw.startswith(b'PK\x03\x04') else "xls"
-                                dl_key = f"dl_prev_{hash(f_b64[:20])}"
-                                st.download_button("📥 點擊下載 Excel 附件", data=raw, file_name=f"attachment.{ext}", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=dl_key)
+                                st.error("⚠️ 無法預覽此 Excel。請確保 requirements.txt 包含 openpyxl。")
                         else: st.image(raw, use_container_width=True)
                     except Exception: pass
