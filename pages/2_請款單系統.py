@@ -442,7 +442,7 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
-# ★ 終極修正：專屬「附帶附件的列印版 HTML」
+# ★ 終極修正：專屬「無干擾文字的列印版 HTML」
 def render_html_with_attachments(row):
     h = render_html(row)
     all_files = []
@@ -459,8 +459,6 @@ def render_html_with_attachments(row):
 
     if all_files:
         h += '<div style="max-width:900px;margin:auto;padding-top:30px;page-break-before:always;">'
-        h += '<hr style="border-top: 2px dashed black; margin-bottom: 20px;">'
-        h += '<h2 style="text-align:center;">📎 附件內容清單</h2>'
         for idx, f_b64 in enumerate(all_files):
             try:
                 pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
@@ -471,10 +469,10 @@ def render_html_with_attachments(row):
                     html_table = html_table.replace('<table', '<table style="width:100%;border-collapse:collapse;font-size:14px;border:1px solid black;" border="1"')
                     html_table = html_table.replace('<th>', '<th style="padding:5px;background-color:#f0f0f0;">')
                     html_table = html_table.replace('<td>', '<td style="padding:5px;">')
-                    h += f"<h3>📄 附件 {idx+1} (Excel資料)</h3>{html_table}<br><br>"
+                    h += f"{html_table}<br><br>"
                 else:
                     mime = "image/png" if raw.startswith(b'\x89PNG') else "image/jpeg"
-                    h += f'<h3>🖼️ 附件 {idx+1} (圖片)</h3><img src="data:{mime};base64,{pad}" style="max-width:100%; margin-bottom:20px; border:1px solid #ccc;"><br><br>'
+                    h += f'<img src="data:{mime};base64,{pad}" style="max-width:100%; margin-bottom:20px; border:none;"><br><br>'
             except Exception:
                 pass
         h += '</div>'
@@ -683,10 +681,12 @@ if st.session_state.get('req_review_id'):
         r = r_df.iloc[0]
         sign_type = st.session_state.req_review_type
         
-        c_btn1, c_btn2, c_btn3, c_btn4 = st.columns([1.5, 1.5, 1.5, 2.5])
+        # 移除原先的 c_btn4 (列印存檔)
+        c_btn1, c_btn2, c_btn3, _ = st.columns([1.5, 1.5, 1.5, 5])
         if c_btn1.button("⬅️ 關閉視窗"): 
             st.session_state.req_review_id = None; st.rerun()
             
+        # ★ Anita 無法操作防呆
         can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita"
         
         if c_btn2.button("✅ 確認核准", disabled=not can_sign):
@@ -711,9 +711,6 @@ if st.session_state.get('req_review_id'):
                     st.session_state.req_review_id = None; st.rerun()
         else:
             c_btn3.button("❌ 駁回單據", disabled=True)
-            
-        if c_btn4.button("🖨️ 列印 / 存檔(PDF)"):
-            st.session_state.req_print_id = r["單號"]; st.rerun()
 
         st.divider()
         st.markdown(render_html(r), unsafe_allow_html=True)
@@ -748,9 +745,11 @@ else:
             st.info("目前無相關紀錄")
             return
         
+        # ★ Anita 無法勾選防呆設定
         chk_disabled = (curr_name == "Anita")
         
         if not is_history:
+            # ★ 待簽核清單：完美 Dataframe 化 (嚴格只保留單號、專案名稱、金額)
             col_all, _ = st.columns([1, 9])
             select_all = col_all.checkbox("☑️ 全選", key=f"sel_all_{sign_type}", disabled=chk_disabled)
             
@@ -773,6 +772,7 @@ else:
             st.markdown("---")
             batch_c1, batch_c2, _ = st.columns([2.5, 2.5, 5])
             
+            # ★ 管理員 (Anita) 無法操作防呆：按鈕強制反灰
             is_btn_disabled = (len(selected_ids) == 0) or (curr_name == "Anita")
             
             if batch_c1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=is_btn_disabled, key=f"bat_ok_{sign_type}"):
@@ -792,6 +792,7 @@ else:
                 if success_count > 0:
                     save_data(fresh_db); st.success(f"成功核准 {success_count} 筆單據！"); time.sleep(1); st.rerun()
 
+            # 針對 Popover 也能防護禁用
             if is_btn_disabled:
                 batch_c2.button(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=True, key=f"fake_rej_{sign_type}")
             else:
@@ -819,6 +820,7 @@ else:
                 st.rerun()
                 
         else:
+            # ★ 歷史紀錄維持原樣不動
             if is_admin:
                 cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                 headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
@@ -1239,9 +1241,7 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
-            col_v1, col_v2 = st.columns([1, 1])
-            if col_v1.button("❌ 關閉預覽", use_container_width=True): st.session_state.req_view_id = None; st.rerun()
-            if col_v2.button("🖨️ 列印 / 存檔(PDF)", use_container_width=True): st.session_state.req_print_id = r["單號"]; st.rerun()
+            if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
             
