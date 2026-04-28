@@ -57,23 +57,31 @@ st.markdown("""
     color: black !important;
 }
 
-/* ★ 精準修復 1：上傳區塊解除全域黑化，只針對文字變黑，還原 Excel/圖片原生彩色圖示 */
+/* ★ 檔案上傳區塊精準修復：只改變「未上傳」時的文字與雲朵顏色，絕不干擾已上傳的彩色圖示 */
 div[data-testid="stFileUploader"] section {
     background-color: #ffffff !important; 
 }
-div[data-testid="stFileUploader"] label,
 div[data-testid="stFileUploadDropzone"] p,
 div[data-testid="stFileUploadDropzone"] span,
 div[data-testid="stFileUploadDropzone"] small {
     color: #000000 !important; 
 }
-div[data-testid="stFileUploader"] button {
+div[data-testid="stFileUploadDropzone"] svg {
+    fill: #000000 !important; 
+}
+div[data-testid="stFileUploadDropzone"] button {
     background-color: #f0f2f6 !important;
     border: 1px solid #c0c4cc !important;
 }
-div[data-testid="stFileUploader"] button * {
+div[data-testid="stFileUploadDropzone"] button * {
     color: #000000 !important;
     font-weight: bold !important;
+}
+/* 確保已上傳檔案的文字是深色，避免在側邊欄被全域白字吃掉 */
+div[data-testid="stUploadedFile"] p,
+div[data-testid="stUploadedFile"] span,
+div[data-testid="stUploadedFile"] small {
+    color: #1E293B !important; 
 }
 
 /* 「目前系統」標籤，直接白字 */
@@ -152,7 +160,7 @@ div[data-testid="stFileUploader"] button * {
     background-color: #ffffff !important;
 }
 
-/* ★ 精準修復 2：側邊欄輸入框與下拉選單強制黑字與黑色箭頭，避免白底白字隱形 */
+/* 側邊欄輸入框與下拉選單強制黑字與黑色箭頭，避免白底白字隱形 */
 [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] *,
 [data-testid="stSidebar"] .stTextInput input,
 [data-testid="stSidebar"] .stSelectbox svg {
@@ -451,7 +459,6 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
-# ★ 終極無干擾 HTML：完全移除多餘文字，並加入防切割、強制均分寬度的 Excel 表格 CSS
 def render_html_with_attachments(row):
     h = render_html(row)
     all_files = []
@@ -1262,7 +1269,7 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
-            # ★ 移除預覽視窗右上角的列印按鈕，只留關閉預覽
+            # ★ 確保只有關閉預覽按鈕，不顯示列印存檔
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
