@@ -172,50 +172,28 @@ div[data-testid="stFileUploader"] button * {
     color: #00BFFF !important;
 }
 
-/* ★ 手機版直式排版 (終極緊緻防呆版) */
+/* 手機版直式排版拒絕拉伸 */
 @media screen and (max-width: 768px) {
-    /* 強制將頂部往下壓，保護 Logo 絕對不被裁切 */
-    .block-container { 
-        padding-top: 4.5rem !important; 
-        padding-left: 0.5rem !important; 
-        padding-right: 0.5rem !important; 
-    }
-    
-    /* 針對 4 欄以上 (也就是表格行)，強制不能換行且可以左右滑動 */
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(4)) { 
+    .block-container { padding-top: 1rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
+    div[data-testid="stHorizontalBlock"] { 
         display: flex !important;
         flex-direction: row !important; 
         flex-wrap: nowrap !important; 
         overflow-x: auto !important; 
         padding-bottom: 5px; 
-        gap: 8px !important; 
+        gap: 6px !important; 
         justify-content: flex-start !important; 
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(4)) > div[data-testid="column"] { 
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { 
         flex: 0 0 max-content !important; 
         width: max-content !important; 
         min-width: max-content !important; 
         max-width: max-content !important;
-        padding: 0 2px !important; 
+        padding: 0 !important; 
     }
-
-    /* ★ 針對 1~3 欄 (按鈕列、下拉選單列)，強制緊密貼齊、只空一兩格 */
-    div[data-testid="stHorizontalBlock"]:not(:has(> div[data-testid="column"]:nth-child(4))) {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: wrap !important; /* 允許換行以防破版 */
-        gap: 10px !important; /* ★ 這裡就是完美的「空一兩格」間距 */
-        justify-content: flex-start !important;
-    }
-    div[data-testid="stHorizontalBlock"]:not(:has(> div[data-testid="column"]:nth-child(4))) > div[data-testid="column"] {
-        flex: 0 0 auto !important; /* 絕對不允許自動放大 */
-        width: auto !important; /* 貼齊文字寬度 */
-        min-width: max-content !important;
-        padding: 0 !important;
-    }
-    
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: max-content !important; }
     div[data-testid="column"] p { font-size: 13px !important; white-space: nowrap !important; margin-bottom: 0 !important; }
-    .stButton > button { padding: 2px 8px !important; font-size: 13px !important; min-height: 28px !important; }
+    .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -464,6 +442,44 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
+# ★ 終極修正：專屬「附帶附件的列印版 HTML」
+def render_html_with_attachments(row):
+    h = render_html(row)
+    
+    all_files = []
+    acc_img = safe_str(row.get("帳戶影像Base64"))
+    if acc_img: all_files.append(acc_img)
+
+    req_img = safe_str(row.get("影像Base64"))
+    if req_img:
+        chunks = req_img.split('|') if '|' in req_img else req_img.split(',') if ',' in req_img else [req_img]
+        for chunk in chunks:
+            c = chunk.strip()
+            if c.startswith('data:'): c = c.split('base64,')[-1]
+            if c: all_files.append(c)
+
+    if all_files:
+        h += '<div style="max-width:900px;margin:auto;padding-top:30px;page-break-before:always;">'
+        h += '<hr style="border-top: 2px dashed black; margin-bottom: 20px;">'
+        h += '<h2 style="text-align:center;">📎 附件內容清單</h2>'
+        for idx, f_b64 in enumerate(all_files):
+            try:
+                pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
+                raw = base64.b64decode(pad)
+                if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
+                    df_ex = pd.read_excel(io.BytesIO(raw))
+                    html_table = df_ex.to_html(index=False).replace('\n', '')
+                    html_table = html_table.replace('<table', '<table style="width:100%;border-collapse:collapse;font-size:14px;border:1px solid black;" border="1"')
+                    html_table = html_table.replace('<th>', '<th style="padding:5px;background-color:#f0f0f0;">')
+                    html_table = html_table.replace('<td>', '<td style="padding:5px;">')
+                    h += f"<h3>📄 附件 {idx+1} (Excel資料)</h3>{html_table}<br><br>"
+                else:
+                    h += f'<h3>🖼️ 附件 {idx+1} (圖片)</h3><img src="data:image/jpeg;base64,{f_b64}" style="max-width:100%; margin-bottom:20px; border:1px solid #ccc;"><br><br>'
+            except Exception:
+                pass
+        h += '</div>'
+    return h
+
 def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
 
 def render_upload_popover(container, r, prefix):
@@ -654,7 +670,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# ================= ★ 獨立全螢幕簽核視窗邏輯 (已縮小按鈕) ★ =================
+# ================= ★ 獨立全螢幕簽核視窗邏輯 ★ =================
 if st.session_state.get('req_review_id'):
     st.subheader(f"📝 簽核預覽視窗 - 單號: {st.session_state.req_review_id}")
     r_df = load_data()
@@ -667,7 +683,7 @@ if st.session_state.get('req_review_id'):
         r = r_df.iloc[0]
         sign_type = st.session_state.req_review_type
         
-        c_btn1, c_btn2, c_btn3, _ = st.columns([1.5, 1.5, 1.5, 5])
+        c_btn1, c_btn2, c_btn3, c_btn4 = st.columns([1.5, 1.5, 1.5, 2.5])
         if c_btn1.button("⬅️ 關閉視窗"): 
             st.session_state.req_review_id = None; st.rerun()
             
@@ -696,6 +712,10 @@ if st.session_state.get('req_review_id'):
                     st.session_state.req_review_id = None; st.rerun()
         else:
             c_btn3.button("❌ 駁回單據", disabled=True)
+            
+        # ★ 預覽視窗新增：一鍵列印/存檔含附件
+        if c_btn4.button("🖨️ 列印 / 存檔(PDF)"):
+            st.session_state.req_print_id = r["單號"]; st.rerun()
 
         st.divider()
         st.markdown(render_html(r), unsafe_allow_html=True)
@@ -755,9 +775,9 @@ else:
             selected_ids = edited_df[edited_df["選擇"] == True]["單號"].tolist()
 
             st.markdown("---")
-            batch_c1, batch_c2 = st.columns([1, 1])
+            batch_c1, batch_c2, _ = st.columns([2.5, 2.5, 5])
             
-            # ★ 管理員 (Anita) 無法操作防呆
+            # ★ 管理員 (Anita) 無法操作防呆：按鈕強制反灰
             is_btn_disabled = (len(selected_ids) == 0) or (curr_name == "Anita")
             
             if batch_c1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=is_btn_disabled, key=f"bat_ok_{sign_type}"):
@@ -777,6 +797,7 @@ else:
                 if success_count > 0:
                     save_data(fresh_db); st.success(f"成功核准 {success_count} 筆單據！"); time.sleep(1); st.rerun()
 
+            # 針對 Popover 也能防護禁用
             if is_btn_disabled:
                 batch_c2.button(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=True, key=f"fake_rej_{sign_type}")
             else:
@@ -796,7 +817,7 @@ else:
                             save_data(fresh_db); st.success(f"成功駁回 {success_count} 筆單據！"); time.sleep(1); st.rerun()
                         
             st.write("👉 **或選擇單號進入專屬簽核視窗：**")
-            col_sel, col_btn_v = st.columns([3, 2])
+            col_sel, col_btn_v, _ = st.columns([2.5, 2.5, 5])
             sel_id_view = col_sel.selectbox("選擇預覽單號", df_list["單號"].tolist(), label_visibility="collapsed", key=f"sel_v_{sign_type}")
             if col_btn_v.button("📄 開啟預覽/簽核"):
                 st.session_state.req_review_id = sel_id_view
@@ -804,7 +825,7 @@ else:
                 st.rerun()
                 
         else:
-            # ★ 歷史紀錄維持原樣不動
+            # ★ 歷史紀錄維持原樣不動 (原本的 Columns 顯示與操作按鈕)
             if is_admin:
                 cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                 headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
@@ -1048,7 +1069,7 @@ else:
                     sys_name = st.session_state.get('sys_choice', '請款單系統')
                     send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"); st.rerun()
                 if b2.button("預覽", key=f"v{i}"): st.session_state.req_view_id = r["單號"]; st.rerun()
-                if b3.button("列印", key=f"p{i}"): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
+                if b3.button("列印", key=f"p{i}"): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html_with_attachments(r))}');w.print();w.close();</script>", height=0)
                 if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.req_edit_id = r["單號"]; st.rerun()
                 if can_edit:
                     with b5.popover("刪除"):
@@ -1205,7 +1226,7 @@ else:
         r_df = r_df[r_df["單號"]==st.session_state.req_print_id]
         if not r_df.empty:
             r = r_df.iloc[0]
-            st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html(r))}');w.print();w.close();</script>", height=0)
+            st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html_with_attachments(r))}');w.print();w.close();</script>", height=0)
         st.session_state.req_print_id = None
 
     if st.session_state.req_view_id:
@@ -1218,7 +1239,10 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
-            if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
+            col_v1, col_v2 = st.columns([1, 1])
+            if col_v1.button("❌ 關閉預覽", use_container_width=True): st.session_state.req_view_id = None; st.rerun()
+            if col_v2.button("🖨️ 列印 / 存檔(PDF)", use_container_width=True): st.session_state.req_print_id = r["單號"]; st.rerun()
+            
             st.markdown(render_html(r), unsafe_allow_html=True)
             
             all_files = []
