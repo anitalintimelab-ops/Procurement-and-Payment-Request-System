@@ -442,7 +442,7 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
-# ★ 終極修正：專屬「無干擾文字的列印版 HTML」
+# ★ 無干擾文字的列印版 HTML (修復 Excel 無法預覽問題)
 def render_html_with_attachments(row):
     h = render_html(row)
     all_files = []
@@ -464,12 +464,15 @@ def render_html_with_attachments(row):
                 pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
                 raw = base64.b64decode(pad)
                 if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
-                    df_ex = pd.read_excel(io.BytesIO(raw))
-                    html_table = df_ex.to_html(index=False).replace('\n', '')
-                    html_table = html_table.replace('<table', '<table style="width:100%;border-collapse:collapse;font-size:14px;border:1px solid black;" border="1"')
-                    html_table = html_table.replace('<th>', '<th style="padding:5px;background-color:#f0f0f0;">')
-                    html_table = html_table.replace('<td>', '<td style="padding:5px;">')
-                    h += f"{html_table}<br><br>"
+                    try:
+                        df_ex = pd.read_excel(io.BytesIO(raw))
+                        html_table = df_ex.to_html(index=False).replace('\n', '')
+                        html_table = html_table.replace('<table', '<table style="width:100%;border-collapse:collapse;font-size:14px;border:1px solid black;" border="1"')
+                        html_table = html_table.replace('<th>', '<th style="padding:5px;background-color:#f0f0f0;">')
+                        html_table = html_table.replace('<td>', '<td style="padding:5px;">')
+                        h += f"{html_table}<br><br>"
+                    except:
+                        h += f"<div style='padding:10px; border:1px solid red; color:red;'>⚠️ Excel 解析失敗，請於系統內下載附件查看。</div><br><br>"
                 else:
                     mime = "image/png" if raw.startswith(b'\x89PNG') else "image/jpeg"
                     h += f'<img src="data:{mime};base64,{pad}" style="max-width:100%; margin-bottom:20px; border:none;"><br><br>'
@@ -681,12 +684,10 @@ if st.session_state.get('req_review_id'):
         r = r_df.iloc[0]
         sign_type = st.session_state.req_review_type
         
-        # 移除原先的 c_btn4 (列印存檔)
         c_btn1, c_btn2, c_btn3, _ = st.columns([1.5, 1.5, 1.5, 5])
         if c_btn1.button("⬅️ 關閉視窗"): 
             st.session_state.req_review_id = None; st.rerun()
             
-        # ★ Anita 無法操作防呆
         can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita"
         
         if c_btn2.button("✅ 確認核准", disabled=not can_sign):
@@ -715,6 +716,7 @@ if st.session_state.get('req_review_id'):
         st.divider()
         st.markdown(render_html(r), unsafe_allow_html=True)
         
+        # 附件預覽 (加入 Excel 智慧防呆下載功能)
         all_files = []
         acc_img = safe_str(r.get("帳戶影像Base64"))
         if acc_img: all_files.append(acc_img)
@@ -733,7 +735,12 @@ if st.session_state.get('req_review_id'):
                     raw = base64.b64decode(pad)
                     if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
                         st.info("📊 偵測到 Excel 檔案：")
-                        st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
+                        try:
+                            st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
+                        except:
+                            ext = "xlsx" if raw.startswith(b'PK\x03\x04') else "xls"
+                            dl_key = f"dl_rev_{hash(f_b64[:20])}"
+                            st.download_button("📥 點擊下載 Excel 附件", data=raw, file_name=f"attachment.{ext}", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=dl_key)
                     else: st.image(raw, use_container_width=True)
                 except Exception: pass 
 
@@ -745,11 +752,9 @@ else:
             st.info("目前無相關紀錄")
             return
         
-        # ★ Anita 無法勾選防呆設定
         chk_disabled = (curr_name == "Anita")
         
         if not is_history:
-            # ★ 待簽核清單：完美 Dataframe 化 (嚴格只保留單號、專案名稱、金額)
             col_all, _ = st.columns([1, 9])
             select_all = col_all.checkbox("☑️ 全選", key=f"sel_all_{sign_type}", disabled=chk_disabled)
             
@@ -772,7 +777,6 @@ else:
             st.markdown("---")
             batch_c1, batch_c2, _ = st.columns([2.5, 2.5, 5])
             
-            # ★ 管理員 (Anita) 無法操作防呆：按鈕強制反灰
             is_btn_disabled = (len(selected_ids) == 0) or (curr_name == "Anita")
             
             if batch_c1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=is_btn_disabled, key=f"bat_ok_{sign_type}"):
@@ -792,7 +796,6 @@ else:
                 if success_count > 0:
                     save_data(fresh_db); st.success(f"成功核准 {success_count} 筆單據！"); time.sleep(1); st.rerun()
 
-            # 針對 Popover 也能防護禁用
             if is_btn_disabled:
                 batch_c2.button(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=True, key=f"fake_rej_{sign_type}")
             else:
@@ -820,7 +823,6 @@ else:
                 st.rerun()
                 
         else:
-            # ★ 歷史紀錄維持原樣不動
             if is_admin:
                 cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                 headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
@@ -878,6 +880,12 @@ else:
                     else: st.error("請填寫完整資訊")
 
         db = load_data(); staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
+        
+        # ★ 取得目前獨立的 Uploader Key
+        up_key = st.session_state.req_uploader_key
+        net_key = f"n_{up_key}"
+        tax_key = f"t_{up_key}"
+        
         dv = {"app": curr_name, "pn": "", "pi": "", "exe": staffs[0], "net_amt": 0, "tax_amt": 0, "desc": "", "ib64": "", "cur": "TWD", "ab64":"", "vdr":"", "acc":"", "pay":"匯款(扣30手續費)", "inv_no":"", "acc_name": "", "ims_names": []}
         
         if st.session_state.req_edit_id:
@@ -886,6 +894,14 @@ else:
                 r = match_r.iloc[0]; jd = parse_req_json(r["請款說明"])
                 legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
                 dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", ""), "acc_name": jd.get("acc_name", ""), "ims_names": jd.get("ims_names", [])})
+
+        # 初始化 Session State (讓手動修改不會被蓋掉)
+        if net_key not in st.session_state: st.session_state[net_key] = int(dv["net_amt"])
+        if tax_key not in st.session_state: st.session_state[tax_key] = int(dv["tax_amt"])
+
+        # 稅金自動換算邏輯 Callback
+        def calc_tax():
+            st.session_state[tax_key] = int(st.session_state[net_key] * 0.05)
 
         with st.container():
             c1, c2, c3, c4 = st.columns(4)
@@ -906,8 +922,10 @@ else:
             
             cx1, cx2, cx3, cx4 = st.columns(4)
             curr = cx1.selectbox("幣別", ["TWD", "USD", "EUR"], index=["TWD", "USD", "EUR"].index(dv["cur"]) if dv["cur"] in ["TWD", "USD", "EUR"] else 0)
-            net_amt = cx2.number_input("金額 (未稅)", value=int(dv["net_amt"]), min_value=0)
-            tax_amt = cx3.number_input("稅額", value=int(dv["tax_amt"]), min_value=0)
+            
+            # ★ 結合 on_change 自動連動計算
+            net_amt = cx2.number_input("金額 (未稅)", min_value=0, key=net_key, on_change=calc_tax)
+            tax_amt = cx3.number_input("稅額", min_value=0, key=tax_key)
             cx4.text_input("總計金額 (未稅+稅額)", value=f"{int(net_amt) + int(tax_amt):,}", disabled=True)
             
             v_names = v_db["請款廠商"].unique().tolist(); v_options = [""] + v_names + ["➕ 手動輸入"]
@@ -928,7 +946,6 @@ else:
             desc = st.text_area("請款說明", value=dv["desc"])
             st.info("💡 **提示：系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，最終存檔總金額會自動扣除 30 元。**")
             
-            up_key = st.session_state.req_uploader_key
             f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
             f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"req_f_ims_{up_key}")
             
@@ -1070,7 +1087,10 @@ else:
                     js_code = f"<script>var w=window.open('');w.document.write('{html_str}');w.document.close();setTimeout(function(){{w.print();w.close();}}, 1000);</script>"
                     st.components.v1.html(js_code, height=0)
                     
-                if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.req_edit_id = r["單號"]; st.rerun()
+                if b4.button("修改", key=f"e{i}", disabled=not can_edit): 
+                    st.session_state.req_edit_id = r["單號"]
+                    st.session_state.req_uploader_key += 1
+                    st.rerun()
                 if can_edit:
                     with b5.popover("刪除"):
                         reason = st.text_input("刪除原因", key=f"d_res_{i}")
@@ -1241,7 +1261,8 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
-            if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
+            # ★ 移除預覽視窗的列印按鈕
+            if st.button("❌ 關閉預覽", use_container_width=True): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
             
@@ -1265,6 +1286,11 @@ else:
                         raw = base64.b64decode(pad)
                         if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
                             st.info("📊 偵測到 Excel 檔案：")
-                            st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
+                            try:
+                                st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
+                            except:
+                                ext = "xlsx" if raw.startswith(b'PK\x03\x04') else "xls"
+                                dl_key = f"dl_prev_{hash(f_b64[:20])}"
+                                st.download_button("📥 點擊下載 Excel 附件", data=raw, file_name=f"attachment.{ext}", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=dl_key)
                         else: st.image(raw, use_container_width=True)
                     except Exception: pass
