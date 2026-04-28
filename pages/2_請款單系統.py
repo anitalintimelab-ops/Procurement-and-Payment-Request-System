@@ -57,11 +57,23 @@ st.markdown("""
     color: black !important;
 }
 
-/* 所有上傳區塊 (Upload) 包含側邊欄與主頁，文字與圖示絕對強制黑色 */
-div[data-testid="stFileUploader"] * {
+/* ★ 精準修復：只黑化文字與上傳雲朵，解除對 Excel/圖片 原生檔案圖示的黑化封印 */
+div[data-testid="stFileUploader"] label,
+div[data-testid="stFileUploader"] p,
+div[data-testid="stFileUploader"] span,
+div[data-testid="stFileUploader"] small {
     color: #000000 !important; 
-    fill: #000000 !important;
 }
+div[data-testid="stFileUploadDropzone"] > div > svg {
+    fill: #000000 !important; 
+}
+/* 確保已上傳檔案的原生圖示 (SVG) 不受干擾，還原 Excel 與圖片圖示 */
+div[data-testid="stUploadedFile"] svg,
+div[data-testid="stUploadedFile"] svg * {
+    fill: initial !important;
+    color: initial !important;
+}
+
 div[data-testid="stFileUploader"] section {
     background-color: #ffffff !important; 
 }
@@ -468,7 +480,6 @@ def render_html_with_attachments(row):
                         df_ex = pd.read_excel(io.BytesIO(raw))
                         html_table = df_ex.to_html(index=False).replace('\n', '')
                         
-                        # ★ 加入防止表格溢出、防跨頁切字的專屬 CSS
                         css_rules = "<style>.xls-tbl { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; } .xls-tbl th, .xls-tbl td { border: 1px solid #000; padding: 4px; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; word-break: break-all; } .xls-tbl th { background-color: #f0f0f0; } .xls-tbl tr { page-break-inside: avoid !important; }</style>"
                         html_table = html_table.replace('<table', f'{css_rules}<table class="xls-tbl"')
                         h += f"{html_table}<br><br>"
@@ -685,12 +696,10 @@ if st.session_state.get('req_review_id'):
         r = r_df.iloc[0]
         sign_type = st.session_state.req_review_type
         
-        # 移除原先的 c_btn4 (列印存檔)
         c_btn1, c_btn2, c_btn3, _ = st.columns([1.5, 1.5, 1.5, 5])
         if c_btn1.button("⬅️ 關閉視窗"): 
             st.session_state.req_review_id = None; st.rerun()
             
-        # ★ Anita 無法操作防呆
         can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita"
         
         if c_btn2.button("✅ 確認核准", disabled=not can_sign):
@@ -1256,7 +1265,7 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
-            # ★ 移除預覽視窗右上角的列印按鈕，只留關閉預覽
+            # ★ 確保只有關閉預覽按鈕，不顯示列印存檔
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
