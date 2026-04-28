@@ -684,6 +684,7 @@ if st.session_state.get('req_review_id'):
         r = r_df.iloc[0]
         sign_type = st.session_state.req_review_type
         
+        # ★ 移除預覽列印按鈕
         c_btn1, c_btn2, c_btn3, _ = st.columns([1.5, 1.5, 1.5, 5])
         if c_btn1.button("⬅️ 關閉視窗"): 
             st.session_state.req_review_id = None; st.rerun()
@@ -712,7 +713,7 @@ if st.session_state.get('req_review_id'):
                     st.session_state.req_review_id = None; st.rerun()
         else:
             c_btn3.button("❌ 駁回單據", disabled=True)
-            
+
         st.divider()
         st.markdown(render_html(r), unsafe_allow_html=True)
         
@@ -994,7 +995,7 @@ else:
                     if f_acc: b_acc = base64.b64encode(f_acc.getvalue()).decode(); acc_name_save = f_acc.name
                     else: b_acc = "" if del_acc else safe_str(dv["ab64"]); acc_name_save = "" if del_acc else dv["acc_name"]
 
-                    retained_ims = [img for i, enumerate(existing_ims) if i not in del_ims]
+                    retained_ims = [img for i, img in enumerate(existing_ims) if i not in del_ims]
                     safe_existing_names = dv["ims_names"] + [f"舊版憑證 {i+1}" for i in range(len(existing_ims) - len(dv["ims_names"]))]
                     retained_names = [name for i, name in enumerate(safe_existing_names[:len(existing_ims)]) if i not in del_ims]
                     new_ims_b64 = [base64.b64encode(f.getvalue()).decode() for f in f_ims] if f_ims else []
@@ -1253,7 +1254,7 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
-            # ★ 移除預覽視窗的列印按鈕
+            # ★ 移除預覽視窗的列印按鈕，只留關閉按鈕
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
