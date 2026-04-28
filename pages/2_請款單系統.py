@@ -57,28 +57,23 @@ st.markdown("""
     color: black !important;
 }
 
-/* ★ 精準修復：只針對 Upload 區塊的文字與雲朵黑化，絕對避開檔案原生圖示 */
+/* ★ 精準修復 1：上傳區塊解除全域黑化，只針對文字變黑，還原 Excel/圖片原生彩色圖示 */
+div[data-testid="stFileUploader"] section {
+    background-color: #ffffff !important; 
+}
+div[data-testid="stFileUploader"] label,
 div[data-testid="stFileUploadDropzone"] p,
 div[data-testid="stFileUploadDropzone"] span,
 div[data-testid="stFileUploadDropzone"] small {
     color: #000000 !important; 
 }
-div[data-testid="stFileUploadDropzone"] > div > svg {
-    fill: #000000 !important; 
-}
-div[data-testid="stFileUploader"] section {
-    background-color: #ffffff !important; 
-}
 div[data-testid="stFileUploader"] button {
     background-color: #f0f2f6 !important;
     border: 1px solid #c0c4cc !important;
-    color: #000000 !important;
 }
-/* 強制還原已上傳檔案的原生彩色圖示 (Excel/圖片) */
-div[data-testid="stUploadedFile"] svg,
-div[data-testid="stUploadedFile"] svg * {
-    fill: unset !important;
-    color: unset !important;
+div[data-testid="stFileUploader"] button * {
+    color: #000000 !important;
+    font-weight: bold !important;
 }
 
 /* 「目前系統」標籤，直接白字 */
@@ -155,6 +150,14 @@ div[data-testid="stUploadedFile"] svg * {
     border-color: #3b82f6 !important;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
+}
+
+/* ★ 精準修復 2：側邊欄輸入框與下拉選單強制黑字與黑色箭頭，避免白底白字隱形 */
+[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] *,
+[data-testid="stSidebar"] .stTextInput input,
+[data-testid="stSidebar"] .stSelectbox svg {
+    color: #1E293B !important;
+    fill: #1E293B !important;
 }
 
 .stButton>button, .stFormSubmitButton>button, .stPopover>button {
@@ -474,7 +477,6 @@ def render_html_with_attachments(row):
                         df_ex = pd.read_excel(io.BytesIO(raw))
                         html_table = df_ex.to_html(index=False).replace('\n', '')
                         
-                        # ★ 加入防止表格溢出、防跨頁切字的專屬 CSS
                         css_rules = "<style>.xls-tbl { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; } .xls-tbl th, .xls-tbl td { border: 1px solid #000; padding: 4px; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; word-break: break-all; } .xls-tbl th { background-color: #f0f0f0; } .xls-tbl tr { page-break-inside: avoid !important; }</style>"
                         html_table = html_table.replace('<table', f'{css_rules}<table class="xls-tbl"')
                         h += f"{html_table}<br><br>"
@@ -1260,7 +1262,7 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
-            # ★ 確保只有關閉預覽按鈕，不顯示列印存檔
+            # ★ 移除預覽視窗右上角的列印按鈕，只留關閉預覽
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
