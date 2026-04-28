@@ -445,7 +445,6 @@ def render_html(row):
 # ★ 終極修正：專屬「附帶附件的列印版 HTML」
 def render_html_with_attachments(row):
     h = render_html(row)
-    
     all_files = []
     acc_img = safe_str(row.get("帳戶影像Base64"))
     if acc_img: all_files.append(acc_img)
@@ -474,7 +473,8 @@ def render_html_with_attachments(row):
                     html_table = html_table.replace('<td>', '<td style="padding:5px;">')
                     h += f"<h3>📄 附件 {idx+1} (Excel資料)</h3>{html_table}<br><br>"
                 else:
-                    h += f'<h3>🖼️ 附件 {idx+1} (圖片)</h3><img src="data:image/jpeg;base64,{f_b64}" style="max-width:100%; margin-bottom:20px; border:1px solid #ccc;"><br><br>'
+                    mime = "image/png" if raw.startswith(b'\x89PNG') else "image/jpeg"
+                    h += f'<h3>🖼️ 附件 {idx+1} (圖片)</h3><img src="data:{mime};base64,{pad}" style="max-width:100%; margin-bottom:20px; border:1px solid #ccc;"><br><br>'
             except Exception:
                 pass
         h += '</div>'
@@ -687,7 +687,6 @@ if st.session_state.get('req_review_id'):
         if c_btn1.button("⬅️ 關閉視窗"): 
             st.session_state.req_review_id = None; st.rerun()
             
-        # ★ Anita 無法操作防呆
         can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita"
         
         if c_btn2.button("✅ 確認核准", disabled=not can_sign):
@@ -713,7 +712,6 @@ if st.session_state.get('req_review_id'):
         else:
             c_btn3.button("❌ 駁回單據", disabled=True)
             
-        # ★ 預覽視窗新增：一鍵列印/存檔含附件
         if c_btn4.button("🖨️ 列印 / 存檔(PDF)"):
             st.session_state.req_print_id = r["單號"]; st.rerun()
 
@@ -744,17 +742,15 @@ if st.session_state.get('req_review_id'):
 
 # 如果沒有進入簽核視窗，則顯示正常選單頁面
 else:
-    # --- 8. 簽核列表渲染模組 (★ 待簽核完美 Dataframe 化) ---
+    # --- 8. 簽核列表渲染模組 ---
     def render_signing_table(df_list, sign_type, is_history=False):
         if df_list.empty:
             st.info("目前無相關紀錄")
             return
         
-        # ★ Anita 無法勾選防呆設定
         chk_disabled = (curr_name == "Anita")
         
         if not is_history:
-            # ★ 待簽核清單：完美 Dataframe 化 (嚴格只保留單號、專案名稱、金額)
             col_all, _ = st.columns([1, 9])
             select_all = col_all.checkbox("☑️ 全選", key=f"sel_all_{sign_type}", disabled=chk_disabled)
             
@@ -777,7 +773,6 @@ else:
             st.markdown("---")
             batch_c1, batch_c2, _ = st.columns([2.5, 2.5, 5])
             
-            # ★ 管理員 (Anita) 無法操作防呆：按鈕強制反灰
             is_btn_disabled = (len(selected_ids) == 0) or (curr_name == "Anita")
             
             if batch_c1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=is_btn_disabled, key=f"bat_ok_{sign_type}"):
@@ -797,7 +792,6 @@ else:
                 if success_count > 0:
                     save_data(fresh_db); st.success(f"成功核准 {success_count} 筆單據！"); time.sleep(1); st.rerun()
 
-            # 針對 Popover 也能防護禁用
             if is_btn_disabled:
                 batch_c2.button(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=True, key=f"fake_rej_{sign_type}")
             else:
@@ -825,7 +819,6 @@ else:
                 st.rerun()
                 
         else:
-            # ★ 歷史紀錄維持原樣不動 (原本的 Columns 顯示與操作按鈕)
             if is_admin:
                 cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                 headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
@@ -1069,7 +1062,12 @@ else:
                     sys_name = st.session_state.get('sys_choice', '請款單系統')
                     send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"); st.rerun()
                 if b2.button("預覽", key=f"v{i}"): st.session_state.req_view_id = r["單號"]; st.rerun()
-                if b3.button("列印", key=f"p{i}"): st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html_with_attachments(r))}');w.print();w.close();</script>", height=0)
+                
+                if b3.button("列印", key=f"p{i}"): 
+                    html_str = clean_for_js(render_html_with_attachments(r))
+                    js_code = f"<script>var w=window.open('');w.document.write('{html_str}');w.document.close();setTimeout(function(){{w.print();w.close();}}, 1000);</script>"
+                    st.components.v1.html(js_code, height=0)
+                    
                 if b4.button("修改", key=f"e{i}", disabled=not can_edit): st.session_state.req_edit_id = r["單號"]; st.rerun()
                 if can_edit:
                     with b5.popover("刪除"):
@@ -1226,7 +1224,9 @@ else:
         r_df = r_df[r_df["單號"]==st.session_state.req_print_id]
         if not r_df.empty:
             r = r_df.iloc[0]
-            st.components.v1.html(f"<script>var w=window.open();w.document.write('{clean_for_js(render_html_with_attachments(r))}');w.print();w.close();</script>", height=0)
+            html_str = clean_for_js(render_html_with_attachments(r))
+            js_code = f"<script>var w=window.open('');w.document.write('{html_str}');w.document.close();setTimeout(function(){{w.print();w.close();}}, 1000);</script>"
+            st.components.v1.html(js_code, height=0)
         st.session_state.req_print_id = None
 
     if st.session_state.req_view_id:
