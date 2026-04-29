@@ -352,7 +352,6 @@ def read_csv_robust(filepath):
         except: continue
     return pd.DataFrame()
 
-# ★ 升級點：讀取時防呆補充所有缺少的欄位，避免 KeyError 崩潰
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
@@ -374,7 +373,6 @@ def save_data(df):
         sync_to_github(D_FILE) 
     except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
-# ★ 升級點 1：讀取人員時寫入角色 (role) 欄位與防呆預設值
 def load_staff():
     df = read_csv_robust(S_FILE)
     default_roles = {"Andy": "執行長", "Charles": "執行長&財務長", "Eason": "執行長", "Sunglin": "執行長", "Anita": "管理員"}
@@ -388,7 +386,6 @@ def load_staff():
             "line_uid": [""]*5
         })
     
-    # 確保所有必要欄位都在，避免 KeyError 崩潰
     if "role" not in df.columns: df["role"] = df["name"].apply(lambda x: default_roles.get(x, "使用者"))
     else: df["role"] = df.apply(lambda row: default_roles.get(row["name"], "使用者") if pd.isna(row.get("role")) or str(row.get("role")).strip() == "" else row["role"], axis=1)
     
@@ -522,7 +519,6 @@ def render_html_with_attachments(row):
                     try:
                         df_ex = pd.read_excel(io.BytesIO(raw))
                         html_table = df_ex.to_html(index=False).replace('\n', '')
-                        
                         css_rules = "<style>.xls-tbl { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; } .xls-tbl th, .xls-tbl td { border: 1px solid #000; padding: 4px; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; word-break: break-all; } .xls-tbl th { background-color: #f0f0f0; } .xls-tbl tr { page-break-inside: avoid !important; }</style>"
                         html_table = html_table.replace('<table', f'{css_rules}<table class="xls-tbl"')
                         h += f"{html_table}<br><br>"
@@ -562,24 +558,32 @@ def render_upload_popover(container, r, prefix):
 # --- 6. Session 初始化與防呆重載 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
 
-# ★ 強制記憶體更新機制：如果 session 裡沒有 staff_df，或是 staff_df 缺少新加入的 "role" 欄位，就強制重新讀取！
+# ★ 強制記憶體更新機制
 if 'staff_df' not in st.session_state: 
     st.session_state.staff_df = load_staff()
 else:
     if "role" not in st.session_state.staff_df.columns:
         st.session_state.staff_df = load_staff()
 
+# ★ 離職防護網：強制登出已被標註為「離職」的人員
+curr_name = st.session_state.user_id
+curr_user_info = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name]
+if not curr_user_info.empty and curr_user_info.iloc[0].get("status") == "離職":
+    st.error("🚫 您的帳號已被標註為「離職」，無法存取系統。")
+    time.sleep(2)
+    st.session_state.user_id = None
+    st.switch_page("app.py")
+    st.stop()
+
 for k in ['req_edit_id', 'req_last_id', 'req_view_id', 'req_print_id', 'req_last_msg', 'req_review_id', 'req_review_type']: 
     if k not in st.session_state: st.session_state[k] = None
 
 if 'req_uploader_key' not in st.session_state: st.session_state.req_uploader_key = 0
 
-curr_name = st.session_state.user_id
-
 # ★ 動態取得當前登入者的系統層級 (判定權限)
 curr_role = "使用者"
-if not st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].empty:
-    curr_role = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0].get("role", "使用者")
+if not curr_user_info.empty:
+    curr_role = curr_user_info.iloc[0].get("role", "使用者")
 
 is_admin = (curr_role == "管理員") or (curr_name in ADMINS)
 is_active = (st.session_state.user_status == "在職")
@@ -626,7 +630,6 @@ if is_admin:
             st.session_state.staff_df = s_df
             st.success(f"{reset_target} 密碼已重置")
             
-    # ★ 升級點 2：新增人員時，加入「系統層級」下拉選單
     with st.sidebar.expander("➕ 新增人員"):
         n = st.text_input("姓名", key="req_new_staff_name")
         new_role = st.selectbox("系統層級", ["使用者", "執行長", "執行長&財務長", "管理員"], key="req_new_staff_role")
@@ -642,7 +645,6 @@ if is_admin:
             elif n in s_df["name"].values:
                 st.error("人員已存在")
 
-    # ★ 升級點 3：管理員隨時從下拉選單調整現有人員的層級
     with st.sidebar.expander("⚙️ 人員設定 (狀態, 層級 & LINE ID)"):
         edited_staff = st.data_editor(
             st.session_state.staff_df[["name", "status", "role", "line_uid"]], 
@@ -947,13 +949,16 @@ else:
                         save_vendors(v_db); st.success(f"已存入 {new_v_name} 資料庫！"); time.sleep(1); st.rerun()
                     else: st.error("請填寫完整資訊")
 
-        db = load_data(); staffs = st.session_state.staff_df["name"].apply(clean_name).tolist()
+        db = load_data()
+        
+        # ★ 升級點 2：表單選單過濾，只顯示「在職」人員供選擇
+        active_staffs = st.session_state.staff_df[st.session_state.staff_df["status"] == "在職"]["name"].apply(clean_name).tolist()
         
         up_key = st.session_state.req_uploader_key
         net_key = f"n_{up_key}"
         tax_key = f"t_{up_key}"
         
-        dv = {"app": curr_name, "pn": "", "pi": "", "exe": staffs[0], "net_amt": 0, "tax_amt": 0, "desc": "", "ib64": "", "cur": "TWD", "ab64":"", "vdr":"", "acc":"", "pay":"匯款(扣30手續費)", "inv_no":"", "acc_name": "", "ims_names": []}
+        dv = {"app": curr_name, "pn": "", "pi": "", "exe": active_staffs[0] if active_staffs else "", "net_amt": 0, "tax_amt": 0, "desc": "", "ib64": "", "cur": "TWD", "ab64":"", "vdr":"", "acc":"", "pay":"匯款(扣30手續費)", "inv_no":"", "acc_name": "", "ims_names": []}
         
         if st.session_state.req_edit_id:
             match_r = db[db["單號"]==st.session_state.req_edit_id]
@@ -961,6 +966,12 @@ else:
                 r = match_r.iloc[0]; jd = parse_req_json(r["請款說明"])
                 legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
                 dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", ""), "acc_name": jd.get("acc_name", ""), "ims_names": jd.get("ims_names", [])})
+
+        # 為了避免舊單據是離職人員而當機，如果舊紀錄的人不在在職名單內，強制補回去顯示
+        app_options = active_staffs.copy()
+        if dv["app"] and dv["app"] not in app_options: app_options.append(dv["app"])
+        exe_options = active_staffs.copy()
+        if dv["exe"] and dv["exe"] not in exe_options: exe_options.append(dv["exe"])
 
         # 初始化 Session State
         if net_key not in st.session_state: st.session_state[net_key] = int(dv["net_amt"])
@@ -971,9 +982,9 @@ else:
 
         with st.container():
             c1, c2, c3, c4 = st.columns(4)
-            app_val = c1.selectbox("申請人", staffs, index=staffs.index(dv["app"]) if dv["app"] in staffs else 0) if curr_name == "Anita" else curr_name
+            app_val = c1.selectbox("申請人", app_options, index=app_options.index(dv["app"]) if dv["app"] in app_options else 0) if curr_name == "Anita" else curr_name
             if curr_name != "Anita": c1.text_input("申請人", value=app_val, disabled=True)
-            exe = c2.selectbox("負責執行長", staffs, index=staffs.index(dv["exe"]) if dv["exe"] in staffs else 0)
+            exe = c2.selectbox("負責執行長", exe_options, index=exe_options.index(dv["exe"]) if dv["exe"] in exe_options else 0)
             
             filtered_p = p_db[p_db["負責執行長"] == exe]
             p_names = filtered_p["專案名稱"].unique().tolist(); p_options = [""] + p_names + ["➕ 手動輸入"]
