@@ -73,24 +73,19 @@ div[data-testid="stFileUploadDropzone"] svg {
 }
 
 /* ========================================================= */
-/* ★ 終極絕殺：強制植入「微軟真實 Excel 彩色圖示」，徹底消滅黑黑一坨 */
+/* ★ 終極去黑化：直接把那坨黑色的底色拔除，將圖示染成微軟綠！ */
 /* ========================================================= */
-
-/* 1. 隱藏 Streamlit 原廠的圖示 */
-div[data-testid="stUploadedFile"] > div:first-child svg {
-    display: none !important;
-}
-/* 2. 強制將背景替換成微軟 Excel 的 SVG 向量圖形 */
+/* 1. 將原本深黑色的方塊，換成極淡的綠底（看起來像清爽的圖示底座） */
 div[data-testid="stUploadedFile"] > div:first-child {
-    background-color: transparent !important;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='%23185C37' d='M21,14L7,16v15l14,2V14z'/%3E%3Cpath fill='%2321A366' d='M21,14v19l20-2V16L21,14z'/%3E%3Cpath fill='%23107C41' d='M41,48H7c-2.2,0-4-1.8-4-4V4c0-2.2,1.8-4,4-4h34c2.2,0,4,1.8,4,4v40C45,46.2,43.2,48,41,48z'/%3E%3Cpath fill='%2333C481' d='M41,16H21v17h20V16z'/%3E%3Cpath fill='%23FFFFFF' d='M36.2,27.1l-3.3-5.2h-3l2.2,3.8c0.1,0.2,0.2,0.4,0.2,0.6c0,0.1-0.1,0.3-0.2,0.6l-2.4,4.2h3.1l2-3.6 c0.1-0.2,0.2-0.3,0.3-0.5c0.1,0.2,0.2,0.4,0.3,0.5l2.1,3.6h2.9l-3.5-5.3l3.2-4.9h-3L36.2,27.1z'/%3E%3C/svg%3E") !important;
-    background-size: 85% !important;
-    background-repeat: no-repeat !important;
-    background-position: center !important;
-    width: 36px !important;
-    height: 36px !important;
-    border-radius: 0 !important;
-    border: none !important;
+    background-color: #E8F5E9 !important;
+    background: #E8F5E9 !important;
+    border-radius: 8px !important;
+}
+/* 2. 讓裡面的檔案小標誌變成鮮豔的微軟 Excel 綠色 */
+div[data-testid="stUploadedFile"] > div:first-child svg {
+    display: block !important;
+    fill: #107C41 !important;
+    color: #107C41 !important;
 }
 /* 3. 確保旁邊的檔案名稱與容量文字清晰可見 */
 div[data-testid="stUploadedFile"] div[data-testid="stText"],
@@ -352,6 +347,7 @@ def read_csv_robust(filepath):
         except: continue
     return pd.DataFrame()
 
+# ★ 升級點：讀取時防呆補充所有缺少的欄位，避免 KeyError 崩潰
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
@@ -373,6 +369,7 @@ def save_data(df):
         sync_to_github(D_FILE) 
     except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
+# ★ 升級點 1：讀取人員時寫入角色 (role) 欄位與防呆預設值
 def load_staff():
     df = read_csv_robust(S_FILE)
     default_roles = {"Andy": "執行長", "Charles": "執行長&財務長", "Eason": "執行長", "Sunglin": "執行長", "Anita": "管理員"}
@@ -386,6 +383,7 @@ def load_staff():
             "line_uid": [""]*5
         })
     
+    # 確保所有必要欄位都在，避免 KeyError 崩潰
     if "role" not in df.columns: df["role"] = df["name"].apply(lambda x: default_roles.get(x, "使用者"))
     else: df["role"] = df.apply(lambda row: default_roles.get(row["name"], "使用者") if pd.isna(row.get("role")) or str(row.get("role")).strip() == "" else row["role"], axis=1)
     
@@ -951,7 +949,6 @@ else:
 
         db = load_data()
         
-        # ★ 升級點 2：表單選單過濾，只顯示「在職」人員供選擇
         active_staffs = st.session_state.staff_df[st.session_state.staff_df["status"] == "在職"]["name"].apply(clean_name).tolist()
         
         up_key = st.session_state.req_uploader_key
@@ -967,7 +964,6 @@ else:
                 legacy_net = clean_amount(r["總金額"]) if jd.get("net_amt", 0) == 0 and jd.get("tax_amt", 0) == 0 else jd.get("net_amt", 0)
                 dv.update({"app": r["申請人"], "pn": r["專案名稱"], "pi": r["專案編號"], "exe": r["專案負責人"], "net_amt": legacy_net, "tax_amt": jd.get("tax_amt", 0), "desc": jd.get("desc", ""), "ib64": r["影像Base64"], "cur": r.get("幣別","TWD"), "ab64": r["帳戶影像Base64"], "vdr": r.get("請款廠商",""), "acc": r.get("匯款帳戶",""), "pay": r.get("付款方式","匯款(扣30手續費)"), "inv_no": jd.get("inv_no", ""), "acc_name": jd.get("acc_name", ""), "ims_names": jd.get("ims_names", [])})
 
-        # 為了避免舊單據是離職人員而當機，如果舊紀錄的人不在在職名單內，強制補回去顯示
         app_options = active_staffs.copy()
         if dv["app"] and dv["app"] not in app_options: app_options.append(dv["app"])
         exe_options = active_staffs.copy()
