@@ -352,7 +352,7 @@ def read_csv_robust(filepath):
         except: continue
     return pd.DataFrame()
 
-# ★ 升級點：讀取時補上 role 的預設值
+# ★ 升級點：讀取時防呆補充所有缺少的欄位，避免 KeyError 崩潰
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
@@ -374,7 +374,7 @@ def save_data(df):
         sync_to_github(D_FILE) 
     except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
-# ★ 升級點 1：讀取人員時寫入角色 (role) 欄位與預設值
+# ★ 升級點 1：讀取人員時寫入角色 (role) 欄位與防呆預設值
 def load_staff():
     df = read_csv_robust(S_FILE)
     default_roles = {"Andy": "執行長", "Charles": "執行長&財務長", "Eason": "執行長", "Sunglin": "執行長", "Anita": "管理員"}
@@ -384,15 +384,16 @@ def load_staff():
             "name": DEFAULT_STAFF, 
             "status": ["在職"]*5, 
             "password": ["0000"]*5,
-            "role": [default_roles.get(n, "使用者") for n in DEFAULT_STAFF]
+            "role": [default_roles.get(n, "使用者") for n in DEFAULT_STAFF],
+            "line_uid": [""]*5
         })
     
-    # 向下相容，如果舊資料庫沒有 role 欄位，自動補上
-    if "role" not in df.columns:
-        df["role"] = df["name"].apply(lambda x: default_roles.get(x, "使用者"))
-    else:
-        # 把空白的 role 補齊
-        df["role"] = df.apply(lambda row: default_roles.get(row["name"], "使用者") if pd.isna(row.get("role")) or str(row.get("role")).strip() == "" else row["role"], axis=1)
+    # 確保所有必要欄位都在，避免 KeyError 崩潰
+    if "role" not in df.columns: df["role"] = df["name"].apply(lambda x: default_roles.get(x, "使用者"))
+    else: df["role"] = df.apply(lambda row: default_roles.get(row["name"], "使用者") if pd.isna(row.get("role")) or str(row.get("role")).strip() == "" else row["role"], axis=1)
+    
+    if "line_uid" not in df.columns: df["line_uid"] = ""
+    if "status" not in df.columns: df["status"] = "在職"
     
     return df
 
@@ -558,9 +559,15 @@ def render_upload_popover(container, r, prefix):
                 fresh_db.at[idx, "請款說明"] = packed_desc
                 save_data(fresh_db); st.rerun()
 
-# --- 6. Session 初始化 ---
+# --- 6. Session 初始化與防呆重載 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
-if 'staff_df' not in st.session_state: st.session_state.staff_df = load_staff()
+
+# ★ 強制記憶體更新機制：如果 session 裡沒有 staff_df，或是 staff_df 缺少新加入的 "role" 欄位，就強制重新讀取！
+if 'staff_df' not in st.session_state: 
+    st.session_state.staff_df = load_staff()
+else:
+    if "role" not in st.session_state.staff_df.columns:
+        st.session_state.staff_df = load_staff()
 
 for k in ['req_edit_id', 'req_last_id', 'req_view_id', 'req_print_id', 'req_last_msg', 'req_review_id', 'req_review_type']: 
     if k not in st.session_state: st.session_state[k] = None
