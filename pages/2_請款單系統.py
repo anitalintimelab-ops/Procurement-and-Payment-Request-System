@@ -57,7 +57,7 @@ st.markdown("""
     color: black !important;
 }
 
-/* ★ 檔案上傳區塊精準修復：只改變文字，絕不干擾已上傳的彩色圖示 */
+/* ★ 徹底修正：只針對未上傳的提示文字變黑，絕不干涉 SVG 圖示的原始色彩 */
 div[data-testid="stFileUploader"] section {
     background-color: #ffffff !important; 
 }
@@ -67,24 +67,23 @@ div[data-testid="stFileUploadDropzone"] small,
 div[data-testid="stFileUploader"] label {
     color: #000000 !important; 
 }
+/* 只讓上傳區塊那朵「雲」變黑 */
+div[data-testid="stFileUploadDropzone"] > div > svg {
+    fill: #000000 !important; 
+}
 div[data-testid="stFileUploader"] button {
     background-color: #f0f2f6 !important;
     border: 1px solid #c0c4cc !important;
-}
-div[data-testid="stFileUploader"] button * {
     color: #000000 !important;
-    font-weight: bold !important;
 }
-/* 確保已上傳檔案的文字是深色，且圖示維持原生色彩 */
-div[data-testid="stUploadedFile"] p,
-div[data-testid="stUploadedFile"] span,
-div[data-testid="stUploadedFile"] small {
+
+/* 確保已上傳檔案的文字是深色 (檔名、大小) */
+div[data-testid="stUploadedFile"] div[data-testid="stText"] {
     color: #1E293B !important; 
 }
-div[data-testid="stUploadedFile"] svg,
-div[data-testid="stUploadedFile"] svg * {
-    fill: initial !important;
-    color: initial !important;
+div[data-testid="stUploadedFile"] p,
+div[data-testid="stUploadedFile"] small {
+    color: #1E293B !important; 
 }
 
 /* 「目前系統」標籤，直接白字 */
@@ -163,12 +162,15 @@ div[data-testid="stUploadedFile"] svg * {
     background-color: #ffffff !important;
 }
 
-/* 側邊欄輸入框與下拉選單強制黑字與黑色箭頭，避免白底白字隱形 */
-[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] *,
+/* ★ 徹底修復側邊欄下拉選單 (恢復預設密碼)：讓文字與箭頭強制變黑，跳出選單字也變黑 */
+[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] span,
 [data-testid="stSidebar"] .stTextInput input,
 [data-testid="stSidebar"] .stSelectbox svg {
     color: #1E293B !important;
     fill: #1E293B !important;
+}
+div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
+    color: #1E293B !important;
 }
 
 .stButton>button, .stFormSubmitButton>button, .stPopover>button {
@@ -1273,6 +1275,7 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
+            # ★ 確保只有關閉預覽按鈕，不顯示列印存檔
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
