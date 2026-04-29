@@ -467,7 +467,6 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
-# ★ 終極無干擾 HTML：完全移除多餘文字，並加入防切割、強制均分寬度的 Excel 表格 CSS
 def render_html_with_attachments(row):
     h = render_html(row)
     all_files = []
@@ -1228,7 +1227,7 @@ else:
                 with col_down2:
                     st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
                     if os.path.exists(S_FILE):
-                        with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系統人員備份_{datetime.date.today()}.csv", mime="text/csv")
+                        with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系统人員備份_{datetime.date.today()}.csv", mime="text/csv")
                 with col_up2:
                     st.write("⬆️ **步驟二：還原人員資料**")
                     uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
