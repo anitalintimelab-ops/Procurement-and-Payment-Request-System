@@ -352,6 +352,7 @@ def read_csv_robust(filepath):
         except: continue
     return pd.DataFrame()
 
+# ★ 升級點：讀取時補上 role 的預設值
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
@@ -373,9 +374,26 @@ def save_data(df):
         sync_to_github(D_FILE) 
     except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
+# ★ 升級點 1：讀取人員時寫入角色 (role) 欄位與預設值
 def load_staff():
     df = read_csv_robust(S_FILE)
-    if df is None or df.empty: return pd.DataFrame({"name": DEFAULT_STAFF, "status":["在職"]*5, "password":["0000"]*5})
+    default_roles = {"Andy": "執行長", "Charles": "執行長&財務長", "Eason": "執行長", "Sunglin": "執行長", "Anita": "管理員"}
+    
+    if df is None or df.empty: 
+        return pd.DataFrame({
+            "name": DEFAULT_STAFF, 
+            "status": ["在職"]*5, 
+            "password": ["0000"]*5,
+            "role": [default_roles.get(n, "使用者") for n in DEFAULT_STAFF]
+        })
+    
+    # 向下相容，如果舊資料庫沒有 role 欄位，自動補上
+    if "role" not in df.columns:
+        df["role"] = df["name"].apply(lambda x: default_roles.get(x, "使用者"))
+    else:
+        # 把空白的 role 補齊
+        df["role"] = df.apply(lambda row: default_roles.get(row["name"], "使用者") if pd.isna(row.get("role")) or str(row.get("role")).strip() == "" else row["role"], axis=1)
+    
     return df
 
 def save_staff(df): 
@@ -549,7 +567,14 @@ for k in ['req_edit_id', 'req_last_id', 'req_view_id', 'req_print_id', 'req_last
 
 if 'req_uploader_key' not in st.session_state: st.session_state.req_uploader_key = 0
 
-curr_name, is_admin = st.session_state.user_id, (st.session_state.user_id in ADMINS)
+curr_name = st.session_state.user_id
+
+# ★ 動態取得當前登入者的系統層級 (判定權限)
+curr_role = "使用者"
+if not st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].empty:
+    curr_role = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0].get("role", "使用者")
+
+is_admin = (curr_role == "管理員") or (curr_name in ADMINS)
 is_active = (st.session_state.user_status == "在職")
 
 # --- 7. 左側側邊欄 ---
@@ -594,12 +619,14 @@ if is_admin:
             st.session_state.staff_df = s_df
             st.success(f"{reset_target} 密碼已重置")
             
+    # ★ 升級點 2：新增人員時，加入「系統層級」下拉選單
     with st.sidebar.expander("➕ 新增人員"):
         n = st.text_input("姓名", key="req_new_staff_name")
+        new_role = st.selectbox("系統層級", ["使用者", "執行長", "執行長&財務長", "管理員"], key="req_new_staff_role")
         if st.button("新增", key="req_add_staff"):
             s_df = load_staff()
             if n and n not in s_df["name"].values:
-                new_row = pd.DataFrame([{"name": n, "status": "在職", "password": "0000", "avatar": "", "line_uid": ""}])
+                new_row = pd.DataFrame([{"name": n, "status": "在職", "password": "0000", "avatar": "", "line_uid": "", "role": new_role}])
                 s_df = pd.concat([s_df, new_row], ignore_index=True)
                 save_staff(s_df)
                 st.session_state.staff_df = s_df
@@ -608,12 +635,14 @@ if is_admin:
             elif n in s_df["name"].values:
                 st.error("人員已存在")
 
-    with st.sidebar.expander("⚙️ 人員設定 (狀態 & LINE ID)"):
+    # ★ 升級點 3：管理員隨時從下拉選單調整現有人員的層級
+    with st.sidebar.expander("⚙️ 人員設定 (狀態, 層級 & LINE ID)"):
         edited_staff = st.data_editor(
-            st.session_state.staff_df[["name", "status", "line_uid"]], 
+            st.session_state.staff_df[["name", "status", "role", "line_uid"]], 
             column_config={
                 "name": st.column_config.TextColumn("姓名", disabled=True),
-                "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"])
+                "status": st.column_config.SelectboxColumn("狀態", options=["在職", "離職"]),
+                "role": st.column_config.SelectboxColumn("系統層級", options=["使用者", "執行長", "執行長&財務長", "管理員"])
             }, 
             hide_index=True, 
             key="req_staff_editor_admin"
@@ -622,6 +651,7 @@ if is_admin:
             s_df = load_staff()
             for idx, row in edited_staff.iterrows():
                 s_df.at[idx, "status"] = row["status"]
+                s_df.at[idx, "role"] = row["role"]
                 s_df.at[idx, "line_uid"] = str(row["line_uid"]).strip() if pd.notna(row["line_uid"]) else ""
             save_staff(s_df)
             st.session_state.staff_df = s_df
@@ -1289,7 +1319,6 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
-            # ★ 確保只有關閉預覽按鈕，不顯示列印存檔
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
