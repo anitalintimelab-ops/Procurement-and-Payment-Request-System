@@ -57,33 +57,36 @@ st.markdown("""
     color: black !important;
 }
 
-/* ★ 徹底修正：只針對未上傳的提示文字變黑，絕不干涉 SVG 圖示的原始色彩 */
+/* ★ 終極美化：把黑黑一坨的預設上傳圖示，改造成「清爽的 Excel 經典綠色」 */
 div[data-testid="stFileUploader"] section {
     background-color: #ffffff !important; 
+    border: 2px dashed #cbd5e1 !important;
 }
+div[data-testid="stFileUploader"] label,
 div[data-testid="stFileUploadDropzone"] p,
 div[data-testid="stFileUploadDropzone"] span,
-div[data-testid="stFileUploadDropzone"] small,
-div[data-testid="stFileUploader"] label {
-    color: #000000 !important; 
-}
-/* 只讓上傳區塊那朵「雲」變黑 */
-div[data-testid="stFileUploadDropzone"] > div > svg {
-    fill: #000000 !important; 
-}
-div[data-testid="stFileUploader"] button {
-    background-color: #f0f2f6 !important;
-    border: 1px solid #c0c4cc !important;
-    color: #000000 !important;
-}
-
-/* 確保已上傳檔案的文字是深色 (檔名、大小) */
-div[data-testid="stUploadedFile"] div[data-testid="stText"] {
+div[data-testid="stFileUploadDropzone"] small {
     color: #1E293B !important; 
 }
+div[data-testid="stFileUploadDropzone"] svg {
+    fill: #64748B !important; 
+}
+/* 1. 將上傳後的黑色方塊，改為微軟經典綠色漸層 */
+div[data-testid="stUploadedFile"] > div:first-child {
+    background: linear-gradient(135deg, #107C41 0%, #18a558 100%) !important;
+    border-radius: 6px !important;
+}
+/* 2. 讓裡面的檔案/圖片小標誌變成乾淨的白色 */
+div[data-testid="stUploadedFile"] svg {
+    fill: #ffffff !important;
+    color: #ffffff !important;
+}
+/* 3. 確保檔名與大小的文字是深色清晰的 */
+div[data-testid="stUploadedFile"] div[data-testid="stText"],
 div[data-testid="stUploadedFile"] p,
+div[data-testid="stUploadedFile"] span,
 div[data-testid="stUploadedFile"] small {
-    color: #1E293B !important; 
+    color: #1E293B !important;
 }
 
 /* 「目前系統」標籤，直接白字 */
@@ -162,8 +165,8 @@ div[data-testid="stUploadedFile"] small {
     background-color: #ffffff !important;
 }
 
-/* ★ 徹底修復側邊欄下拉選單 (恢復預設密碼)：讓文字與箭頭強制變黑，跳出選單字也變黑 */
-[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] span,
+/* 側邊欄輸入框與下拉選單強制黑字與黑色箭頭，避免白底白字隱形 */
+[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] *,
 [data-testid="stSidebar"] .stTextInput input,
 [data-testid="stSidebar"] .stSelectbox svg {
     color: #1E293B !important;
@@ -1275,7 +1278,6 @@ else:
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
         else:
             r = r_df.iloc[0]
-            # ★ 確保只有關閉預覽按鈕，不顯示列印存檔
             if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
             
             st.markdown(render_html(r), unsafe_allow_html=True)
