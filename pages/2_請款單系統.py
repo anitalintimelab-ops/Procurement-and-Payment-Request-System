@@ -214,38 +214,8 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     color: #00BFFF !important;
 }
 
-/* ★ 手機版專屬相機小圖示 (LINE風格) */
-.mobile-camera-only {
-    display: none !important; /* 電腦版強制隱藏 */
-}
+/* 手機版直式排版拒絕拉伸 */
 @media screen and (max-width: 768px) {
-    .mobile-camera-only {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        margin-top: 28px !important; /* 對齊左側上傳按鈕的高度 */
-    }
-    .mobile-camera-only [data-testid="stPopover"] {
-        display: block !important;
-    }
-    /* 將彈出按鈕打造成方形的小圖示按鈕 */
-    .mobile-camera-only [data-testid="stPopover"] > button {
-        width: 48px !important;
-        height: 48px !important;
-        border-radius: 12px !important;
-        padding: 0 !important;
-        border: 2px solid #cbd5e1 !important;
-        background-color: #f8fafc !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
-    }
-    .mobile-camera-only [data-testid="stPopover"] > button p {
-        font-size: 24px !important;
-        margin: 0 !important;
-    }
-    
     .block-container { padding-top: 1rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
     div[data-testid="stHorizontalBlock"] { 
         display: flex !important;
@@ -572,44 +542,20 @@ def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replac
 def render_upload_popover(container, r, prefix):
     with container.popover("📎 附件"):
         st.write("**上傳附件 (圖/Excel)**")
-        
-        # 由於 Streamlit 不允許 popover 內再包裝 popover，此處附件區塊相機會改用 toggle 展開
         nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
-        st.markdown("<div class='mobile-camera-only' style='margin-top:10px; margin-bottom:10px;'>", unsafe_allow_html=True)
-        use_cam_a = st.toggle("📸 開啟相機拍存摺", key=f"tog_{prefix}_a")
-        st.markdown("</div>", unsafe_allow_html=True)
-        cam_acc = st.camera_input("拍攝存摺", key=f"{prefix}_cam_a") if use_cam_a else None
-        
         nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
-        st.markdown("<div class='mobile-camera-only' style='margin-top:10px; margin-bottom:10px;'>", unsafe_allow_html=True)
-        use_cam_i = st.toggle("📸 開啟相機拍憑證", key=f"tog_{prefix}_i")
-        st.markdown("</div>", unsafe_allow_html=True)
-        cam_ims = st.camera_input("拍攝憑證", key=f"{prefix}_cam_i") if use_cam_i else None
-        
         if st.button("💾 儲存附件", key=f"{prefix}_b"):
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
             jd = parse_req_json(fresh_db.at[idx, "請款說明"])
             
-            acc_file_to_save = cam_acc if cam_acc else nf_acc
-            if acc_file_to_save: 
-                fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(acc_file_to_save.getvalue()).decode()
-                jd["acc_name"] = "camera_acc.jpg" if acc_file_to_save == cam_acc else acc_file_to_save.name
+            if nf_acc: 
+                fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
+                jd["acc_name"] = nf_acc.name
+            if nf_ims: 
+                fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
+                jd["ims_names"] = [f.name for f in nf_ims]
             
-            combined_ims = []
-            combined_names = []
-            if nf_ims:
-                for f in nf_ims:
-                    combined_ims.append(base64.b64encode(f.getvalue()).decode())
-                    combined_names.append(f.name)
-            if cam_ims:
-                combined_ims.append(base64.b64encode(cam_ims.getvalue()).decode())
-                combined_names.append("camera_img.jpg")
-                
-            if combined_ims: 
-                fresh_db.at[idx, "影像Base64"] = "|".join(combined_ims)
-                jd["ims_names"] = combined_names
-            
-            if acc_file_to_save or combined_ims:
+            if nf_acc or nf_ims:
                 packed_desc = "[請款單資料]\n" + json.dumps(jd, ensure_ascii=False)
                 fresh_db.at[idx, "請款說明"] = packed_desc
                 save_data(fresh_db); st.rerun()
@@ -649,6 +595,7 @@ is_active = (st.session_state.user_status == "在職")
 st.sidebar.markdown(f"**📌 目前系統：** <code>{st.session_state.sys_choice}</code>", unsafe_allow_html=True)
 st.sidebar.divider()
 
+# ★ 職務名稱映射顯示
 role_map_display = {
     "Anita": "使用者、管理者",
     "Andy": "執行長",
@@ -1087,24 +1034,8 @@ else:
             desc = st.text_area("請款說明", value=dv["desc"])
             st.info("💡 **提示：系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，最終存檔總金額會自動扣除 30 元。**")
             
-            # ★ 升級點：整合檔案上傳與相機圖示 (手機版專屬)
-            c_acc1, c_acc2 = st.columns([8, 2])
-            with c_acc1:
-                f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
-            with c_acc2:
-                st.markdown("<div class='mobile-camera-only'>", unsafe_allow_html=True)
-                with st.popover("📸"):
-                    cam_acc = st.camera_input("📸 請拍攝存摺", key=f"req_cam_acc_{up_key}")
-                st.markdown("</div>", unsafe_allow_html=True)
-            
-            c_ims1, c_ims2 = st.columns([8, 2])
-            with c_ims1:
-                f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"req_f_ims_{up_key}")
-            with c_ims2:
-                st.markdown("<div class='mobile-camera-only'>", unsafe_allow_html=True)
-                with st.popover("📸"):
-                    cam_ims = st.camera_input("📸 請拍攝憑證", key=f"req_cam_ims_{up_key}")
-                st.markdown("</div>", unsafe_allow_html=True)
+            f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
+            f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"req_f_ims_{up_key}")
             
             del_acc = False; del_ims = []; existing_ims = []; existing_ims_names = dv["ims_names"]
             
@@ -1156,30 +1087,14 @@ else:
                 total_amt = net_amt + tax_amt - fee
                 if not pn or (net_amt + tax_amt) <= 0: st.error("⚠️ 請填寫「專案名稱」且金額須大於 0")
                 else:
-                    # 處理存摺上傳 (優先取相機拍照)
-                    acc_file_to_save = cam_acc if cam_acc else f_acc
-                    if acc_file_to_save: 
-                        b_acc = base64.b64encode(acc_file_to_save.getvalue()).decode()
-                        acc_name_save = "camera_acc.jpg" if acc_file_to_save == cam_acc else acc_file_to_save.name
-                    else: 
-                        b_acc = "" if del_acc else safe_str(dv["ab64"])
-                        acc_name_save = "" if del_acc else dv["acc_name"]
+                    if f_acc: b_acc = base64.b64encode(f_acc.getvalue()).decode(); acc_name_save = f_acc.name
+                    else: b_acc = "" if del_acc else safe_str(dv["ab64"]); acc_name_save = "" if del_acc else dv["acc_name"]
 
                     retained_ims = [img for i, img in enumerate(existing_ims) if i not in del_ims]
                     safe_existing_names = dv["ims_names"] + [f"舊版憑證 {i+1}" for i in range(len(existing_ims) - len(dv["ims_names"]))]
                     retained_names = [name for i, name in enumerate(safe_existing_names[:len(existing_ims)]) if i not in del_ims]
-                    
-                    # 處理憑證上傳 (合併檔案上傳與相機拍照)
-                    new_ims_b64 = []
-                    new_ims_names = []
-                    if f_ims:
-                        for f in f_ims:
-                            new_ims_b64.append(base64.b64encode(f.getvalue()).decode())
-                            new_ims_names.append(f.name)
-                    if cam_ims:
-                        new_ims_b64.append(base64.b64encode(cam_ims.getvalue()).decode())
-                        new_ims_names.append("camera_img.jpg")
-                        
+                    new_ims_b64 = [base64.b64encode(f.getvalue()).decode() for f in f_ims] if f_ims else []
+                    new_ims_names = [f.name for f in f_ims] if f_ims else []
                     final_ims_list = retained_ims + new_ims_b64
                     final_names_list = retained_names + new_ims_names
                     b_ims = "|".join(final_ims_list)
