@@ -595,12 +595,23 @@ is_active = (st.session_state.user_status == "在職")
 st.sidebar.markdown(f"**📌 目前系統：** <code>{st.session_state.sys_choice}</code>", unsafe_allow_html=True)
 st.sidebar.divider()
 
+# ★ 職務名稱映射顯示
+role_map_display = {
+    "Anita": "使用者、管理者",
+    "Andy": "執行長",
+    "Charles": "執行長、財務長",
+    "Eason": "執行長",
+    "Sunglin": "執行長"
+}
+display_title = role_map_display.get(curr_name, curr_role)
+display_name_text = f"{curr_name} - {display_title}"
+
 avatar_b64 = ""
 try: avatar_b64 = st.session_state.staff_df[st.session_state.staff_df["name"] == curr_name].iloc[0].get("avatar", "")
 except: pass
 
-if avatar_b64: st.sidebar.markdown(f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:15px;"><img src="data:image/jpeg;base64,{avatar_b64}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:3px solid #eee;"><span style="font-size:22px;font-weight:bold;color:#333;">{curr_name}</span></div>', unsafe_allow_html=True)
-else: st.sidebar.markdown(f"### 👤 {curr_name}")
+if avatar_b64: st.sidebar.markdown(f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:15px;"><img src="data:image/jpeg;base64,{avatar_b64}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:3px solid #eee;"><span style="font-size:20px;font-weight:bold;color:white;">{display_name_text}</span></div>', unsafe_allow_html=True)
+else: st.sidebar.markdown(f"### 👤 <span style='color:white;'>{display_name_text}</span>", unsafe_allow_html=True)
 
 st.sidebar.info(f"🟢 目前在線人數：**{get_online_users(curr_name)}** 人")
 
