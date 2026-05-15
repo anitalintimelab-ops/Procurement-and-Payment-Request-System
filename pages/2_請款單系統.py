@@ -14,7 +14,7 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：終極解決文字空白與手機排版問題
+# 🎨 核心 CSS 魔法：系統介面純淨美化升級
 # ==========================================
 st.markdown("""
 <style>
@@ -24,7 +24,7 @@ st.markdown("""
 
 /* 整體背景漸變 */
 .stApp {
-    background: linear-gradient(180deg, #D9EAFB 0%, #EBDCF1 100%);
+    background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%);
 }
 
 /* 側邊欄渐變和文字顏色 */
@@ -62,9 +62,13 @@ st.markdown("""
 /* ========================================================= */
 
 /* 確保上傳拖曳區的背景是白色的，文字是黑色的 */
-div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #cbd5e1 !important; }
-div[data-testid="stFileUploader"] label, div[data-testid="stFileUploadDropzone"] p, div[data-testid="stFileUploadDropzone"] span, div[data-testid="stFileUploadDropzone"] small { color: #1E293B !important; }
-div[data-testid="stFileUploadDropzone"] > div > svg { fill: #64748B !important; }
+div[data-testid="stFileUploader"] section { 
+    background-color: #F8FAFC !important; 
+    border: 2px dashed #CBD5E1 !important; 
+    border-radius: 12px !important;
+}
+div[data-testid="stFileUploader"] label, div[data-testid="stFileUploadDropzone"] p, div[data-testid="stFileUploadDropzone"] span, div[data-testid="stFileUploadDropzone"] small { color: #475569 !important; }
+div[data-testid="stFileUploadDropzone"] > div > svg { fill: #94A3B8 !important; }
 
 /* 1. 殺掉所有深色背景！讓黑黑一坨徹底消失！ */
 div[data-testid="stUploadedFile"], 
@@ -151,35 +155,35 @@ div[data-testid="stUploadedFile"] small {
     background-color: rgba(0, 191, 255, 0.2);
 }
 
-/* 卡片與主要內容區域 */
+/* 卡片與主要內容區域美化 */
 [data-testid="stForm"], div.stExpander > div[role="button"], [data-testid="stDataFrame"] {
-    background-color: rgba(240, 244, 248, 0.8) !important;
+    background-color: rgba(255, 255, 255, 0.95) !important;
     backdrop-filter: blur(10px);
-    border-radius: 16px;
+    border-radius: 12px;
     padding: 20px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+    border: 1px solid #E2E8F0;
 }
 [data-testid="stForm"] *, div.stExpander * {
     color: #1E293B;
 }
 
-/* 縮小輸入框、下拉選單與按鈕 */
+/* ★ 輸入框、下拉選單純淨化 (去除舊版髒髒的藍底) */
 .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput input {
     border-radius: 8px !important;
-    border: 1px solid #CBD5E1 !important;
-    background-color: rgba(224, 231, 255, 0.5) !important;
+    border: 1px solid #E2E8F0 !important;
+    background-color: #FFFFFF !important;
     color: #1E293B !important;
-    padding-top: 4px !important;
-    padding-bottom: 4px !important;
-    min-height: 32px !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    min-height: 38px !important;
     height: auto !important;
-    transition: all 0.3s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+    transition: all 0.2s ease;
 }
 .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
-    border-color: #3b82f6 !important;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
-    background-color: #ffffff !important;
+    border-color: #3B82F6 !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15) !important;
 }
 
 /* 側邊欄輸入框與下拉選單強制黑字與黑色箭頭，避免白底白字隱形 */
@@ -193,29 +197,60 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     color: #1E293B !important;
 }
 
+/* ★ 按鈕質感提升 (去除原本的亮藍色文字，改為高質感深灰帶微藍光效果) */
 .stButton>button, .stFormSubmitButton>button, .stPopover>button {
     border-radius: 8px !important;
     font-weight: 600 !important;
-    border: 1px solid #3b82f6 !important;
-    background-color: #ffffff !important;
-    color: #00BFFF !important; 
+    border: 1px solid #CBD5E1 !important;
+    background-color: #FFFFFF !important;
+    color: #334155 !important; 
     transition: all 0.2s ease !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
-    padding: 4px 12px !important;
-    min-height: 32px !important;  
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+    padding: 6px 16px !important;
+    min-height: 38px !important;  
     height: auto !important;
     line-height: 1.4 !important;
 }
 .stButton>button:hover, .stFormSubmitButton>button:hover, .stPopover>button:hover {
-    background-color: rgba(0, 191, 255, 0.1) !important;
-    border-color: #3b82f6 !important;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
-    color: #00BFFF !important;
+    background-color: #F8FAFC !important;
+    border-color: #3B82F6 !important;
+    color: #3B82F6 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.06) !important;
 }
 
-/* 手機版直式排版拒絕拉伸 */
+/* ★ 手機版專屬相機小圖示 (LINE風格) */
+.mobile-camera-only {
+    display: none !important; /* 電腦版強制隱藏 */
+}
 @media screen and (max-width: 768px) {
+    .mobile-camera-only {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin-top: 28px !important; /* 對齊左側上傳按鈕的高度 */
+    }
+    .mobile-camera-only [data-testid="stPopover"] {
+        display: block !important;
+    }
+    /* 將彈出按鈕打造成方形的小圖示按鈕 */
+    .mobile-camera-only [data-testid="stPopover"] > button {
+        width: 48px !important;
+        height: 48px !important;
+        border-radius: 12px !important;
+        padding: 0 !important;
+        border: 2px solid #cbd5e1 !important;
+        background-color: #f8fafc !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
+    }
+    .mobile-camera-only [data-testid="stPopover"] > button p {
+        font-size: 24px !important;
+        margin: 0 !important;
+    }
+    
     .block-container { padding-top: 1rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
     div[data-testid="stHorizontalBlock"] { 
         display: flex !important;
@@ -542,8 +577,10 @@ def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replac
 def render_upload_popover(container, r, prefix):
     with container.popover("📎 附件"):
         st.write("**上傳附件 (圖/Excel)**")
+        
         nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
         nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
+        
         if st.button("💾 儲存附件", key=f"{prefix}_b"):
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
             jd = parse_req_json(fresh_db.at[idx, "請款說明"])
@@ -595,7 +632,6 @@ is_active = (st.session_state.user_status == "在職")
 st.sidebar.markdown(f"**📌 目前系統：** <code>{st.session_state.sys_choice}</code>", unsafe_allow_html=True)
 st.sidebar.divider()
 
-# ★ 職務名稱映射顯示
 role_map_display = {
     "Anita": "使用者、管理者",
     "Andy": "執行長",
@@ -1034,8 +1070,24 @@ else:
             desc = st.text_area("請款說明", value=dv["desc"])
             st.info("💡 **提示：系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，最終存檔總金額會自動扣除 30 元。**")
             
-            f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
-            f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"req_f_ims_{up_key}")
+            # ★ 升級點：整合檔案上傳與相機圖示 (手機版專屬)
+            c_acc1, c_acc2 = st.columns([8, 2])
+            with c_acc1:
+                f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
+            with c_acc2:
+                st.markdown("<div class='mobile-camera-only'>", unsafe_allow_html=True)
+                with st.popover("📸"):
+                    cam_acc = st.camera_input("📸 請拍攝存摺", key=f"req_cam_acc_{up_key}")
+                st.markdown("</div>", unsafe_allow_html=True)
+            
+            c_ims1, c_ims2 = st.columns([8, 2])
+            with c_ims1:
+                f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"req_f_ims_{up_key}")
+            with c_ims2:
+                st.markdown("<div class='mobile-camera-only'>", unsafe_allow_html=True)
+                with st.popover("📸"):
+                    cam_ims = st.camera_input("📸 請拍攝憑證", key=f"req_cam_ims_{up_key}")
+                st.markdown("</div>", unsafe_allow_html=True)
             
             del_acc = False; del_ims = []; existing_ims = []; existing_ims_names = dv["ims_names"]
             
@@ -1087,14 +1139,30 @@ else:
                 total_amt = net_amt + tax_amt - fee
                 if not pn or (net_amt + tax_amt) <= 0: st.error("⚠️ 請填寫「專案名稱」且金額須大於 0")
                 else:
-                    if f_acc: b_acc = base64.b64encode(f_acc.getvalue()).decode(); acc_name_save = f_acc.name
-                    else: b_acc = "" if del_acc else safe_str(dv["ab64"]); acc_name_save = "" if del_acc else dv["acc_name"]
+                    # 處理存摺上傳 (優先取相機拍照)
+                    acc_file_to_save = cam_acc if cam_acc else f_acc
+                    if acc_file_to_save: 
+                        b_acc = base64.b64encode(acc_file_to_save.getvalue()).decode()
+                        acc_name_save = "camera_acc.jpg" if acc_file_to_save == cam_acc else acc_file_to_save.name
+                    else: 
+                        b_acc = "" if del_acc else safe_str(dv["ab64"])
+                        acc_name_save = "" if del_acc else dv["acc_name"]
 
                     retained_ims = [img for i, img in enumerate(existing_ims) if i not in del_ims]
                     safe_existing_names = dv["ims_names"] + [f"舊版憑證 {i+1}" for i in range(len(existing_ims) - len(dv["ims_names"]))]
                     retained_names = [name for i, name in enumerate(safe_existing_names[:len(existing_ims)]) if i not in del_ims]
-                    new_ims_b64 = [base64.b64encode(f.getvalue()).decode() for f in f_ims] if f_ims else []
-                    new_ims_names = [f.name for f in f_ims] if f_ims else []
+                    
+                    # 處理憑證上傳 (合併檔案上傳與相機拍照)
+                    new_ims_b64 = []
+                    new_ims_names = []
+                    if f_ims:
+                        for f in f_ims:
+                            new_ims_b64.append(base64.b64encode(f.getvalue()).decode())
+                            new_ims_names.append(f.name)
+                    if cam_ims:
+                        new_ims_b64.append(base64.b64encode(cam_ims.getvalue()).decode())
+                        new_ims_names.append("camera_img.jpg")
+                        
                     final_ims_list = retained_ims + new_ims_b64
                     final_names_list = retained_names + new_ims_names
                     b_ims = "|".join(final_ims_list)
@@ -1167,213 +1235,4 @@ else:
                 if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                     fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
                     sys_name = st.session_state.get('sys_choice', '請款單系統')
-                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"); st.rerun()
-                if b2.button("預覽", key=f"v{i}"): st.session_state.req_view_id = r["單號"]; st.rerun()
-                
-                if b3.button("列印", key=f"p{i}"): 
-                    html_str = clean_for_js(render_html_with_attachments(r))
-                    js_code = f"<script>var w=window.open('');w.document.write('{html_str}');w.document.close();setTimeout(function(){{w.print();w.close();}}, 1000);</script>"
-                    st.components.v1.html(js_code, height=0)
-                    
-                if b4.button("修改", key=f"e{i}", disabled=not can_edit): 
-                    st.session_state.req_edit_id = r["單號"]
-                    st.session_state.req_uploader_key += 1
-                    st.rerun()
-                if can_edit:
-                    with b5.popover("刪除"):
-                        reason = st.text_input("刪除原因", key=f"d_res_{i}")
-                        if st.button("確認", key=f"d{i}"):
-                            if reason: fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); st.rerun()
-                            else: st.error("請輸入原因")
-                else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
-                render_upload_popover(b6, r, f"up{i}")
-
-    # ================= 頁面 2: 專案執行長簽核 =================
-    elif menu == "2. 專案執行長簽核":
-        st.subheader("👨‍💼 專案執行長簽核管理")
-        f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
-        t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
-        with t1:
-            pending = req_db[req_db["狀態"].isin(["待簽核", "待初審"])]
-            if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
-            render_signing_table(pending, "EXE")
-        with t2:
-            history_exe = req_db[req_db["狀態"].isin(["已核准", "已駁回", "待複審"])]
-            if not is_admin: history_exe = history_exe[(history_exe["初審人"] == curr_name) | (history_exe["專案負責人"] == curr_name) | (history_exe["申請人"] == curr_name) | (history_exe["代申請人"] == curr_name)]
-            render_signing_table(history_exe, "EXE", is_history=True)
-
-    # ================= 頁面 3: 財務長簽核 =================
-    elif menu == "3. 財務長簽核":
-        st.subheader("💰 財務長簽核管理")
-        f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
-        t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
-        with t1:
-            pending = req_db[req_db["狀態"] == "待複審"]
-            if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
-            render_signing_table(pending, "CFO")
-        with t2:
-            history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
-            if not is_admin and curr_name != CFO_NAME: history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
-            render_signing_table(history_cfo, "CFO", is_history=True)
-
-    # ================= 頁面 4: 總覽 =================
-    elif menu == "4. 表單狀態總覽":
-        st.subheader("📊 表單狀態總覽")
-        f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
-        if not is_admin: my_db = my_db[(my_db["申請人"] == curr_name) | (my_db["專案負責人"] == curr_name)]
-        st.dataframe(my_db[["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式", "匯款狀態", "匯款日期"]], hide_index=True)
-
-    # ================= 頁面 5: 系統設定 =================
-    elif menu == "5. 請款狀態/系統設定":
-        st.subheader("⚙️ 請款狀態 / 系統設定")
-        if is_admin:
-            with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
-                st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
-                g_token, g_repo = "", ""
-                if os.path.exists(G_FILE):
-                    try:
-                        with open(G_FILE, "r", encoding="utf-8") as f:
-                            lines = f.read().splitlines()
-                            g_token = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
-                            g_repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
-                    except: pass
-                i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
-                i_repo = st.text_input("GitHub 倉庫名稱 (格式: 帳號/倉庫名，例如 anitalin/timelab-ops)", value=g_repo)
-                c_btn1, c_btn2 = st.columns([1, 1])
-                if c_btn1.button("💾 測試連線並儲存設定"):
-                    clean_token = "".join(c for c in i_token if c.isascii()).strip()
-                    clean_repo = "".join(c for c in i_repo if c.isascii()).strip()
-                    if not clean_token or not clean_repo: st.error("❌ 請輸入有效的 Token 與倉庫名稱。")
-                    else:
-                        with open(G_FILE, "w", encoding="utf-8") as f: f.write(f"{clean_token}\n{clean_repo}")
-                        try:
-                            url = f"https://api.github.com/repos/{clean_repo}"; headers = {"Authorization": f"token {clean_token}"}
-                            res = requests.get(url, headers=headers, timeout=5)
-                            if res.status_code == 200:
-                                st.success("🎉 連線測試成功！自動備份引擎已正式啟動。"); sync_to_github(G_FILE); time.sleep(2); st.rerun()
-                            else: st.error(f"❌ 連線被 GitHub 拒絕 (錯誤碼 {res.status_code})。請確認倉庫名稱是否有錯字，或 Token 是否有勾選 'repo' 權限。")
-                        except Exception as e: st.error(f"❌ 網路連線異常：{e}")
-                st.markdown("---"); st.write("💡 **如果您的舊單據或人員密碼還沒上傳到 GitHub，請點擊下方按鈕強制備份：**")
-                if c_btn2.button("🚀 一鍵強制同步所有資料至 GitHub"):
-                    with st.spinner("正在將所有資料（包含舊單據與密碼）傳送至 GitHub，請稍候..."):
-                        if os.path.exists(D_FILE): sync_to_github(D_FILE)
-                        if os.path.exists(S_FILE): sync_to_github(S_FILE)
-                        if os.path.exists(P_FILE): sync_to_github(P_FILE)
-                        if os.path.exists(V_FILE): sync_to_github(V_FILE)
-                        if os.path.exists(L_FILE): sync_to_github(L_FILE) 
-                        if os.path.exists(G_FILE): sync_to_github(G_FILE)
-                        time.sleep(2) 
-                    st.success("✅ 資料庫、人員密碼、專案、廠商與「設定參數」已全部發送至 GitHub 同步！")
-
-            with st.expander("🧰 3. 專案與廠商資料庫 (備份、還原與重建)", expanded=False):
-                st.write("💡 **資料不見了怎麼辦？** 如果雲端重啟導致您之前建檔的廠商與專案消失，只要點擊下方按鈕，系統就會自動去「歷史表單 (database.csv)」裡面，把您曾經打過的專案跟廠商全部抓出來重建！")
-                if st.button("🪄 一鍵從歷史單據找回/重建專案與廠商"):
-                    with st.spinner("正在從歷史單據中打撈資料..."):
-                        f_db = load_data()
-                        if not f_db.empty:
-                            p_data = f_db[["專案負責人", "專案名稱", "專案編號"]].drop_duplicates().dropna()
-                            p_data = p_data[(p_data["專案名稱"] != "") & (p_data["專案編號"] != "")].rename(columns={"專案負責人": "負責執行長"})
-                            save_projects(pd.concat([load_projects(), p_data]).drop_duplicates(subset=["專案名稱"]).reset_index(drop=True))
-                            v_data = f_db[["請款廠商", "匯款帳戶"]].drop_duplicates().dropna()
-                            v_data = v_data[(v_data["請款廠商"] != "")]
-                            save_vendors(pd.concat([load_vendors(), v_data]).drop_duplicates(subset=["請款廠商"]).reset_index(drop=True))
-                            st.success("✅ 太棒了！已成功從歷史單據中找回您的專案與廠商名單，並自動備份到 GitHub！"); time.sleep(2); st.rerun()
-                        else: st.warning("⚠️ 目前歷史單據沒有資料，無法打撈。")
-
-            st.error("⚠️ **雲端暫存機制提醒：** 免費雲端主機重啟會清空資料。有設定 GitHub 自動備份則無須擔心！")
-            with st.expander("💾 1. 表單資料庫備份與還原", expanded=True):
-                col_down, col_up = st.columns(2)
-                with col_down:
-                    st.write("⬇️ **步驟一：下載最新表單資料庫**")
-                    if os.path.exists(D_FILE):
-                        with open(D_FILE, "rb") as f: st.download_button("下載表單備份檔", f, file_name=f"時研系統表單備份_{datetime.date.today()}.csv", mime="text/csv")
-                with col_up:
-                    st.write("⬆️ **步驟二：還原表單資料庫**")
-                    up_db = st.file_uploader("上傳表單 CSV 檔", type=["csv"], key="up_db", label_visibility="collapsed")
-                    if up_db and st.button("確認還原表單"):
-                        with open(D_FILE, "wb") as f: f.write(up_db.getbuffer())
-                        st.success("表單資料庫已還原！"); time.sleep(1); st.rerun()
-                    
-            with st.expander("👥 2. 人員與大頭貼資料備份與還原"):
-                col_down2, col_up2 = st.columns(2)
-                with col_down2:
-                    st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
-                    if os.path.exists(S_FILE):
-                        with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系统人員備份_{datetime.date.today()}.csv", mime="text/csv")
-                with col_up2:
-                    st.write("⬆️ **步驟二：還原人員資料**")
-                    uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
-                    if uploaded_staff and st.button("確認還原人員資料"):
-                        with open(S_FILE, "wb") as f: f.write(uploaded_staff.getbuffer())
-                        st.session_state.staff_df = load_staff(); st.success("人員資料已還原！"); time.sleep(1); st.rerun()
-
-            with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)", expanded=True):
-                st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
-                ct, cu = get_line_credentials()
-                nt = st.text_input("Channel Access Token (長字串)", value=ct, type="password")
-                nu = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=cu)
-                if st.button("💾 儲存 LINE 設定"): save_line_credentials(nt, nu); st.success("LINE 推播設定已成功儲存並啟用！"); time.sleep(1); st.rerun()
-            st.divider()
-
-        st.subheader("💰 財務匯款註記")
-        f_db = load_data(); df_pay = f_db[f_db["類型"]=="請款單"].copy()
-        if not is_admin and curr_name != CFO_NAME: df_pay = df_pay[(df_pay["申請人"] == curr_name) | (df_pay["專案負責人"] == curr_name)]
-        
-        if not df_pay.empty:
-            df_pay["匯款日期"] = pd.to_datetime(df_pay["匯款日期"], errors='coerce').dt.date
-            if is_admin:
-                ed = st.data_editor(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True, column_config={"匯款狀態": st.column_config.SelectboxColumn("匯款狀態", options=["尚未匯款", "已匯款"]), "匯款日期": st.column_config.DateColumn("匯款日期", format="YYYY-MM-DD")})
-                if st.button("💾 儲存匯款資訊"):
-                    for _, row in ed.iterrows(): f_db.loc[f_db["單號"]==row["單號"], ["匯款狀態", "匯款日期"]] = [row["匯款狀態"], str(row["匯款日期"]) if pd.notna(row["匯款日期"]) else ""]
-                    save_data(f_db); st.success("已更新"); st.rerun()
-            else: st.dataframe(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True)
-
-    # ================= 全域預覽/列印模組 =================
-    if st.session_state.get('req_print_id'):
-        r_df = load_data()
-        r_df = r_df[r_df["單號"]==st.session_state.req_print_id]
-        if not r_df.empty:
-            r = r_df.iloc[0]
-            html_str = clean_for_js(render_html_with_attachments(r))
-            js_code = f"<script>var w=window.open('');w.document.write('{html_str}');w.document.close();setTimeout(function(){{w.print();w.close();}}, 1000);</script>"
-            st.components.v1.html(js_code, height=0)
-        st.session_state.req_print_id = None
-
-    if st.session_state.req_view_id:
-        st.divider()
-        r_df = load_data()
-        r_df = r_df[r_df["單號"]==st.session_state.req_view_id]
-        
-        if r_df.empty:
-            st.warning("⚠️ 找不到該單號資料，可能已被刪除。")
-            if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
-        else:
-            r = r_df.iloc[0]
-            if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
-            
-            st.markdown(render_html(r), unsafe_allow_html=True)
-            
-            all_files = []
-            acc_img = safe_str(r.get("帳戶影像Base64"))
-            if acc_img: all_files.append(acc_img)
-
-            req_img = safe_str(r.get("影像Base64"))
-            if req_img:
-                chunks = req_img.split('|') if '|' in req_img else req_img.split(',') if ',' in req_img else [req_img]
-                for chunk in chunks:
-                    c = chunk.strip()
-                    if c.startswith('data:'): c = c.split('base64,')[-1]
-                    if c: all_files.append(c)
-            
-            if all_files:
-                for f_b64 in all_files:
-                    try:
-                        pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
-                        raw = base64.b64decode(pad)
-                        if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
-                            try:
-                                st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
-                            except:
-                                st.error("⚠️ 無法預覽此 Excel。請確保 requirements.txt 包含 openpyxl。")
-                        else: st.image(raw, use_container_width=True)
-                    except Exception: pass
+                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案
