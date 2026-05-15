@@ -164,16 +164,16 @@ div[data-testid="stUploadedFile"] small {
     color: #1E293B;
 }
 
-/* ★ 縮小輸入框、下拉選單與按鈕 (已修復密碼框右側白塊斷層問題) ★ */
+/* ★ 已修復：縮小輸入框、下拉選單與按鈕 (解決密碼框右側斷層白塊) */
 .stTextInput div[data-baseweb="input"], .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput div[data-baseweb="input"] {
     border-radius: 8px !important;
     border: 1px solid #CBD5E1 !important;
-    background-color: #F8FAFC !important; /* 改為純淨白灰色底，消除透明度造成的混色變髒 */
+    background-color: rgba(224, 231, 255, 0.5) !important;
     transition: all 0.3s ease;
-    overflow: hidden !important; /* 確保圓角不被子元素蓋掉 */
+    overflow: hidden !important; /* 確保圓角包覆內部元件 */
 }
 
-/* 讓內部的 input 標籤變成透明背景，完美融入外層容器，消除右側白塊 */
+/* 內部 input 透明化，無邊框，完美融入外層容器 */
 .stTextInput input, .stNumberInput input {
     background-color: transparent !important;
     color: #1E293B !important;
@@ -181,18 +181,14 @@ div[data-testid="stUploadedFile"] small {
     padding-bottom: 4px !important;
     min-height: 32px !important;
     height: auto !important;
-    border: none !important; /* 移除內部框線 */
+    border: none !important;
 }
 
-.stSelectbox div[data-baseweb="select"], .stTextArea textarea {
+.stSelectbox div[data-baseweb="select"] *, .stTextArea textarea {
     color: #1E293B !important;
-    padding-top: 4px !important;
-    padding-bottom: 4px !important;
-    min-height: 32px !important;
-    height: auto !important;
 }
 
-/* 處理點擊(Focus)時外框高光狀態 */
+/* 點擊 Focus 時的狀態設定在外層容器 */
 .stTextInput div[data-baseweb="input"]:focus-within, .stSelectbox div[data-baseweb="select"]:focus-within, .stTextArea textarea:focus, .stNumberInput div[data-baseweb="input"]:focus-within {
     border-color: #3b82f6 !important;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
@@ -612,7 +608,6 @@ is_active = (st.session_state.user_status == "在職")
 st.sidebar.markdown(f"**📌 目前系統：** <code>{st.session_state.sys_choice}</code>", unsafe_allow_html=True)
 st.sidebar.divider()
 
-# ★ 職務名稱映射顯示
 role_map_display = {
     "Anita": "使用者、管理者",
     "Andy": "執行長",
@@ -639,8 +634,7 @@ with st.sidebar.expander("📸 修改大頭貼"):
         s_df.at[idx, "avatar"] = base64.b64encode(new_avatar.getvalue()).decode()
         save_staff(s_df); st.session_state.staff_df = s_df; st.rerun()
 
-# ★ 在此處將標題圖示改為🔓
-with st.sidebar.expander("🔓 修改我的密碼"):
+with st.sidebar.expander("🔐 修改我的密碼"):
     new_pw = st.text_input("新密碼", type="password", key="req_side_pw")
     if st.button("更新密碼", key="req_update_pw") and len(new_pw) >= 4:
         s_df = load_staff(); idx = s_df[s_df["name"] == curr_name].index[0]
