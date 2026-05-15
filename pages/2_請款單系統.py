@@ -22,7 +22,7 @@ st.markdown("""
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
 
-/* 整體背景漸變 */
+/* 整體背景漸變：改成乾淨現代的淺灰/淺藍過渡 */
 .stApp {
     background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%);
 }
@@ -61,7 +61,7 @@ st.markdown("""
 /* ★ 終極殺手鐧：徹底摧毀黑色方塊，強制顯示微軟 Excel 彩色圖示 */
 /* ========================================================= */
 
-/* 確保上傳拖曳區的背景是白色的，文字是黑色的 */
+/* 確保上傳拖曳區的背景是柔和淺灰白，文字是深色的 */
 div[data-testid="stFileUploader"] section { 
     background-color: #F8FAFC !important; 
     border: 2px dashed #CBD5E1 !important; 
@@ -96,7 +96,7 @@ div[data-testid="stUploadedFile"] > div > div:first-child {
 /* 4. 恢復右邊的刪除按鈕 (X) 的顯示，並變成紅色 */
 div[data-testid="stUploadedFile"] button svg {
     display: block !important;
-    fill: #ef4444 !important; /* 紅色更顯眼 */
+    fill: #ef4444 !important;
     width: 18px !important;
     height: 18px !important;
 }
@@ -155,7 +155,7 @@ div[data-testid="stUploadedFile"] small {
     background-color: rgba(0, 191, 255, 0.2);
 }
 
-/* 卡片與主要內容區域美化 */
+/* ★ 卡片與主要內容區域美化 (純淨白底) */
 [data-testid="stForm"], div.stExpander > div[role="button"], [data-testid="stDataFrame"] {
     background-color: rgba(255, 255, 255, 0.95) !important;
     backdrop-filter: blur(10px);
@@ -223,6 +223,7 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
 .mobile-camera-only {
     display: none !important; /* 電腦版強制隱藏 */
 }
+
 @media screen and (max-width: 768px) {
     .mobile-camera-only {
         display: flex !important;
@@ -632,6 +633,7 @@ is_active = (st.session_state.user_status == "在職")
 st.sidebar.markdown(f"**📌 目前系統：** <code>{st.session_state.sys_choice}</code>", unsafe_allow_html=True)
 st.sidebar.divider()
 
+# ★ 職務名稱映射顯示
 role_map_display = {
     "Anita": "使用者、管理者",
     "Andy": "執行長",
