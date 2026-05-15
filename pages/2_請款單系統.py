@@ -14,7 +14,7 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：系統介面純淨美化升級
+# 🎨 核心 CSS 魔法：終極解決文字空白與手機排版問題
 # ==========================================
 st.markdown("""
 <style>
@@ -22,9 +22,9 @@ st.markdown("""
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
 
-/* 整體背景漸變：改成乾淨現代的淺灰/淺藍過渡 */
+/* 整體背景漸變 */
 .stApp {
-    background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%);
+    background: linear-gradient(180deg, #D9EAFB 0%, #EBDCF1 100%);
 }
 
 /* 側邊欄渐變和文字顏色 */
@@ -61,14 +61,10 @@ st.markdown("""
 /* ★ 終極殺手鐧：徹底摧毀黑色方塊，強制顯示微軟 Excel 彩色圖示 */
 /* ========================================================= */
 
-/* 確保上傳拖曳區的背景是柔和淺灰白，文字是深色的 */
-div[data-testid="stFileUploader"] section { 
-    background-color: #F8FAFC !important; 
-    border: 2px dashed #CBD5E1 !important; 
-    border-radius: 12px !important;
-}
-div[data-testid="stFileUploader"] label, div[data-testid="stFileUploadDropzone"] p, div[data-testid="stFileUploadDropzone"] span, div[data-testid="stFileUploadDropzone"] small { color: #475569 !important; }
-div[data-testid="stFileUploadDropzone"] > div > svg { fill: #94A3B8 !important; }
+/* 確保上傳拖曳區的背景是白色的，文字是黑色的 */
+div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #cbd5e1 !important; }
+div[data-testid="stFileUploader"] label, div[data-testid="stFileUploadDropzone"] p, div[data-testid="stFileUploadDropzone"] span, div[data-testid="stFileUploadDropzone"] small { color: #1E293B !important; }
+div[data-testid="stFileUploadDropzone"] > div > svg { fill: #64748B !important; }
 
 /* 1. 殺掉所有深色背景！讓黑黑一坨徹底消失！ */
 div[data-testid="stUploadedFile"], 
@@ -96,7 +92,7 @@ div[data-testid="stUploadedFile"] > div > div:first-child {
 /* 4. 恢復右邊的刪除按鈕 (X) 的顯示，並變成紅色 */
 div[data-testid="stUploadedFile"] button svg {
     display: block !important;
-    fill: #ef4444 !important;
+    fill: #ef4444 !important; /* 紅色更顯眼 */
     width: 18px !important;
     height: 18px !important;
 }
@@ -155,35 +151,35 @@ div[data-testid="stUploadedFile"] small {
     background-color: rgba(0, 191, 255, 0.2);
 }
 
-/* ★ 卡片與主要內容區域美化 (純淨白底) */
+/* 卡片與主要內容區域 */
 [data-testid="stForm"], div.stExpander > div[role="button"], [data-testid="stDataFrame"] {
-    background-color: rgba(255, 255, 255, 0.95) !important;
+    background-color: rgba(240, 244, 248, 0.8) !important;
     backdrop-filter: blur(10px);
-    border-radius: 12px;
+    border-radius: 16px;
     padding: 20px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
-    border: 1px solid #E2E8F0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 [data-testid="stForm"] *, div.stExpander * {
     color: #1E293B;
 }
 
-/* ★ 輸入框、下拉選單純淨化 (去除舊版髒髒的藍底) */
+/* 縮小輸入框、下拉選單與按鈕 */
 .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput input {
     border-radius: 8px !important;
-    border: 1px solid #E2E8F0 !important;
-    background-color: #FFFFFF !important;
+    border: 1px solid #CBD5E1 !important;
+    background-color: rgba(224, 231, 255, 0.5) !important;
     color: #1E293B !important;
-    padding-top: 6px !important;
-    padding-bottom: 6px !important;
-    min-height: 38px !important;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    min-height: 32px !important;
     height: auto !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
 }
 .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
-    border-color: #3B82F6 !important;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15) !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+    background-color: #ffffff !important;
 }
 
 /* 側邊欄輸入框與下拉選單強制黑字與黑色箭頭，避免白底白字隱形 */
@@ -197,61 +193,29 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     color: #1E293B !important;
 }
 
-/* ★ 按鈕質感提升 (去除原本的亮藍色文字，改為高質感深灰帶微藍光效果) */
 .stButton>button, .stFormSubmitButton>button, .stPopover>button {
     border-radius: 8px !important;
     font-weight: 600 !important;
-    border: 1px solid #CBD5E1 !important;
-    background-color: #FFFFFF !important;
-    color: #334155 !important; 
+    border: 1px solid #3b82f6 !important;
+    background-color: #ffffff !important;
+    color: #00BFFF !important; 
     transition: all 0.2s ease !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
-    padding: 6px 16px !important;
-    min-height: 38px !important;  
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+    padding: 4px 12px !important;
+    min-height: 32px !important;  
     height: auto !important;
     line-height: 1.4 !important;
 }
 .stButton>button:hover, .stFormSubmitButton>button:hover, .stPopover>button:hover {
-    background-color: #F8FAFC !important;
-    border-color: #3B82F6 !important;
-    color: #3B82F6 !important;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 6px rgba(0,0,0,0.06) !important;
+    background-color: rgba(0, 191, 255, 0.1) !important;
+    border-color: #3b82f6 !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
+    color: #00BFFF !important;
 }
 
-/* ★ 手機版專屬相機小圖示 (LINE風格) */
-.mobile-camera-only {
-    display: none !important; /* 電腦版強制隱藏 */
-}
-
+/* 手機版直式排版拒絕拉伸 */
 @media screen and (max-width: 768px) {
-    .mobile-camera-only {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        margin-top: 28px !important; /* 對齊左側上傳按鈕的高度 */
-    }
-    .mobile-camera-only [data-testid="stPopover"] {
-        display: block !important;
-    }
-    /* 將彈出按鈕打造成方形的小圖示按鈕 */
-    .mobile-camera-only [data-testid="stPopover"] > button {
-        width: 48px !important;
-        height: 48px !important;
-        border-radius: 12px !important;
-        padding: 0 !important;
-        border: 2px solid #cbd5e1 !important;
-        background-color: #f8fafc !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
-    }
-    .mobile-camera-only [data-testid="stPopover"] > button p {
-        font-size: 24px !important;
-        margin: 0 !important;
-    }
-    
     .block-container { padding-top: 1rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
     div[data-testid="stHorizontalBlock"] { 
         display: flex !important;
@@ -578,10 +542,8 @@ def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replac
 def render_upload_popover(container, r, prefix):
     with container.popover("📎 附件"):
         st.write("**上傳附件 (圖/Excel)**")
-        
         nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
         nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
-        
         if st.button("💾 儲存附件", key=f"{prefix}_b"):
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
             jd = parse_req_json(fresh_db.at[idx, "請款說明"])
@@ -1072,24 +1034,8 @@ else:
             desc = st.text_area("請款說明", value=dv["desc"])
             st.info("💡 **提示：系統會自動加總「金額(未稅) + 稅額」，若選擇「扣30手續費」，最終存檔總金額會自動扣除 30 元。**")
             
-            # ★ 升級點：整合檔案上傳與相機圖示 (手機版專屬)
-            c_acc1, c_acc2 = st.columns([8, 2])
-            with c_acc1:
-                f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
-            with c_acc2:
-                st.markdown("<div class='mobile-camera-only'>", unsafe_allow_html=True)
-                with st.popover("📸"):
-                    cam_acc = st.camera_input("📸 請拍攝存摺", key=f"req_cam_acc_{up_key}")
-                st.markdown("</div>", unsafe_allow_html=True)
-            
-            c_ims1, c_ims2 = st.columns([8, 2])
-            with c_ims1:
-                f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"req_f_ims_{up_key}")
-            with c_ims2:
-                st.markdown("<div class='mobile-camera-only'>", unsafe_allow_html=True)
-                with st.popover("📸"):
-                    cam_ims = st.camera_input("📸 請拍攝憑證", key=f"req_cam_ims_{up_key}")
-                st.markdown("</div>", unsafe_allow_html=True)
+            f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
+            f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"req_f_ims_{up_key}")
             
             del_acc = False; del_ims = []; existing_ims = []; existing_ims_names = dv["ims_names"]
             
@@ -1141,30 +1087,14 @@ else:
                 total_amt = net_amt + tax_amt - fee
                 if not pn or (net_amt + tax_amt) <= 0: st.error("⚠️ 請填寫「專案名稱」且金額須大於 0")
                 else:
-                    # 處理存摺上傳 (優先取相機拍照)
-                    acc_file_to_save = cam_acc if cam_acc else f_acc
-                    if acc_file_to_save: 
-                        b_acc = base64.b64encode(acc_file_to_save.getvalue()).decode()
-                        acc_name_save = "camera_acc.jpg" if acc_file_to_save == cam_acc else acc_file_to_save.name
-                    else: 
-                        b_acc = "" if del_acc else safe_str(dv["ab64"])
-                        acc_name_save = "" if del_acc else dv["acc_name"]
+                    if f_acc: b_acc = base64.b64encode(f_acc.getvalue()).decode(); acc_name_save = f_acc.name
+                    else: b_acc = "" if del_acc else safe_str(dv["ab64"]); acc_name_save = "" if del_acc else dv["acc_name"]
 
                     retained_ims = [img for i, img in enumerate(existing_ims) if i not in del_ims]
                     safe_existing_names = dv["ims_names"] + [f"舊版憑證 {i+1}" for i in range(len(existing_ims) - len(dv["ims_names"]))]
                     retained_names = [name for i, name in enumerate(safe_existing_names[:len(existing_ims)]) if i not in del_ims]
-                    
-                    # 處理憑證上傳 (合併檔案上傳與相機拍照)
-                    new_ims_b64 = []
-                    new_ims_names = []
-                    if f_ims:
-                        for f in f_ims:
-                            new_ims_b64.append(base64.b64encode(f.getvalue()).decode())
-                            new_ims_names.append(f.name)
-                    if cam_ims:
-                        new_ims_b64.append(base64.b64encode(cam_ims.getvalue()).decode())
-                        new_ims_names.append("camera_img.jpg")
-                        
+                    new_ims_b64 = [base64.b64encode(f.getvalue()).decode() for f in f_ims] if f_ims else []
+                    new_ims_names = [f.name for f in f_ims] if f_ims else []
                     final_ims_list = retained_ims + new_ims_b64
                     final_names_list = retained_names + new_ims_names
                     b_ims = "|".join(final_ims_list)
