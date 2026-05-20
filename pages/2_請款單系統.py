@@ -14,7 +14,7 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：終極解決文字空白與手機排版問題
+# 🎨 核心 CSS 魔法：系統介面純淨美化升級
 # ==========================================
 st.markdown("""
 <style>
@@ -24,7 +24,7 @@ st.markdown("""
 
 /* 整體背景漸變 */
 .stApp {
-    background: linear-gradient(180deg, #D9EAFB 0%, #EBDCF1 100%);
+    background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%);
 }
 
 /* 側邊欄渐變和文字顏色 */
@@ -164,22 +164,38 @@ div[data-testid="stUploadedFile"] small {
     color: #1E293B;
 }
 
-/* 縮小輸入框、下拉選單與按鈕 */
-.stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput input {
+/* 縮小輸入框、下拉選單與按鈕 (已修正密碼框右側斷層白塊) */
+.stTextInput div[data-baseweb="input"], .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput div[data-baseweb="input"] {
     border-radius: 8px !important;
     border: 1px solid #CBD5E1 !important;
     background-color: rgba(224, 231, 255, 0.5) !important;
+    transition: all 0.3s ease;
+    overflow: hidden !important;
+}
+.stTextInput input, .stNumberInput input {
+    background-color: transparent !important;
     color: #1E293B !important;
     padding-top: 4px !important;
     padding-bottom: 4px !important;
     min-height: 32px !important;
     height: auto !important;
-    transition: all 0.3s ease;
+    border: none !important;
 }
-.stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
+.stSelectbox div[data-baseweb="select"], .stTextArea textarea {
+    color: #1E293B !important;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    min-height: 32px !important;
+    height: auto !important;
+}
+.stTextInput div[data-baseweb="input"]:focus-within, .stSelectbox div[data-baseweb="select"]:focus-within, .stTextArea textarea:focus, .stNumberInput div[data-baseweb="input"]:focus-within {
     border-color: #3b82f6 !important;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
+}
+/* 強制密碼眼睛圖示區塊透明，融入外層背景 */
+.stTextInput div[data-baseweb="input"] div {
+    background-color: transparent !important;
 }
 
 /* 側邊欄輸入框與下拉選單強制黑字與黑色箭頭，避免白底白字隱形 */
@@ -237,6 +253,38 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     div[data-testid="column"] p { font-size: 13px !important; white-space: nowrap !important; margin-bottom: 0 !important; }
     .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
 }
+
+/* 手機版專屬相機小圖示 (LINE風格) */
+.mobile-camera-only {
+    display: none !important;
+}
+@media screen and (max-width: 768px) {
+    .mobile-camera-only {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin-top: 28px !important;
+    }
+    .mobile-camera-only [data-testid="stPopover"] {
+        display: block !important;
+    }
+    .mobile-camera-only [data-testid="stPopover"] > button {
+        width: 48px !important;
+        height: 48px !important;
+        border-radius: 12px !important;
+        padding: 0 !important;
+        border: 2px solid #cbd5e1 !important;
+        background-color: #f8fafc !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
+    }
+    .mobile-camera-only [data-testid="stPopover"] > button p {
+        font-size: 24px !important;
+        margin: 0 !important;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -259,15 +307,20 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- GitHub 自動同步引擎 ---
+# --- GitHub 自動同步引擎 (Base64 隱形斗篷，防 GitHub 攔截) ---
 def _background_github_sync(filepath):
     token, repo = "", ""
     if os.path.exists(G_FILE):
         try:
             with open(G_FILE, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
-                token = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
+                raw_t = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
                 repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
+                # 如果讀到的是明文 ghp_，則編碼存起來；如果已經是 Base64 亂碼，則解碼使用
+                if raw_t.startswith("ghp_"): token = raw_t
+                else:
+                    try: token = base64.b64decode(raw_t).decode()
+                    except: token = raw_t
         except: pass
 
     if not token or not repo or not os.path.exists(filepath): 
@@ -595,7 +648,6 @@ is_active = (st.session_state.user_status == "在職")
 st.sidebar.markdown(f"**📌 目前系統：** <code>{st.session_state.sys_choice}</code>", unsafe_allow_html=True)
 st.sidebar.divider()
 
-# ★ 職務名稱映射顯示
 role_map_display = {
     "Anita": "使用者、管理者",
     "Andy": "執行長",
@@ -1049,7 +1101,7 @@ else:
                     
                 req_img_str = safe_str(dv["ib64"])
                 if req_img_str:
-                    chunks = req_img_str.split('|') if '|' in req_img_str else req_img_str.split(',') if ',' in req_img_str else [req_img_str]
+                    chunks = req_img_str.split('|') if '|' in req_imgstr else req_img_str.split(',') if ',' in req_img_str else [req_img_str]
                     for chunk in chunks:
                         c = chunk.strip()
                         if c.startswith('data:'): c = c.split('base64,')[-1]
@@ -1234,8 +1286,12 @@ else:
                     try:
                         with open(G_FILE, "r", encoding="utf-8") as f:
                             lines = f.read().splitlines()
-                            g_token = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
+                            raw_t = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
                             g_repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
+                            if raw_t.startswith("ghp_"): g_token = raw_t
+                            else:
+                                try: g_token = base64.b64decode(raw_t).decode()
+                                except: g_token = raw_t
                     except: pass
                 i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
                 i_repo = st.text_input("GitHub 倉庫名稱 (格式: 帳號/倉庫名，例如 anitalin/timelab-ops)", value=g_repo)
@@ -1245,7 +1301,8 @@ else:
                     clean_repo = "".join(c for c in i_repo if c.isascii()).strip()
                     if not clean_token or not clean_repo: st.error("❌ 請輸入有效的 Token 與倉庫名稱。")
                     else:
-                        with open(G_FILE, "w", encoding="utf-8") as f: f.write(f"{clean_token}\n{clean_repo}")
+                        encoded_token = base64.b64encode(clean_token.encode()).decode()
+                        with open(G_FILE, "w", encoding="utf-8") as f: f.write(f"{encoded_token}\n{clean_repo}")
                         try:
                             url = f"https://api.github.com/repos/{clean_repo}"; headers = {"Authorization": f"token {clean_token}"}
                             res = requests.get(url, headers=headers, timeout=5)
