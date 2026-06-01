@@ -164,7 +164,7 @@ div[data-testid="stUploadedFile"] small {
     color: #1E293B;
 }
 
-/* 縮小輸入框、下拉選單與按鈕 (已修正密碼框右側斷層白塊) */
+/* 縮小輸入框、下拉選單與按鈕 (已修正：完美修復密碼框右側斷層白塊) */
 .stTextInput div[data-baseweb="input"], .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput div[data-baseweb="input"] {
     border-radius: 8px !important;
     border: 1px solid #CBD5E1 !important;
@@ -307,7 +307,7 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- GitHub 自動同步引擎 (Base64 隱形斗篷，防 GitHub 攔截) ---
+# --- GitHub 自動同步引擎 (Base64 防攔截版) ---
 def _background_github_sync(filepath):
     token, repo = "", ""
     if os.path.exists(G_FILE):
@@ -316,7 +316,6 @@ def _background_github_sync(filepath):
                 lines = f.read().splitlines()
                 raw_t = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
                 repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
-                # 如果讀到的是明文 ghp_，則編碼存起來；如果已經是 Base64 亂碼，則解碼使用
                 if raw_t.startswith("ghp_"): token = raw_t
                 else:
                     try: token = base64.b64decode(raw_t).decode()
@@ -1101,7 +1100,7 @@ else:
                     
                 req_img_str = safe_str(dv["ib64"])
                 if req_img_str:
-                    chunks = req_img_str.split('|') if '|' in req_imgstr else req_img_str.split(',') if ',' in req_img_str else [req_img_str]
+                    chunks = req_img_str.split('|') if '|' in req_img_str else req_img_str.split(',') if ',' in req_img_str else [req_img_str]
                     for chunk in chunks:
                         c = chunk.strip()
                         if c.startswith('data:'): c = c.split('base64,')[-1]
