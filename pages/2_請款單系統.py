@@ -14,7 +14,7 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：系統介面純淨美化升級
+# 🎨 核心 CSS 魔法：終極解決文字空白與手機排版問題
 # ==========================================
 st.markdown("""
 <style>
@@ -24,7 +24,7 @@ st.markdown("""
 
 /* 整體背景漸變 */
 .stApp {
-    background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%);
+    background: linear-gradient(180deg, #D9EAFB 0%, #EBDCF1 100%);
 }
 
 /* 側邊欄渐變和文字顏色 */
@@ -164,7 +164,7 @@ div[data-testid="stUploadedFile"] small {
     color: #1E293B;
 }
 
-/* 縮小輸入框、下拉選單與按鈕 (已修正：完美修復密碼框右側斷層白塊) */
+/* 縮小輸入框、下拉選單與按鈕 */
 .stTextInput div[data-baseweb="input"], .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput div[data-baseweb="input"] {
     border-radius: 8px !important;
     border: 1px solid #CBD5E1 !important;
@@ -252,38 +252,6 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: max-content !important; }
     div[data-testid="column"] p { font-size: 13px !important; white-space: nowrap !important; margin-bottom: 0 !important; }
     .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
-}
-
-/* 手機版專屬相機小圖示 (LINE風格) */
-.mobile-camera-only {
-    display: none !important;
-}
-@media screen and (max-width: 768px) {
-    .mobile-camera-only {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        margin-top: 28px !important;
-    }
-    .mobile-camera-only [data-testid="stPopover"] {
-        display: block !important;
-    }
-    .mobile-camera-only [data-testid="stPopover"] > button {
-        width: 48px !important;
-        height: 48px !important;
-        border-radius: 12px !important;
-        padding: 0 !important;
-        border: 2px solid #cbd5e1 !important;
-        background-color: #f8fafc !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
-    }
-    .mobile-camera-only [data-testid="stPopover"] > button p {
-        font-size: 24px !important;
-        margin: 0 !important;
-    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -1113,18 +1081,19 @@ else:
                             if st.checkbox(f"🗑️ 刪除 {disp_name}", key=f"del_im_{idx}"): del_ims.append(idx)
                                 
             st.markdown("<br>", unsafe_allow_html=True)
+            # ★ 修改點 1：拔除上方的 🚀 提交按鈕，強制只能先存檔 ★
             if st.session_state.req_edit_id:
-                c_btn1, c_btn2, c_btn3, c_btn4, c_btn5, c_btn6 = st.columns(6)
+                c_btn1, c_btn3, c_btn4, c_btn5, c_btn6 = st.columns(5)
                 btn_save = c_btn1.button("💾 存檔", use_container_width=True)
-                btn_submit = c_btn2.button("🚀 提交", use_container_width=True)
+                btn_submit = False
                 btn_preview = c_btn3.button("🔍 預覽", use_container_width=True)
                 btn_print = c_btn4.button("🖨️ 列印", use_container_width=True)
                 btn_next = c_btn5.button("🆕 下一筆申請", use_container_width=True)
                 btn_cancel = c_btn6.button("❌ 不存檔", use_container_width=True)
             else:
-                c_btn1, c_btn2, c_btn3, c_btn4, c_btn5 = st.columns(5)
+                c_btn1, c_btn3, c_btn4, c_btn5 = st.columns(4)
                 btn_save = c_btn1.button("💾 存檔", use_container_width=True)
-                btn_submit = c_btn2.button("🚀 提交", use_container_width=True)
+                btn_submit = False
                 btn_preview = c_btn3.button("🔍 預覽", use_container_width=True)
                 btn_print = c_btn4.button("🖨️ 列印", use_container_width=True)
                 btn_next = c_btn5.button("🆕 下一筆申請", use_container_width=True)
@@ -1183,6 +1152,9 @@ else:
         f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
         if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
         
+        # ★ 修改點 3：依照單號降序排列，最新排到最舊 ★
+        my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
+        
         if is_admin:
             cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
             headers = ["申請單號", "專案名稱", "負責執行長", "申請人", "請款總金額", "狀態", "操作"]
@@ -1213,6 +1185,8 @@ else:
                 b1, b2, b3, b4, b5, b6 = st.columns(6)
                 app_name = safe_str(r.get("申請人")); proxy_name = safe_str(r.get("代申請人"))
                 is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
+                
+                # ★ 修改點 2：提交按鈕的啟用邏輯與修改按鈕完全綁定，一經送出立即反灰禁用 ★
                 can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
                 
                 if b1.button("提交", key=f"s{i}", disabled=not can_edit):
