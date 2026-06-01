@@ -552,12 +552,70 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
+def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
+
+def render_upload_popover(container, r, prefix):
+    with container.popover("📎 附件"):
+        st.write("**上傳附件 (圖/Excel)**")
+        nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
+        nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
+        if st.button("💾 儲存附件", key=f"{prefix}_b"):
+            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+            jd = parse_req_json(fresh_db.at[idx, "請款說明"])
+            
+            if nf_acc: 
+                fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
+                jd["acc_name"] = nf_acc.name
+            if nf_ims: 
+                fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
+                jd["ims_names"] = [f.name for f in nf_ims]
+            
+            if nf_acc or nf_ims:
+                packed_desc = "[請款單資料]\n" + json.dumps(jd, ensure_ascii=False)
+                fresh_db.at[idx, "請款說明"] = packed_desc
+                save_data(fresh_db); st.rerun()
+
+# ★ 升級點 1：將預覽畫面封裝成函數，方便在表格中「行內直接展開」 ★
+def render_inline_preview(r, prefix_key):
+    with st.container():
+        st.markdown(f"#### 🔍 單號 {r['單號']} 預覽")
+        st.markdown(render_html(r), unsafe_allow_html=True)
+        all_files = []
+        acc_img = safe_str(r.get("帳戶影像Base64"))
+        if acc_img: all_files.append(acc_img)
+
+        req_img = safe_str(r.get("影像Base64"))
+        if req_img:
+            chunks = req_img.split('|') if '|' in req_img else req_img.split(',') if ',' in req_img else [req_img]
+            for chunk in chunks:
+                c = chunk.strip()
+                if c.startswith('data:'): c = c.split('base64,')[-1]
+                if c: all_files.append(c)
+
+        if all_files:
+            for idx, f_b64 in enumerate(all_files):
+                try:
+                    pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
+                    raw = base64.b64decode(pad)
+                    if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
+                        try:
+                            st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
+                        except:
+                            st.error("⚠️ 無法預覽此 Excel。請確保 requirements.txt 包含 openpyxl。")
+                    else: st.image(raw, use_container_width=True)
+                except Exception: pass 
+        
+        if st.button("❌ 關閉預覽", key=f"close_{prefix_key}"):
+            st.session_state.req_view_id = None
+            st.rerun()
+        st.markdown("---")
+
+# 針對列印功能保留的原始大組裝 (因為列印是開啟新視窗，不需要拆解)
 def render_html_with_attachments(row):
     h = render_html(row)
     all_files = []
     acc_img = safe_str(row.get("帳戶影像Base64"))
     if acc_img: all_files.append(acc_img)
-
     req_img = safe_str(row.get("影像Base64"))
     if req_img:
         chunks = req_img.split('|') if '|' in req_img else req_img.split(',') if ',' in req_img else [req_img]
@@ -589,28 +647,6 @@ def render_html_with_attachments(row):
         h += '</div>'
     return h
 
-def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
-
-def render_upload_popover(container, r, prefix):
-    with container.popover("📎 附件"):
-        st.write("**上傳附件 (圖/Excel)**")
-        nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
-        nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
-        if st.button("💾 儲存附件", key=f"{prefix}_b"):
-            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-            jd = parse_req_json(fresh_db.at[idx, "請款說明"])
-            
-            if nf_acc: 
-                fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
-                jd["acc_name"] = nf_acc.name
-            if nf_ims: 
-                fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
-                jd["ims_names"] = [f.name for f in nf_ims]
-            
-            if nf_acc or nf_ims:
-                packed_desc = "[請款單資料]\n" + json.dumps(jd, ensure_ascii=False)
-                fresh_db.at[idx, "請款說明"] = packed_desc
-                save_data(fresh_db); st.rerun()
 
 # --- 6. Session 初始化與防呆重載 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
@@ -831,6 +867,8 @@ if st.session_state.get('req_review_id'):
         can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita"
         
         if c_btn2.button("✅ 確認核准", disabled=not can_sign):
+            # ★ 修復點 2：核准單據時也強制清空編輯狀態，防止 Bug 蔓延 ★
+            st.session_state.req_edit_id = None 
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
             if sign_type == "EXE":
                 fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
@@ -845,6 +883,8 @@ if st.session_state.get('req_review_id'):
             with c_btn3.popover("❌ 駁回單據"):
                 reason = st.text_input("請輸入駁回原因")
                 if st.button("確認駁回", key="btn_rej_conf"):
+                    # ★ 修復點 2：駁回單據時也強制清空編輯狀態，防止 Bug 蔓延 ★
+                    st.session_state.req_edit_id = None 
                     fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                     field_prefix = "初審" if sign_type == "EXE" else "複審"
                     fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", reason, curr_name, get_taiwan_time()]
@@ -915,6 +955,8 @@ else:
             is_btn_disabled = (len(selected_ids) == 0) or (curr_name == "Anita")
             
             if batch_c1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=is_btn_disabled, key=f"bat_ok_{sign_type}"):
+                # ★ 修復點 2：批次核准單據時也強制清空編輯狀態，防止 Bug 蔓延 ★
+                st.session_state.req_edit_id = None 
                 fresh_db = load_data()
                 success_count = 0
                 for sel_id in selected_ids:
@@ -937,6 +979,8 @@ else:
                 with batch_c2.popover(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)"):
                     reason = st.text_input("請統一輸入駁回原因", key=f"rej_batch_{sign_type}")
                     if st.button("確認批次駁回"):
+                        # ★ 修復點 2：批次駁回單據時也強制清空編輯狀態，防止 Bug 蔓延 ★
+                        st.session_state.req_edit_id = None 
                         fresh_db = load_data()
                         success_count = 0
                         for sel_id in selected_ids:
@@ -982,14 +1026,20 @@ else:
                 with btn_c:
                     btn_col1, btn_col2, btn_col3 = st.columns(3)
                     if btn_col1.button("預覽", key=f"sv_{sign_type}_{r['單號']}_{is_history}"):
-                        st.session_state.req_view_id = r["單號"]; st.rerun()
+                        if st.session_state.req_view_id == r["單號"]: st.session_state.req_view_id = None
+                        else: st.session_state.req_view_id = r["單號"]
+                        st.rerun()
                     btn_col2.write(f"[{r['狀態']}]")
+                    
+                # ★ 升級點 1：直接在該行表單下方展開預覽！ ★
+                if st.session_state.req_view_id == r["單號"]:
+                    render_inline_preview(r, f"in_{sign_type}_{r['單號']}_{is_history}")
 
     # ================= 各頁面顯示邏輯 =================
     if menu == "1. 填寫申請單":
-        # ★ 修改點 1：表單抬頭提示，如果目前是在修改狀態，就顯示「目前表單 X 號正進行修改」 ★
+        # ★ 升級點 1：如果是修改模式，抬頭直接變紅字提醒！ ★
         if st.session_state.get('req_edit_id'):
-            st.subheader(f"📝 目前表單 :red[{st.session_state.req_edit_id}] 正進行修改")
+            st.subheader(f"📝 目前表單 :red[{st.session_state.req_edit_id}] 號正進行修改")
         else:
             st.subheader("📝 填寫請款申請單")
             
@@ -1172,7 +1222,7 @@ else:
                     
                     save_data(f_db)
 
-                    # ★ 修改點 2：加入右下角 Toast 通知，明確告知使用者存檔成功 ★
+                    # ★ 加入右下角 Toast 通知，明確告知使用者存檔成功 ★
                     st.toast(f"✅ 單據 {tid} 存檔成功！", icon="💾")
 
                     if btn_submit:
@@ -1195,7 +1245,7 @@ else:
         f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
         if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
         
-        # ★ 修改點 3：依照單號降序排列，最新排到最舊 ★
+        # ★ 依照單號降序排列，最新排到最舊 ★
         my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
         
         if is_admin:
@@ -1229,24 +1279,26 @@ else:
                 app_name = safe_str(r.get("申請人")); proxy_name = safe_str(r.get("代申請人"))
                 is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
                 
-                # ★ 修改點 2：提交按鈕的啟用邏輯與修改按鈕完全綁定，只有未提交跟已駁回可以點擊，送出即反灰禁用 ★
+                # 提交按鈕的啟用邏輯與修改按鈕完全綁定，只有未提交跟已駁回可以點擊，送出即反灰禁用
                 can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
                 
                 if b1.button("提交", key=f"s{i}", disabled=not can_edit):
+                    # ★ 修復點 2：強制清空編輯狀態，徹底杜絕單據被存檔覆蓋的 Bug ★
+                    st.session_state.req_edit_id = None
+                    st.session_state.req_uploader_key += 1
+                    
                     fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
                     
-                    # ★ 修改點 4 (防 Bug)：點擊提交後，強制解除上方的編輯模式！避免使用者打字覆蓋到已經提交的表單 ★
-                    if st.session_state.get('req_edit_id') == r["單號"]:
-                        st.session_state.req_edit_id = None
-                        st.session_state.req_uploader_key += 1
-                        
                     sys_name = st.session_state.get('sys_choice', '請款單系統')
                     send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！")
                     
-                    st.session_state.req_last_msg = f"🚀 單據 {r['單號']} 已成功提交並進入簽核流程！"
+                    st.toast(f"🚀 單據 {r['單號']} 已成功提交！", icon="✅")
                     st.rerun()
                     
-                if b2.button("預覽", key=f"v{i}"): st.session_state.req_view_id = r["單號"]; st.rerun()
+                if b2.button("預覽", key=f"v{i}"): 
+                    if st.session_state.req_view_id == r["單號"]: st.session_state.req_view_id = None
+                    else: st.session_state.req_view_id = r["單號"]
+                    st.rerun()
                 
                 if b3.button("列印", key=f"p{i}"): 
                     html_str = clean_for_js(render_html_with_attachments(r))
@@ -1262,18 +1314,20 @@ else:
                         reason = st.text_input("刪除原因", key=f"d_res_{i}")
                         if st.button("確認", key=f"d{i}"):
                             if reason: 
-                                fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); 
+                                # ★ 修復點 2：刪除單據時也強制清空編輯狀態 ★
+                                st.session_state.req_edit_id = None
+                                st.session_state.req_uploader_key += 1
                                 
-                                # ★ 防 Bug：如果刪除的剛好是正在編輯的表單，一樣強制解除編輯模式 ★
-                                if st.session_state.get('req_edit_id') == r["單號"]:
-                                    st.session_state.req_edit_id = None
-                                    st.session_state.req_uploader_key += 1
-                                    
-                                st.session_state.req_last_msg = f"🗑️ 單據 {r['單號']} 已成功刪除。"
+                                fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); 
+                                st.toast(f"🗑️ 單據 {r['單號']} 已成功刪除。", icon="✅")
                                 st.rerun()
                             else: st.error("請輸入原因")
                 else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
                 render_upload_popover(b6, r, f"up{i}")
+
+            # ★ 升級點 1：直接在該行表單下方展開預覽！ ★
+            if st.session_state.req_view_id == r["單號"]:
+                render_inline_preview(r, f"in_trk_{r['單號']}_{i}")
 
     # ================= 頁面 2: 專案執行長簽核 =================
     elif menu == "2. 專案執行長簽核":
@@ -1420,7 +1474,7 @@ else:
                     save_data(f_db); st.success("已更新"); st.rerun()
             else: st.dataframe(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True)
 
-    # ================= 全域預覽/列印模組 =================
+    # 針對從上方表單點擊「列印」或在全域狀態下開啟的列印模組
     if st.session_state.get('req_print_id'):
         r_df = load_data()
         r_df = r_df[r_df["單號"]==st.session_state.req_print_id]
@@ -1430,42 +1484,3 @@ else:
             js_code = f"<script>var w=window.open('');w.document.write('{html_str}');w.document.close();setTimeout(function(){{w.print();w.close();}}, 1000);</script>"
             st.components.v1.html(js_code, height=0)
         st.session_state.req_print_id = None
-
-    if st.session_state.req_view_id:
-        st.divider()
-        r_df = load_data()
-        r_df = r_df[r_df["單號"]==st.session_state.req_view_id]
-        
-        if r_df.empty:
-            st.warning("⚠️ 找不到該單號資料，可能已被刪除。")
-            if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
-        else:
-            r = r_df.iloc[0]
-            if st.button("❌ 關閉預覽"): st.session_state.req_view_id = None; st.rerun()
-            
-            st.markdown(render_html(r), unsafe_allow_html=True)
-            
-            all_files = []
-            acc_img = safe_str(r.get("帳戶影像Base64"))
-            if acc_img: all_files.append(acc_img)
-
-            req_img = safe_str(r.get("影像Base64"))
-            if req_img:
-                chunks = req_img.split('|') if '|' in req_img else req_img.split(',') if ',' in req_img else [req_img]
-                for chunk in chunks:
-                    c = chunk.strip()
-                    if c.startswith('data:'): c = c.split('base64,')[-1]
-                    if c: all_files.append(c)
-            
-            if all_files:
-                for f_b64 in all_files:
-                    try:
-                        pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
-                        raw = base64.b64decode(pad)
-                        if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
-                            try:
-                                st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
-                            except:
-                                st.error("⚠️ 無法預覽此 Excel。請確保 requirements.txt 包含 openpyxl。")
-                        else: st.image(raw, use_container_width=True)
-                    except Exception: pass
