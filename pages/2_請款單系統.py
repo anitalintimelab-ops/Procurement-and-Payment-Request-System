@@ -164,7 +164,7 @@ div[data-testid="stUploadedFile"] small {
     color: #1E293B;
 }
 
-/* 縮小輸入框、下拉選單與按鈕 */
+/* 縮小輸入框、下拉選單與按鈕 (已修正：完美修復密碼框右側斷層白塊) */
 .stTextInput div[data-baseweb="input"], .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput div[data-baseweb="input"] {
     border-radius: 8px !important;
     border: 1px solid #CBD5E1 !important;
@@ -252,6 +252,38 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: max-content !important; }
     div[data-testid="column"] p { font-size: 13px !important; white-space: nowrap !important; margin-bottom: 0 !important; }
     .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
+}
+
+/* 手機版專屬相機小圖示 (LINE風格) */
+.mobile-camera-only {
+    display: none !important;
+}
+@media screen and (max-width: 768px) {
+    .mobile-camera-only {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin-top: 28px !important;
+    }
+    .mobile-camera-only [data-testid="stPopover"] {
+        display: block !important;
+    }
+    .mobile-camera-only [data-testid="stPopover"] > button {
+        width: 48px !important;
+        height: 48px !important;
+        border-radius: 12px !important;
+        padding: 0 !important;
+        border: 2px solid #cbd5e1 !important;
+        background-color: #f8fafc !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
+    }
+    .mobile-camera-only [data-testid="stPopover"] > button p {
+        font-size: 24px !important;
+        margin: 0 !important;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -955,8 +987,15 @@ else:
 
     # ================= 各頁面顯示邏輯 =================
     if menu == "1. 填寫申請單":
-        st.subheader("📝 填寫請款申請單")
-        if st.session_state.get('req_last_msg'): st.success(st.session_state.req_last_msg); st.session_state.req_last_msg = None
+        # ★ 修改點 1：表單抬頭提示，如果目前是在修改狀態，就顯示「目前表單 X 號正進行修改」 ★
+        if st.session_state.get('req_edit_id'):
+            st.subheader(f"📝 目前表單 :red[{st.session_state.req_edit_id}] 正進行修改")
+        else:
+            st.subheader("📝 填寫請款申請單")
+            
+        if st.session_state.get('req_last_msg'): 
+            st.success(st.session_state.req_last_msg)
+            st.session_state.req_last_msg = None
 
         p_db = load_projects(); v_db = load_vendors()
 
@@ -1081,7 +1120,8 @@ else:
                             if st.checkbox(f"🗑️ 刪除 {disp_name}", key=f"del_im_{idx}"): del_ims.append(idx)
                                 
             st.markdown("<br>", unsafe_allow_html=True)
-            # ★ 修改點 1：拔除上方的 🚀 提交按鈕，強制只能先存檔 ★
+            
+            # 維持原本設計：下方沒有「提交」按鈕，只保留存檔與其他功能
             if st.session_state.req_edit_id:
                 c_btn1, c_btn3, c_btn4, c_btn5, c_btn6 = st.columns(5)
                 btn_save = c_btn1.button("💾 存檔", use_container_width=True)
@@ -1132,6 +1172,9 @@ else:
                     
                     save_data(f_db)
 
+                    # ★ 修改點 2：加入右下角 Toast 通知，明確告知使用者存檔成功 ★
+                    st.toast(f"✅ 單據 {tid} 存檔成功！", icon="💾")
+
                     if btn_submit:
                         f_db = load_data(); idx = f_db[f_db["單號"]==tid].index[0]
                         f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(f_db)
@@ -1142,7 +1185,7 @@ else:
                         st.session_state.req_edit_id = tid  
                         if btn_preview: st.session_state.req_view_id = tid; st.session_state.req_last_msg = f"📄 單據 {tid} 已{msg_prefix}，正在產生預覽..."
                         elif btn_print: st.session_state.req_print_id = tid; st.session_state.req_last_msg = f"🖨️ 單據 {tid} 已{msg_prefix}，正在準備列印..."
-                        else: st.session_state.req_last_msg = f"📄 單據 {tid} 已{msg_prefix}！您可以繼續修改或點擊提交。"
+                        else: st.session_state.req_last_msg = f"✅ 單據 {tid} 已{msg_prefix}！請至下方清單確認並點擊「提交」。"
                     
                     st.session_state.req_uploader_key += 1; st.rerun()
 
@@ -1186,13 +1229,23 @@ else:
                 app_name = safe_str(r.get("申請人")); proxy_name = safe_str(r.get("代申請人"))
                 is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
                 
-                # ★ 修改點 2：提交按鈕的啟用邏輯與修改按鈕完全綁定，一經送出立即反灰禁用 ★
+                # ★ 修改點 2：提交按鈕的啟用邏輯與修改按鈕完全綁定，只有未提交跟已駁回可以點擊，送出即反灰禁用 ★
                 can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
                 
                 if b1.button("提交", key=f"s{i}", disabled=not can_edit):
                     fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
+                    
+                    # ★ 修改點 4 (防 Bug)：點擊提交後，強制解除上方的編輯模式！避免使用者打字覆蓋到已經提交的表單 ★
+                    if st.session_state.get('req_edit_id') == r["單號"]:
+                        st.session_state.req_edit_id = None
+                        st.session_state.req_uploader_key += 1
+                        
                     sys_name = st.session_state.get('sys_choice', '請款單系統')
-                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！"); st.rerun()
+                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！")
+                    
+                    st.session_state.req_last_msg = f"🚀 單據 {r['單號']} 已成功提交並進入簽核流程！"
+                    st.rerun()
+                    
                 if b2.button("預覽", key=f"v{i}"): st.session_state.req_view_id = r["單號"]; st.rerun()
                 
                 if b3.button("列印", key=f"p{i}"): 
@@ -1208,7 +1261,16 @@ else:
                     with b5.popover("刪除"):
                         reason = st.text_input("刪除原因", key=f"d_res_{i}")
                         if st.button("確認", key=f"d{i}"):
-                            if reason: fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); st.rerun()
+                            if reason: 
+                                fresh_db = load_data(); fresh_db.loc[fresh_db["單號"]==r["單號"], ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), reason]; save_data(fresh_db); 
+                                
+                                # ★ 防 Bug：如果刪除的剛好是正在編輯的表單，一樣強制解除編輯模式 ★
+                                if st.session_state.get('req_edit_id') == r["單號"]:
+                                    st.session_state.req_edit_id = None
+                                    st.session_state.req_uploader_key += 1
+                                    
+                                st.session_state.req_last_msg = f"🗑️ 單據 {r['單號']} 已成功刪除。"
+                                st.rerun()
                             else: st.error("請輸入原因")
                 else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
                 render_upload_popover(b6, r, f"up{i}")
