@@ -164,7 +164,7 @@ div[data-testid="stUploadedFile"] small {
     color: #1E293B;
 }
 
-/* 縮小輸入框、下拉選單與按鈕 (已修正：完美修復密碼框右側斷層白塊) */
+/* 縮小輸入框、下拉選單與按鈕 */
 .stTextInput div[data-baseweb="input"], .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput div[data-baseweb="input"] {
     border-radius: 8px !important;
     border: 1px solid #CBD5E1 !important;
@@ -575,7 +575,7 @@ def render_upload_popover(container, r, prefix):
                 fresh_db.at[idx, "請款說明"] = packed_desc
                 save_data(fresh_db); st.rerun()
 
-# ★ 升級點 1：將預覽畫面封裝成函數，方便在表格中「行內直接展開」 ★
+# ★ 預覽畫面行內展開模組 ★
 def render_inline_preview(r, prefix_key):
     with st.container():
         st.markdown(f"#### 🔍 單號 {r['單號']} 預覽")
@@ -610,7 +610,6 @@ def render_inline_preview(r, prefix_key):
             st.rerun()
         st.markdown("---")
 
-# 針對列印功能保留的原始大組裝 (因為列印是開啟新視窗，不需要拆解)
 def render_html_with_attachments(row):
     h = render_html(row)
     all_files = []
@@ -867,7 +866,6 @@ if st.session_state.get('req_review_id'):
         can_sign = (r["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita"
         
         if c_btn2.button("✅ 確認核准", disabled=not can_sign):
-            # ★ 修復點 2：核准單據時也強制清空編輯狀態，防止 Bug 蔓延 ★
             st.session_state.req_edit_id = None 
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
             if sign_type == "EXE":
@@ -883,7 +881,6 @@ if st.session_state.get('req_review_id'):
             with c_btn3.popover("❌ 駁回單據"):
                 reason = st.text_input("請輸入駁回原因")
                 if st.button("確認駁回", key="btn_rej_conf"):
-                    # ★ 修復點 2：駁回單據時也強制清空編輯狀態，防止 Bug 蔓延 ★
                     st.session_state.req_edit_id = None 
                     fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
                     field_prefix = "初審" if sign_type == "EXE" else "複審"
@@ -955,7 +952,6 @@ else:
             is_btn_disabled = (len(selected_ids) == 0) or (curr_name == "Anita")
             
             if batch_c1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=is_btn_disabled, key=f"bat_ok_{sign_type}"):
-                # ★ 修復點 2：批次核准單據時也強制清空編輯狀態，防止 Bug 蔓延 ★
                 st.session_state.req_edit_id = None 
                 fresh_db = load_data()
                 success_count = 0
@@ -979,7 +975,6 @@ else:
                 with batch_c2.popover(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)"):
                     reason = st.text_input("請統一輸入駁回原因", key=f"rej_batch_{sign_type}")
                     if st.button("確認批次駁回"):
-                        # ★ 修復點 2：批次駁回單據時也強制清空編輯狀態，防止 Bug 蔓延 ★
                         st.session_state.req_edit_id = None 
                         fresh_db = load_data()
                         success_count = 0
@@ -1031,13 +1026,11 @@ else:
                         st.rerun()
                     btn_col2.write(f"[{r['狀態']}]")
                     
-                # ★ 升級點 1：直接在該行表單下方展開預覽！ ★
                 if st.session_state.req_view_id == r["單號"]:
                     render_inline_preview(r, f"in_{sign_type}_{r['單號']}_{is_history}")
 
     # ================= 各頁面顯示邏輯 =================
     if menu == "1. 填寫申請單":
-        # ★ 升級點 1：如果是修改模式，抬頭直接變紅字提醒！ ★
         if st.session_state.get('req_edit_id'):
             st.subheader(f"📝 目前表單 :red[{st.session_state.req_edit_id}] 號正進行修改")
         else:
@@ -1171,7 +1164,6 @@ else:
                                 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # 維持原本設計：下方沒有「提交」按鈕，只保留存檔與其他功能
             if st.session_state.req_edit_id:
                 c_btn1, c_btn3, c_btn4, c_btn5, c_btn6 = st.columns(5)
                 btn_save = c_btn1.button("💾 存檔", use_container_width=True)
@@ -1222,7 +1214,6 @@ else:
                     
                     save_data(f_db)
 
-                    # ★ 加入右下角 Toast 通知，明確告知使用者存檔成功 ★
                     st.toast(f"✅ 單據 {tid} 存檔成功！", icon="💾")
 
                     if btn_submit:
@@ -1232,7 +1223,8 @@ else:
                         send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{tid}\n專案名稱：{pn}\n有一筆新的表單需要執行長 ({exe}) 進行簽核！")
                         st.session_state.req_edit_id = None; st.session_state.req_last_msg = f"🚀 單據 {tid} 已成功提交簽核！"
                     else:
-                        st.session_state.req_edit_id = tid  
+                        # ★ 升級點 2：存檔完畢後，強制解除編輯狀態！讓表單洗白歸零，杜絕覆蓋 Bug ★
+                        st.session_state.req_edit_id = None  
                         if btn_preview: st.session_state.req_view_id = tid; st.session_state.req_last_msg = f"📄 單據 {tid} 已{msg_prefix}，正在產生預覽..."
                         elif btn_print: st.session_state.req_print_id = tid; st.session_state.req_last_msg = f"🖨️ 單據 {tid} 已{msg_prefix}，正在準備列印..."
                         else: st.session_state.req_last_msg = f"✅ 單據 {tid} 已{msg_prefix}！請至下方清單確認並點擊「提交」。"
@@ -1245,7 +1237,6 @@ else:
         f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
         if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
         
-        # ★ 依照單號降序排列，最新排到最舊 ★
         my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
         
         if is_admin:
@@ -1279,11 +1270,9 @@ else:
                 app_name = safe_str(r.get("申請人")); proxy_name = safe_str(r.get("代申請人"))
                 is_own = (curr_name in app_name) or (curr_name in proxy_name) or (curr_name == "Anita")
                 
-                # 提交按鈕的啟用邏輯與修改按鈕完全綁定，只有未提交跟已駁回可以點擊，送出即反灰禁用
                 can_edit = (stt_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"]) and is_own and is_active
                 
                 if b1.button("提交", key=f"s{i}", disabled=not can_edit):
-                    # ★ 修復點 2：強制清空編輯狀態，徹底杜絕單據被存檔覆蓋的 Bug ★
                     st.session_state.req_edit_id = None
                     st.session_state.req_uploader_key += 1
                     
@@ -1314,7 +1303,6 @@ else:
                         reason = st.text_input("刪除原因", key=f"d_res_{i}")
                         if st.button("確認", key=f"d{i}"):
                             if reason: 
-                                # ★ 修復點 2：刪除單據時也強制清空編輯狀態 ★
                                 st.session_state.req_edit_id = None
                                 st.session_state.req_uploader_key += 1
                                 
@@ -1325,7 +1313,6 @@ else:
                 else: b5.button("刪除", disabled=True, key=f"fake_d_{i}")
                 render_upload_popover(b6, r, f"up{i}")
 
-            # ★ 升級點 1：直接在該行表單下方展開預覽！ ★
             if st.session_state.req_view_id == r["單號"]:
                 render_inline_preview(r, f"in_trk_{r['單號']}_{i}")
 
