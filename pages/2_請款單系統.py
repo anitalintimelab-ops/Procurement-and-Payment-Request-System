@@ -164,7 +164,7 @@ div[data-testid="stUploadedFile"] small {
     color: #1E293B;
 }
 
-/* 縮小輸入框、下拉選單與按鈕 (已修正：完美修復密碼框右側斷層白塊) */
+/* 縮小輸入框、下拉選單與按鈕 */
 .stTextInput div[data-baseweb="input"], .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput div[data-baseweb="input"] {
     border-radius: 8px !important;
     border: 1px solid #CBD5E1 !important;
@@ -409,7 +409,7 @@ def read_csv_robust(filepath):
         except: continue
     return pd.DataFrame()
 
-# ★ 升級點：讀取資料時自動修復損壞的「狀態」資料 ★
+# ★ 自動修復損壞的「狀態」資料 ★
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
@@ -559,7 +559,6 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
-# ★ 預覽畫面行內展開模組 ★
 def render_inline_preview(r, prefix_key):
     with st.container():
         st.markdown(f"#### 🔍 單號 {r['單號']} 預覽")
@@ -1003,6 +1002,9 @@ else:
                 st.rerun()
                 
         else:
+            # ★ 升級排序：讓所有的表格都由新到舊排列 ★
+            df_list = df_list.sort_values(by="單號", ascending=False).reset_index(drop=True)
+
             if is_admin:
                 cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                 headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
@@ -1329,10 +1331,14 @@ else:
         with t1:
             pending = req_db[req_db["狀態"].isin(["待簽核", "待初審"])]
             if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
+            # ★ 加入由大到小排序 ★
+            pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(pending, "EXE")
         with t2:
             history_exe = req_db[req_db["狀態"].isin(["已核准", "已駁回", "待複審"])]
             if not is_admin: history_exe = history_exe[(history_exe["初審人"] == curr_name) | (history_exe["專案負責人"] == curr_name) | (history_exe["申請人"] == curr_name) | (history_exe["代申請人"] == curr_name)]
+            # ★ 加入由大到小排序 ★
+            history_exe = history_exe.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(history_exe, "EXE", is_history=True)
 
     # ================= 頁面 3: 財務長簽核 =================
@@ -1343,10 +1349,14 @@ else:
         with t1:
             pending = req_db[req_db["狀態"] == "待複審"]
             if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
+            # ★ 加入由大到小排序 ★
+            pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(pending, "CFO")
         with t2:
             history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
             if not is_admin and curr_name != CFO_NAME: history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
+            # ★ 加入由大到小排序 ★
+            history_cfo = history_cfo.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(history_cfo, "CFO", is_history=True)
 
     # ================= 頁面 4: 總覽 =================
@@ -1354,6 +1364,8 @@ else:
         st.subheader("📊 表單狀態總覽")
         f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
         if not is_admin: my_db = my_db[(my_db["申請人"] == curr_name) | (my_db["專案負責人"] == curr_name)]
+        # ★ 加入由大到小排序 ★
+        my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
         st.dataframe(my_db[["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式", "匯款狀態", "匯款日期"]], hide_index=True)
 
     # ================= 頁面 5: 系統設定 =================
@@ -1456,6 +1468,9 @@ else:
         st.subheader("💰 財務匯款註記")
         f_db = load_data(); df_pay = f_db[f_db["類型"]=="請款單"].copy()
         if not is_admin and curr_name != CFO_NAME: df_pay = df_pay[(df_pay["申請人"] == curr_name) | (df_pay["專案負責人"] == curr_name)]
+        
+        # ★ 加入由大到小排序 ★
+        df_pay = df_pay.sort_values(by="單號", ascending=False).reset_index(drop=True)
         
         if not df_pay.empty:
             df_pay["匯款日期"] = pd.to_datetime(df_pay["匯款日期"], errors='coerce').dt.date
