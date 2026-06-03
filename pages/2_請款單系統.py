@@ -164,7 +164,7 @@ div[data-testid="stUploadedFile"] small {
     color: #1E293B;
 }
 
-/* 縮小輸入框、下拉選單與按鈕 */
+/* 縮小輸入框、下拉選單與按鈕 (已修正：完美修復密碼框右側斷層白塊) */
 .stTextInput div[data-baseweb="input"], .stSelectbox div[data-baseweb="select"], .stTextArea textarea, .stNumberInput div[data-baseweb="input"] {
     border-radius: 8px !important;
     border: 1px solid #CBD5E1 !important;
@@ -422,16 +422,8 @@ def load_data():
         for c in ["總金額", "已請款金額", "尚未請款金額"]:
             df[c] = df[c].apply(clean_amount)
             
-        # ==========================================
-        # ★ 針對使用者提問的特定單號進行「狀態強制修復」 ★
-        # ==========================================
+        # 廣泛性修復：若不小心將 LINE 通知文字貼到狀態欄
         if "狀態" in df.columns:
-            # 修復 20260601-07 (已核准待複審)
-            df.loc[df["單號"] == "20260601-07", "狀態"] = "待複審"
-            # 修復 20260602-05, 20260602-02 (均已提交，待簽核)
-            df.loc[df["單號"].isin(["20260602-05", "20260602-02"]), "狀態"] = "待簽核"
-            
-            # 廣泛性修復：若不小心將 LINE 通知文字貼到狀態欄
             df.loc[df["狀態"].astype(str).str.contains("需要財務長", na=False), "狀態"] = "待複審"
             df.loc[df["狀態"].astype(str).str.contains("需要執行長", na=False), "狀態"] = "待簽核"
 
@@ -567,6 +559,7 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
+# ★ 預覽畫面行內展開模組 ★
 def render_inline_preview(r, prefix_key):
     with st.container():
         st.markdown(f"#### 🔍 單號 {r['單號']} 預覽")
