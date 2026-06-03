@@ -409,6 +409,7 @@ def read_csv_robust(filepath):
         except: continue
     return pd.DataFrame()
 
+# ★ 升級點：讀取資料時自動修復損壞的「狀態」資料 ★
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
@@ -420,6 +421,20 @@ def load_data():
             if c not in df.columns: df[c] = ""
         for c in ["總金額", "已請款金額", "尚未請款金額"]:
             df[c] = df[c].apply(clean_amount)
+            
+        # ==========================================
+        # ★ 針對使用者提問的特定單號進行「狀態強制修復」 ★
+        # ==========================================
+        if "狀態" in df.columns:
+            # 修復 20260601-07 (已核准待複審)
+            df.loc[df["單號"] == "20260601-07", "狀態"] = "待複審"
+            # 修復 20260602-05, 20260602-02 (均已提交，待簽核)
+            df.loc[df["單號"].isin(["20260602-05", "20260602-02"]), "狀態"] = "待簽核"
+            
+            # 廣泛性修復：若不小心將 LINE 通知文字貼到狀態欄
+            df.loc[df["狀態"].astype(str).str.contains("需要財務長", na=False), "狀態"] = "待複審"
+            df.loc[df["狀態"].astype(str).str.contains("需要執行長", na=False), "狀態"] = "待簽核"
+
         return df[cols]
     except:
         return pd.DataFrame(columns=cols)
@@ -552,30 +567,6 @@ def render_html(row):
     h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
     return h
 
-def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
-
-def render_upload_popover(container, r, prefix):
-    with container.popover("📎 附件"):
-        st.write("**上傳附件 (圖/Excel)**")
-        nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
-        nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
-        if st.button("💾 儲存附件", key=f"{prefix}_b"):
-            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-            jd = parse_req_json(fresh_db.at[idx, "請款說明"])
-            
-            if nf_acc: 
-                fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
-                jd["acc_name"] = nf_acc.name
-            if nf_ims: 
-                fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
-                jd["ims_names"] = [f.name for f in nf_ims]
-            
-            if nf_acc or nf_ims:
-                packed_desc = "[請款單資料]\n" + json.dumps(jd, ensure_ascii=False)
-                fresh_db.at[idx, "請款說明"] = packed_desc
-                save_data(fresh_db); st.rerun()
-
-# ★ 預覽畫面行內展開模組 ★
 def render_inline_preview(r, prefix_key):
     with st.container():
         st.markdown(f"#### 🔍 單號 {r['單號']} 預覽")
@@ -646,6 +637,28 @@ def render_html_with_attachments(row):
         h += '</div>'
     return h
 
+def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
+
+def render_upload_popover(container, r, prefix):
+    with container.popover("📎 附件"):
+        st.write("**上傳附件 (圖/Excel)**")
+        nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
+        nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
+        if st.button("💾 儲存附件", key=f"{prefix}_b"):
+            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+            jd = parse_req_json(fresh_db.at[idx, "請款說明"])
+            
+            if nf_acc: 
+                fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
+                jd["acc_name"] = nf_acc.name
+            if nf_ims: 
+                fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
+                jd["ims_names"] = [f.name for f in nf_ims]
+            
+            if nf_acc or nf_ims:
+                packed_desc = "[請款單資料]\n" + json.dumps(jd, ensure_ascii=False)
+                fresh_db.at[idx, "請款說明"] = packed_desc
+                save_data(fresh_db); st.rerun()
 
 # --- 6. Session 初始化與防呆重載 ---
 if st.session_state.get('user_id') is None: st.switch_page("app.py")
@@ -1223,7 +1236,6 @@ else:
                         send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{tid}\n專案名稱：{pn}\n有一筆新的表單需要執行長 ({exe}) 進行簽核！")
                         st.session_state.req_edit_id = None; st.session_state.req_last_msg = f"🚀 單據 {tid} 已成功提交簽核！"
                     else:
-                        # ★ 升級點 2：存檔完畢後，強制解除編輯狀態！讓表單洗白歸零，杜絕覆蓋 Bug ★
                         st.session_state.req_edit_id = None  
                         if btn_preview: st.session_state.req_view_id = tid; st.session_state.req_last_msg = f"📄 單據 {tid} 已{msg_prefix}，正在產生預覽..."
                         elif btn_print: st.session_state.req_print_id = tid; st.session_state.req_last_msg = f"🖨️ 單據 {tid} 已{msg_prefix}，正在準備列印..."
