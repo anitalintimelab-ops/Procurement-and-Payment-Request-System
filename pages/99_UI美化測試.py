@@ -18,10 +18,10 @@ st.set_page_config(page_title="時研-體驗測試版", layout="wide", page_icon
 # ==========================================
 st.markdown("""
 <style>
-/* 測試版專用：隱藏正式區選單 */
-[data-testid="stSidebarNav"] ul li a[href*="1_"] { display: none !important; }
-[data-testid="stSidebarNav"] ul li a[href*="2_"] { display: none !important; }
-[data-testid="stSidebarNav"] ul li a[href*="3_"] { display: none !important; }
+/* ★ 測試版專用：將正式區選單 (1, 2, 3) 變灰色且不可點選 ★ */
+[data-testid="stSidebarNav"] ul li a[href*="1_"] { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
+[data-testid="stSidebarNav"] ul li a[href*="2_"] { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
+[data-testid="stSidebarNav"] ul li a[href*="3_"] { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
 
 /* 隱藏預設導覽列與防止 x 軸溢出 */
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
@@ -193,6 +193,7 @@ div[data-testid="stUploadedFile"] small {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
 }
+/* 強制密碼眼睛圖示區塊透明 */
 .stTextInput div[data-baseweb="input"] div {
     background-color: transparent !important;
 }
@@ -415,7 +416,7 @@ def save_data(df):
     try: 
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
         sync_to_github(D_FILE) 
-    except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 CSV。"); st.stop()
+    except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
 
 def load_staff():
     df = read_csv_robust(S_FILE)
@@ -476,4 +477,164 @@ def render_html(row):
     app_name = safe_str(row.get('申請人'))
     proxy_name = safe_str(row.get('代申請人'))
     display_app = f"{app_name} ({proxy_name} 代申請)" if proxy_name and proxy_name != app_name else app_name
-    if not display_app: display_app = "
+    if not display_app: display_app = "尚未指定"
+        
+    legacy_net = amt if data.get("net_amt", 0) == 0 and data.get("tax_amt", 0) == 0 else data.get("net_amt", 0)
+    fee = data.get("fee", 0)
+    tax = data.get("tax_amt", 0)
+    stt = safe_str(row.get("狀態")).strip()
+
+    sub_time = safe_str(row.get("提交時間"))[:16].strip()
+    fst_appr = clean_name(row.get("初審人")).strip()
+    fst_time = safe_str(row.get("初審時間"))[:16].strip()
+    sec_appr = clean_name(row.get("複審人")).strip()
+    sec_time = safe_str(row.get("複審時間"))[:16].strip()
+
+    fallback_date = get_fallback_date(row)
+
+    if stt in ["待簽核", "待初審", "待複審", "已核准", "已駁回"]:
+        if not sub_time: sub_time = f"{fallback_date} 12:00"
+        elif len(sub_time) <= 10: sub_time = f"{sub_time} 12:00"
+        s_submit = f"{display_app} {sub_time}".strip()
+    else:
+        s_submit = "" 
+
+    if stt in ["待複審", "已核准"]:
+        if not fst_appr: fst_appr = clean_name(row.get("專案負責人"))
+        if not fst_time: fst_time = f"{fallback_date} 13:00"
+        elif len(fst_time) <= 10: fst_time = f"{fst_time} 13:00"
+        s_first = f"{fst_appr} {fst_time}".strip()
+    else:
+        s_first = ""
+
+    if stt == "已核准":
+        if not sec_appr: sec_appr = CFO_NAME
+        if not sec_time: sec_time = f"{fallback_date} 14:00"
+        elif len(sec_time) <= 10: sec_time = f"{sec_time} 14:00"
+        s_second = f"{sec_appr} {sec_time}".strip()
+    else:
+        s_second = ""
+
+    h = f'<div style="padding:40px;border:4px solid #000;background:#fff;color:#000;font-family:sans-serif;max-width:900px;margin:auto;">'
+    h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;">Time Lab 時研國際設計股份有限公司</h1></div>'
+    h += f'<div style="text-align:center;"><h2 style="margin-top:0px;margin-bottom:15px;font-size:24px;letter-spacing:5px;">請款單 (展示版)</h2></div>'
+    h += f'<hr style="border-top: 3px solid black; margin-bottom: 3px;">'
+    h += f'<hr style="border-top: 1px solid black; margin-top: 0px; margin-bottom: 20px;">'
+    
+    h += '<table style="width:100%;border-collapse:collapse;font-size:15px;border:2px solid black;" border="1">'
+    h += f'<tr><td width="15%" style="padding:8px;">單號</td><td width="35%" style="padding:8px;">{safe_str(row.get("單號"))}</td><td width="15%" style="padding:8px;">負責執行長</td><td width="35%" style="padding:8px;">{safe_str(row.get("專案負責人"))}</td></tr>'
+    h += f'<tr><td style="padding:8px;">專案</td><td style="padding:8px;">{safe_str(row.get("專案名稱"))}</td><td style="padding:8px;">編號</td><td style="padding:8px;">{safe_str(row.get("專案編號"))}</td></tr>'
+    h += f'<tr><td style="padding:8px;">申請人</td><td style="padding:8px;">{display_app}</td><td style="padding:8px;">廠商</td><td style="padding:8px;">{safe_str(row.get("請款廠商"))}</td></tr>'
+    h += f'<tr><td style="padding:8px;">匯款帳戶</td><td colspan="3" style="padding:8px;">{safe_str(row.get("匯款帳戶"))}</td></tr>'
+    
+    desc_html = data.get("desc","").replace("\n", "<br>")
+    inv_str = f"發票/憑證: {safe_str(data.get('inv_no',''))}<br>" if safe_str(data.get('inv_no','')) else ""
+    h += f'<tr><td style="padding:8px;">說明</td><td colspan="3" style="padding:8px;">{inv_str}{desc_html}</td></tr>'
+    
+    cur = safe_str(row.get("幣別")) or "TWD"
+    h += f'<tr><td colspan="3" align="right" style="padding:8px;">金額 (未稅)</td><td align="right" style="padding:8px;">{cur} {legacy_net:,}</td></tr>'
+    h += f'<tr><td colspan="3" align="right" style="padding:8px;">稅額</td><td align="right" style="padding:8px;">{cur} {tax:,}</td></tr>'
+    h += f'<tr><td colspan="3" align="right" style="padding:8px;">手續費</td><td align="right" style="padding:8px;">{cur} {fee:,}</td></tr>'
+    h += f'<tr><td colspan="3" align="right" style="padding:8px;"><b>實付 / 請款總額</b></td><td align="right" style="padding:8px;"><b>{cur} {amt:,}</b></td></tr></table>'
+    
+    h += f'<p style="font-size:15px;margin-top:20px;line-height:1.6;">提交: {s_submit} | 初審: {s_first} | 複審: {s_second}</p></div>'
+    return h
+
+def render_inline_preview(r, prefix_key):
+    with st.container():
+        st.markdown(f"#### 🔍 單號 {r['單號']} 預覽 (體驗版)")
+        st.markdown(render_html(r), unsafe_allow_html=True)
+        all_files = []
+        acc_img = safe_str(r.get("帳戶影像Base64"))
+        if acc_img: all_files.append(acc_img)
+
+        req_img = safe_str(r.get("影像Base64"))
+        if req_img:
+            chunks = req_img.split('|') if '|' in req_img else req_img.split(',') if ',' in req_img else [req_img]
+            for chunk in chunks:
+                c = chunk.strip()
+                if c.startswith('data:'): c = c.split('base64,')[-1]
+                if c: all_files.append(c)
+
+        if all_files:
+            for idx, f_b64 in enumerate(all_files):
+                try:
+                    pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
+                    raw = base64.b64decode(pad)
+                    if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
+                        try:
+                            st.dataframe(pd.read_excel(io.BytesIO(raw)), use_container_width=True)
+                        except:
+                            st.error("⚠️ 無法預覽此 Excel。請確保 requirements.txt 包含 openpyxl。")
+                    else: st.image(raw, use_container_width=True)
+                except Exception: pass 
+        
+        if st.button("❌ 關閉預覽", key=f"close_{prefix_key}"):
+            st.session_state.req_view_id = None
+            st.rerun()
+        st.markdown("---")
+
+def render_html_with_attachments(row):
+    h = render_html(row)
+    all_files = []
+    acc_img = safe_str(row.get("帳戶影像Base64"))
+    if acc_img: all_files.append(acc_img)
+    req_img = safe_str(row.get("影像Base64"))
+    if req_img:
+        chunks = req_img.split('|') if '|' in req_img else req_img.split(',') if ',' in req_img else [req_img]
+        for chunk in chunks:
+            c = chunk.strip()
+            if c.startswith('data:'): c = c.split('base64,')[-1]
+            if c: all_files.append(c)
+
+    if all_files:
+        h += '<div style="max-width:900px;margin:auto;padding-top:30px;page-break-before:always;">'
+        for idx, f_b64 in enumerate(all_files):
+            try:
+                pad = f_b64 + "=" * ((4 - len(f_b64) % 4) % 4)
+                raw = base64.b64decode(pad)
+                if raw.startswith(b'PK\x03\x04') or raw.startswith(b'\xd0\xcf\x11\xe0'):
+                    try:
+                        df_ex = pd.read_excel(io.BytesIO(raw))
+                        html_table = df_ex.to_html(index=False).replace('\n', '')
+                        css_rules = "<style>.xls-tbl { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; } .xls-tbl th, .xls-tbl td { border: 1px solid #000; padding: 4px; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; word-break: break-all; } .xls-tbl th { background-color: #f0f0f0; } .xls-tbl tr { page-break-inside: avoid !important; }</style>"
+                        html_table = html_table.replace('<table', f'{css_rules}<table class="xls-tbl"')
+                        h += f"{html_table}<br><br>"
+                    except Exception as e:
+                        h += f"<div style='color:red;'>⚠️ Excel轉換列印失敗。請確保您的 GitHub `requirements.txt` 中已加入 `openpyxl` 套件。</div><br>"
+                else:
+                    mime = "image/png" if raw.startswith(b'\x89PNG') else "image/jpeg"
+                    h += f'<img src="data:{mime};base64,{pad}" style="max-width:100%; margin-bottom:20px; border:none;"><br><br>'
+            except Exception:
+                pass
+        h += '</div>'
+    return h
+
+def clean_for_js(h_str): return h_str.replace('\n', '').replace('\r', '').replace("'", "\\'")
+
+def render_upload_popover(container, r, prefix):
+    with container.popover("📎 附件"):
+        st.write("**上傳附件 (圖/Excel)**")
+        nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
+        nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
+        if st.button("💾 儲存附件", key=f"{prefix}_b"):
+            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
+            jd = parse_req_json(fresh_db.at[idx, "請款說明"])
+            
+            if nf_acc: 
+                fresh_db.at[idx, "帳戶影像Base64"] = base64.b64encode(nf_acc.getvalue()).decode()
+                jd["acc_name"] = nf_acc.name
+            if nf_ims: 
+                fresh_db.at[idx, "影像Base64"] = "|".join([base64.b64encode(f.getvalue()).decode() for f in nf_ims])
+                jd["ims_names"] = [f.name for f in nf_ims]
+            
+            if nf_acc or nf_ims:
+                packed_desc = "[請款單資料]\n" + json.dumps(jd, ensure_ascii=False)
+                fresh_db.at[idx, "請款說明"] = packed_desc
+                save_data(fresh_db); st.rerun()
+
+# --- 6. Session 初始化與防呆重載 ---
+if st.session_state.get('user_id') is None: st.switch_page("app.py")
+
+if 'staff_df' not in st.session_state: 
+    st.session_state.staff
