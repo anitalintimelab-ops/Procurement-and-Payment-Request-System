@@ -8,6 +8,9 @@ st.set_page_config(page_title="時研-報價單系統", layout="wide", page_icon
 
 st.markdown("""
 <style>
+/* ★ 正式版專用：將測試區選單變灰色且不可點選 ★ */
+[data-testid="stSidebarNav"] ul li:last-child { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
+
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
 @media screen and (max-width: 768px) {
