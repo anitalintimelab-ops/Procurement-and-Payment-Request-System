@@ -10,7 +10,7 @@ import io
 import threading
 
 # --- 1. 系統鎖定與介面設定 ---
-st.session_state['sys_choice'] = "請款單測試區"
+st.session_state['sys_choice'] = "請款單測試區" 
 st.set_page_config(page_title="時研-請款單測試區", layout="wide", page_icon="🏢")
 
 # ==========================================
@@ -18,16 +18,16 @@ st.set_page_config(page_title="時研-請款單測試區", layout="wide", page_i
 # ==========================================
 st.markdown("""
 <style>
-/* ★ 測試版專用：將正式區選單 (1, 2, 3) 變灰色且不可點選 ★ */
-[data-testid="stSidebarNav"] ul li a[href*="1_"] { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
-[data-testid="stSidebarNav"] ul li a[href*="2_"] { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
-[data-testid="stSidebarNav"] ul li a[href*="3_"] { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
+/* ★ 測試版專用：強制將正式區選單 (第2, 3, 4個選項) 變灰色且不可點選 ★ */
+[data-testid="stSidebarNav"] ul li:nth-child(2) { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
+[data-testid="stSidebarNav"] ul li:nth-child(3) { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
+[data-testid="stSidebarNav"] ul li:nth-child(4) { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
 
-/* 隱藏預設導覽列與防止 x 軸溢出 */
+/* 隱藏預設導覽列的首頁 (第1個選項) 與防止 x 軸溢出 */
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
 
-/* 整體背景漸變 (測試區採用暖橘色系以作區別) */
+/* 整體背景漸變 (測試區使用暖橘色系) */
 .stApp {
     background: linear-gradient(180deg, #FFF3E0 0%, #FFE0B2 100%);
 }
@@ -193,6 +193,7 @@ div[data-testid="stUploadedFile"] small {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
 }
+/* 強制密碼眼睛圖示區塊透明 */
 .stTextInput div[data-baseweb="input"] div {
     background-color: transparent !important;
 }
@@ -1459,4 +1460,3 @@ else:
             js_code = f"<script>var w=window.open('');w.document.write('{html_str}');w.document.close();setTimeout(function(){{w.print();w.close();}}, 1000);</script>"
             st.components.v1.html(js_code, height=0)
         st.session_state.req_print_id = None
-        
