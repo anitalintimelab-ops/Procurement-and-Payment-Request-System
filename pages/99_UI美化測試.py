@@ -10,26 +10,24 @@ import io
 import threading
 
 # --- 1. 系統鎖定與介面設定 ---
-st.session_state['sys_choice'] = "請款單測試區" 
-st.set_page_config(page_title="時研-請款單測試區", layout="wide", page_icon="🏢")
+st.session_state['sys_choice'] = "請款單系統"
+st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
 # 🎨 核心 CSS 魔法：系統介面純淨美化升級
 # ==========================================
 st.markdown("""
 <style>
-/* ★ 測試版專用：強制將正式區選單 (第2, 3, 4個選項) 變灰色且不可點選 ★ */
-[data-testid="stSidebarNav"] ul li:nth-child(2) { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
-[data-testid="stSidebarNav"] ul li:nth-child(3) { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
-[data-testid="stSidebarNav"] ul li:nth-child(4) { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
+/* ★ 正式版專用：將測試區選單變灰色且不可點選 ★ */
+[data-testid="stSidebarNav"] ul li:last-child { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
 
-/* 隱藏預設導覽列的首頁 (第1個選項) 與防止 x 軸溢出 */
+/* 隱藏預設導覽列與防止 x 軸溢出 */
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
 
-/* 整體背景漸變 (測試區使用暖橘色系) */
+/* 整體背景漸變 */
 .stApp {
-    background: linear-gradient(180deg, #FFF3E0 0%, #FFE0B2 100%);
+    background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%);
 }
 
 /* 側邊欄渐變和文字顏色 */
@@ -61,6 +59,10 @@ st.markdown("""
 [data-testid="stSidebar"] [data-testid="stDataFrame"] * {
     color: black !important;
 }
+
+/* ========================================================= */
+/* ★ 終極殺手鐧：徹底摧毀黑色方塊，強制顯示微軟 Excel 彩色圖示 */
+/* ========================================================= */
 
 /* 確保上傳拖曳區的背景是白色的，文字是黑色的 */
 div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #cbd5e1 !important; }
@@ -105,6 +107,7 @@ div[data-testid="stUploadedFile"] span,
 div[data-testid="stUploadedFile"] small {
     color: #1E293B !important;
 }
+/* ========================================================= */
 
 /* 「目前系統」標籤，直接白字 */
 [data-testid="stSidebar"] code {
@@ -193,7 +196,6 @@ div[data-testid="stUploadedFile"] small {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
 }
-/* 強制密碼眼睛圖示區塊透明 */
 .stTextInput div[data-baseweb="input"] div {
     background-color: transparent !important;
 }
@@ -254,6 +256,7 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
 }
 
+/* 手機版專屬相機小圖示 (LINE風格) */
 .mobile-camera-only { display: none !important; }
 @media screen and (max-width: 768px) {
     .mobile-camera-only {
@@ -271,19 +274,17 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
 # --- 側邊欄 Logo 文字 ---
 st.sidebar.markdown("<h2 class='时研logo'>時研國際設計股份有限公司</h2>", unsafe_allow_html=True)
 
-# =========================================================================
-# ★ 核心改動：讀取的資料庫檔案全面加上 "demo_" 前綴，建立平行的「體驗會宇宙」 ★
-# =========================================================================
+# --- 2. 路徑定位與 GitHub 金鑰設定 (正式版) ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
-D_FILE = os.path.join(B_DIR, "demo_database.csv")
-S_FILE = os.path.join(B_DIR, "demo_staff.csv")
-O_FILE = os.path.join(B_DIR, "demo_online.csv")
-L_FILE = os.path.join(B_DIR, "demo_line_credentials.txt") 
-G_FILE = os.path.join(B_DIR, "demo_github_credentials.txt") 
+D_FILE = os.path.join(B_DIR, "database.csv")
+S_FILE = os.path.join(B_DIR, "staff_v2.csv")
+O_FILE = os.path.join(B_DIR, "online.csv")
+L_FILE = os.path.join(B_DIR, "line_credentials.txt") 
+G_FILE = os.path.join(B_DIR, "github_credentials.txt") 
 
-P_FILE = os.path.join(B_DIR, "demo_projects.csv")
-V_FILE = os.path.join(B_DIR, "demo_vendors.csv")
+P_FILE = os.path.join(B_DIR, "projects.csv")
+V_FILE = os.path.join(B_DIR, "vendors.csv")
 
 ADMINS = ["Anita"]
 CFO_NAME = "Charles"
@@ -318,7 +319,7 @@ def _background_github_sync(filepath):
         with open(filepath, "rb") as f:
             content = base64.b64encode(f.read()).decode()
             
-        data = {"message": f"Auto sync {filename} from TimeLab System (DEMO)", "content": content}
+        data = {"message": f"Auto sync {filename} from TimeLab System", "content": content}
         if sha: data["sha"] = sha
         requests.put(url, headers=headers, json=data, timeout=10)
     except:
@@ -517,7 +518,7 @@ def render_html(row):
 
     h = f'<div style="padding:40px;border:4px solid #000;background:#fff;color:#000;font-family:sans-serif;max-width:900px;margin:auto;">'
     h += f'<div style="text-align:center;"><h1 style="margin-bottom:10px;font-size:32px;letter-spacing:2px;">Time Lab 時研國際設計股份有限公司</h1></div>'
-    h += f'<div style="text-align:center;"><h2 style="margin-top:0px;margin-bottom:15px;font-size:24px;letter-spacing:5px;">請款單 (測試區)</h2></div>'
+    h += f'<div style="text-align:center;"><h2 style="margin-top:0px;margin-bottom:15px;font-size:24px;letter-spacing:5px;">請款單</h2></div>'
     h += f'<hr style="border-top: 3px solid black; margin-bottom: 3px;">'
     h += f'<hr style="border-top: 1px solid black; margin-top: 0px; margin-bottom: 20px;">'
     
@@ -542,7 +543,7 @@ def render_html(row):
 
 def render_inline_preview(r, prefix_key):
     with st.container():
-        st.markdown(f"#### 🔍 單號 {r['單號']} 預覽 (測試區)")
+        st.markdown(f"#### 🔍 單號 {r['單號']} 預覽")
         st.markdown(render_html(r), unsafe_allow_html=True)
         all_files = []
         acc_img = safe_str(r.get("帳戶影像Base64"))
@@ -702,7 +703,7 @@ with st.sidebar.expander("🔐 修改我的密碼"):
 
 if is_admin:
     st.sidebar.markdown("---")
-    st.sidebar.success("管理員專屬區塊 (測試區)")
+    st.sidebar.success("管理員專屬區塊")
     
     with st.sidebar.expander("🔑 所有人員密碼清單"):
         st.dataframe(st.session_state.staff_df[["name", "password"]], hide_index=True)
@@ -857,7 +858,7 @@ if st.session_state.get('req_review_id'):
             if sign_type == "EXE":
                 fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
                 sys_name = st.session_state.get('sys_choice', '請款單系統')
-                send_line_message(f"🔔【[測試區]待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
+                send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
             else:
                 fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
             save_data(fresh_db); st.success("已核准！"); time.sleep(0.5)
@@ -904,7 +905,6 @@ if st.session_state.get('req_review_id'):
 
 # 如果沒有進入簽核視窗，則顯示正常選單頁面
 else:
-    # --- 8. 簽核列表渲染模組 ---
     def render_signing_table(df_list, sign_type, is_history=False):
         if df_list.empty:
             st.info("目前無相關紀錄")
@@ -948,7 +948,7 @@ else:
                         if sign_type == "EXE":
                             fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
                             sys_name = st.session_state.get('sys_choice', '請款單系統')
-                            send_line_message(f"🔔【[測試區]待簽核提醒】\n系統：{sys_name}\n單號：{sel_id}\n專案名稱：{r_match['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
+                            send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{sel_id}\n專案名稱：{r_match['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
                         else:
                             fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
                         success_count += 1
@@ -1017,12 +1017,11 @@ else:
                 if st.session_state.req_view_id == r["單號"]:
                     render_inline_preview(r, f"in_{sign_type}_{r['單號']}_{is_history}")
 
-    # ================= 各頁面顯示邏輯 =================
     if menu == "1. 填寫申請單":
         if st.session_state.get('req_edit_id'):
-            st.subheader(f"📝 目前表單 :red[{st.session_state.req_edit_id}] 號正進行修改 (測試區)")
+            st.subheader(f"📝 目前表單 :red[{st.session_state.req_edit_id}] 號正進行修改")
         else:
-            st.subheader("📝 填寫請款申請單 (測試區)")
+            st.subheader("📝 填寫請款申請單")
             
         if st.session_state.get('req_last_msg'): 
             st.success(st.session_state.req_last_msg)
@@ -1074,7 +1073,6 @@ else:
         exe_options = active_staffs.copy()
         if dv["exe"] and dv["exe"] not in exe_options: exe_options.append(dv["exe"])
 
-        # 初始化 Session State
         if net_key not in st.session_state: st.session_state[net_key] = int(dv["net_amt"])
         if tax_key not in st.session_state: st.session_state[tax_key] = int(dv["tax_amt"])
 
@@ -1208,7 +1206,7 @@ else:
                         f_db = load_data(); idx = f_db[f_db["單號"]==tid].index[0]
                         f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(f_db)
                         sys_name = st.session_state.get('sys_choice', '請款單系統')
-                        send_line_message(f"🔔【[測試區]待簽核提醒】\n系統：{sys_name}\n單號：{tid}\n專案名稱：{pn}\n有一筆新的表單需要執行長 ({exe}) 進行簽核！")
+                        send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{tid}\n專案名稱：{pn}\n有一筆新的表單需要執行長 ({exe}) 進行簽核！")
                         st.session_state.req_edit_id = None; st.session_state.req_last_msg = f"🚀 單據 {tid} 已成功提交簽核！"
                     else:
                         st.session_state.req_edit_id = None  
@@ -1266,7 +1264,7 @@ else:
                     fdb = load_data(); fdb.loc[fdb["單號"]==r["單號"], ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(fdb)
                     
                     sys_name = st.session_state.get('sys_choice', '請款單系統')
-                    send_line_message(f"🔔【[測試區]待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！")
+                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n有一筆新的表單需要執行長 ({r['專案負責人']}) 進行簽核！")
                     
                     st.toast(f"🚀 單據 {r['單號']} 已成功提交！", icon="✅")
                     st.rerun()
@@ -1324,12 +1322,19 @@ else:
         t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
         with t1:
             pending = req_db[req_db["狀態"] == "待複審"]
-            if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
-            pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
-            render_signing_table(pending, "CFO")
+            if not is_admin and curr_name != CFO_NAME:
+                # 修正 KeyError: 保留欄位，並過濾出與自己相關的單據
+                pending = pending[(pending["申請人"] == curr_name) | (pending["代申請人"] == curr_name) | (pending["專案負責人"] == curr_name)]
+                pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                # 強制使用 is_history=True，讓一般人只能看不能點選核准
+                render_signing_table(pending, "CFO", is_history=True)
+            else:
+                pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                render_signing_table(pending, "CFO", is_history=False)
         with t2:
             history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
-            if not is_admin and curr_name != CFO_NAME: history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
+            if not is_admin and curr_name != CFO_NAME: 
+                history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
             history_cfo = history_cfo.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(history_cfo, "CFO", is_history=True)
 
@@ -1407,7 +1412,7 @@ else:
                 with col_down:
                     st.write("⬇️ **步驟一：下載最新表單資料庫**")
                     if os.path.exists(D_FILE):
-                        with open(D_FILE, "rb") as f: st.download_button("下載表單備份檔", f, file_name=f"時研系統表單備份(測試區)_{datetime.date.today()}.csv", mime="text/csv")
+                        with open(D_FILE, "rb") as f: st.download_button("下載表單備份檔", f, file_name=f"時研系統表單備份_{datetime.date.today()}.csv", mime="text/csv")
                 with col_up:
                     st.write("⬆️ **步驟二：還原表單資料庫**")
                     up_db = st.file_uploader("上傳表單 CSV 檔", type=["csv"], key="up_db", label_visibility="collapsed")
@@ -1420,7 +1425,7 @@ else:
                 with col_down2:
                     st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
                     if os.path.exists(S_FILE):
-                        with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系统人員備份(測試區)_{datetime.date.today()}.csv", mime="text/csv")
+                        with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系统人員備份_{datetime.date.today()}.csv", mime="text/csv")
                 with col_up2:
                     st.write("⬆️ **步驟二：還原人員資料**")
                     uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
