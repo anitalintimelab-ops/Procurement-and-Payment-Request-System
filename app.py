@@ -5,19 +5,22 @@ import os
 # --- 1. 頁面基本設定 ---
 st.set_page_config(page_title="時研-管理系統入口", layout="centered", page_icon="🏢")
 
-# --- 2. 雙開門環境選擇 (下拉選單) ---
-st.write("") 
-env_choice = st.selectbox("系統環境切換", ["🔵 進入正式系統", "🟠 進入體驗測試版"], label_visibility="collapsed")
-is_demo = "體驗" in env_choice
+# --- 動態讀取系統選項 ---
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+pages_dir = os.path.join(CURRENT_DIR, "pages")
+sys_options = []
+if os.path.exists(pages_dir):
+    sys_options = sorted([f.replace(".py", "") for f in os.listdir(pages_dir) if f.endswith(".py")])
+if not sys_options: 
+    sys_options = ["1_採購單系統", "2_請款單系統", "3_報價單系統", "99_UI美化測試"]
 
-# 依照您的需求：紅字提醒放在下拉選單下方
-if is_demo:
-    st.markdown("<p style='color:#E53935; font-size:14px; font-weight:bold; margin-top:-10px; margin-bottom:15px;'>※ 如登入測試區，請先點選測試系統，再點選人名及密碼</p>", unsafe_allow_html=True)
+# 取得當前選擇的系統 (用於判斷是否為測試區)
+current_sys = st.session_state.get('login_sys_choice', sys_options[0])
+is_demo = "99" in current_sys or "測試" in current_sys
 
 # ==========================================
-# 🎨 核心 CSS 魔法：動態切換背景顏色
+# 🎨 核心 CSS 魔法：根據下拉選單動態變色
 # ==========================================
-# 正式版：冷色系水藍色 / 體驗版：暖色系亮橘色
 bg_gradient = "linear-gradient(180deg, #FFF3E0 0%, #FFE0B2 100%)" if is_demo else "linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%)"
 
 st.markdown(f"""
@@ -71,7 +74,7 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 顯示 Logo 與動態副標題 ---
+# --- 顯示 Logo 與動態副標題 ---
 sys_title = "體驗會專屬系統入口 (測試區)" if is_demo else "管理系統入口"
 title_color = "#E65100" if is_demo else "#2C3E50"
 
@@ -82,9 +85,7 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- 4. 雙開門資料庫讀取 ---
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-# ★ 正式版讀 staff_v2，體驗版讀 demo_staff ★
+# --- 讀取對應的資料庫 ---
 S_FILE_PROD = os.path.join(CURRENT_DIR, "staff_v2.csv")
 S_FILE_DEMO = os.path.join(CURRENT_DIR, "demo_staff.csv")
 
@@ -96,7 +97,6 @@ def load_staff(is_demo_mode):
                 return pd.read_csv(target_file, encoding=enc, dtype=str).fillna("")
             except:
                 continue
-    # 預設名單 (如果 demo_staff.csv 還沒建立，就會先套用這份預設名單)
     return pd.DataFrame({
         "name": ["Andy", "Charles", "Eason", "Sunglin", "Anita", "WISH"], 
         "status": ["在職", "在職", "在職", "在職", "在職", "離職"], 
@@ -106,58 +106,51 @@ def load_staff(is_demo_mode):
 staff_df = load_staff(is_demo)
 staff_list = staff_df["name"].tolist() if not staff_df.empty else ["尚無人員資料"]
 
-# 動態抓取 pages 資料夾內的系統選項
-sys_options = []
-pages_dir = os.path.join(CURRENT_DIR, "pages")
-if os.path.exists(pages_dir):
-    all_pages = sorted([f.replace(".py", "") for f in os.listdir(pages_dir) if f.endswith(".py")])
-    # ★ 徹底隔離路徑：正式版只能去正式頁面，體驗版只能去 99_ 測試頁面 ★
-    if is_demo:
-        sys_options = [p for p in all_pages if "99_" in p or "測試" in p]
-    else:
-        sys_options = [p for p in all_pages if "99_" not in p and "測試" not in p]
+# --- Enter 鍵登入處理機制 ---
+def handle_login():
+    st.session_state.do_login = True
 
-if not sys_options: 
-    sys_options = ["⚠️ 尚未建立對應系統頁面"] 
+if 'do_login' not in st.session_state:
+    st.session_state.do_login = False
 
-# --- 5. 登入表單 (維持 人員 > 密碼 > 進入系統) ---
+# --- 登入表單 ---
 with st.container():
-    selected_user = st.selectbox("登入身分", staff_list)
+    if is_demo:
+        st.warning("🟠 **目前位於體驗測試環境！** 在此處的所有操作皆為獨立檔案，不會影響正式系統。")
+        
+    selected_user = st.selectbox("登入身分", staff_list, key="login_user_choice")
 
-    # 檢查是否為離職人員
     is_resigned = False
     if not staff_df.empty and selected_user in staff_list:
         user_row = staff_df[staff_df["name"] == selected_user].iloc[0]
         if user_row.get("status") == "離職":
             is_resigned = True
 
-    # 離職員工的防呆封鎖畫面
     if is_resigned:
         st.markdown("<p style='color:#E53935; font-size:15px; font-weight:bold; margin-top:-10px; margin-bottom:10px;'>🚫 目前帳號已停權/離職，無法登入</p>", unsafe_allow_html=True)
         password = st.text_input("登入密碼", type="password", disabled=True, placeholder="此帳號已停用")
-        sys_choice = st.selectbox("進入系統", sys_options, disabled=True)
+        st.selectbox("進入系統", sys_options, key="login_sys_choice", disabled=True)
         st.button("登入系統", disabled=True, use_container_width=True)
-
-    # 正常在職人員登入畫面
     else:
-        password = st.text_input("登入密碼", type="password")
-        sys_choice = st.selectbox("進入系統", sys_options)
+        # 輸入密碼後按下 Enter 鍵，會自動觸發 handle_login 進行登入
+        password = st.text_input("登入密碼", type="password", key="login_pwd_input", on_change=handle_login)
+        
+        st.selectbox("進入系統", sys_options, key="login_sys_choice")
+        st.markdown("<p style='color: #D32F2F; font-size: 13px; font-weight: 600; margin-top: -10px; margin-bottom: 10px;'>💡 如果要進入測試區，請先選系統</p>", unsafe_allow_html=True)
 
-        if st.button("🚀 登入系統", use_container_width=True):
-            if "尚未" in sys_choice:
+        login_clicked = st.button("🚀 登入系統", use_container_width=True)
+
+        if login_clicked or st.session_state.do_login:
+            st.session_state.do_login = False # 重置 Enter 標記
+            if "尚未" in st.session_state.login_sys_choice:
                 st.error("❌ 找不到對應的系統，請確認 pages/ 資料夾內的檔案設定。")
             elif not staff_df.empty:
                 user_row = staff_df[staff_df["name"] == selected_user].iloc[0]
-                
-                # 驗證密碼
                 if str(user_row["password"]) == str(password):
-                    # 將登入資訊寫入暫存記憶體
                     st.session_state.user_id = selected_user
                     st.session_state.user_status = "在職"
-                    st.session_state.sys_choice = sys_choice
-                    st.session_state.is_demo_mode = is_demo # 紀錄目前是哪種模式
-                    
-                    # 跳轉到對應頁面
-                    st.switch_page(f"pages/{sys_choice}.py")
+                    st.session_state.sys_choice = st.session_state.login_sys_choice
+                    st.session_state.is_demo_mode = is_demo 
+                    st.switch_page(f"pages/{st.session_state.login_sys_choice}.py")
                 else:
                     st.error("❌ 密碼錯誤，請重新輸入。")
