@@ -18,9 +18,6 @@ st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon
 # ==========================================
 st.markdown("""
 <style>
-/* ★ 正式版專用：將測試區選單變灰色且不可點選 ★ */
-[data-testid="stSidebarNav"] ul li:last-child { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
-
 /* 隱藏預設導覽列與防止 x 軸溢出 */
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
@@ -1247,7 +1244,6 @@ else:
         f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
         if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
         
-        # ★ 加入由大到小排序 ★
         my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
         
         if is_admin:
@@ -1485,6 +1481,7 @@ else:
                     save_data(f_db); st.success("已更新"); st.rerun()
             else: st.dataframe(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True)
 
+    # 針對從上方表單點擊「列印」或在全域狀態下開啟的列印模組
     if st.session_state.get('req_print_id'):
         r_df = load_data()
         r_df = r_df[r_df["單號"]==st.session_state.req_print_id]
