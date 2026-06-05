@@ -18,7 +18,7 @@ st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon
 # ==========================================
 st.markdown("""
 <style>
-/* 正式版專用：隱藏測試區選單 */
+/* ★ 正式版專用：強制隱藏測試區選單 ★ */
 [data-testid="stSidebarNav"] ul li a[href*="99_"] { display: none !important; }
 
 /* 隱藏預設導覽列與防止 x 軸溢出 */
@@ -59,6 +59,10 @@ st.markdown("""
 [data-testid="stSidebar"] [data-testid="stDataFrame"] * {
     color: black !important;
 }
+
+/* ========================================================= */
+/* ★ 終極殺手鐧：徹底摧毀黑色方塊，強制顯示微軟 Excel 彩色圖示 */
+/* ========================================================= */
 
 /* 確保上傳拖曳區的背景是白色的，文字是黑色的 */
 div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #cbd5e1 !important; }
@@ -103,6 +107,7 @@ div[data-testid="stUploadedFile"] span,
 div[data-testid="stUploadedFile"] small {
     color: #1E293B !important;
 }
+/* ========================================================= */
 
 /* 「目前系統」標籤，直接白字 */
 [data-testid="stSidebar"] code {
@@ -251,7 +256,6 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
 }
 
-/* 手機版專屬相機小圖示 (LINE風格) */
 .mobile-camera-only { display: none !important; }
 @media screen and (max-width: 768px) {
     .mobile-camera-only {
