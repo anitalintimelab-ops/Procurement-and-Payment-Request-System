@@ -14,17 +14,20 @@ st.session_state['sys_choice'] = "請款單系統"
 st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 🎨 核心 CSS 魔法：終極解決文字空白與手機排版問題
+# 🎨 核心 CSS 魔法：系統介面純淨美化升級
 # ==========================================
 st.markdown("""
 <style>
+/* ★ 正式版專用：將測試區選單變灰色且不可點選 ★ */
+[data-testid="stSidebarNav"] ul li:last-child { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
+
 /* 隱藏預設導覽列與防止 x 軸溢出 */
 [data-testid="stSidebarNav"] ul li:nth-child(1) { display: none !important; }
 .stApp { overflow-x: hidden; }
 
 /* 整體背景漸變 */
 .stApp {
-    background: linear-gradient(180deg, #D9EAFB 0%, #EBDCF1 100%);
+    background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%);
 }
 
 /* 側邊欄渐變和文字顏色 */
@@ -193,12 +196,11 @@ div[data-testid="stUploadedFile"] small {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
     background-color: #ffffff !important;
 }
-/* 強制密碼眼睛圖示區塊透明，融入外層背景 */
 .stTextInput div[data-baseweb="input"] div {
     background-color: transparent !important;
 }
 
-/* 側邊欄輸入框與下拉選單強制黑字與黑色箭頭，避免白底白字隱形 */
+/* 側邊欄輸入框與下拉選單強制黑字與黑色箭頭 */
 [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] *,
 [data-testid="stSidebar"] .stTextInput input,
 [data-testid="stSidebar"] .stSelectbox svg {
@@ -255,35 +257,16 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
 }
 
 /* 手機版專屬相機小圖示 (LINE風格) */
-.mobile-camera-only {
-    display: none !important;
-}
+.mobile-camera-only { display: none !important; }
 @media screen and (max-width: 768px) {
     .mobile-camera-only {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        margin-top: 28px !important;
+        display: flex !important; align-items: center !important; justify-content: center !important; margin-top: 28px !important;
     }
-    .mobile-camera-only [data-testid="stPopover"] {
-        display: block !important;
-    }
+    .mobile-camera-only [data-testid="stPopover"] { display: block !important; }
     .mobile-camera-only [data-testid="stPopover"] > button {
-        width: 48px !important;
-        height: 48px !important;
-        border-radius: 12px !important;
-        padding: 0 !important;
-        border: 2px solid #cbd5e1 !important;
-        background-color: #f8fafc !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
+        width: 48px !important; height: 48px !important; border-radius: 12px !important; padding: 0 !important; border: 2px solid #cbd5e1 !important; background-color: #f8fafc !important; display: flex !important; align-items: center !important; justify-content: center !important; box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
     }
-    .mobile-camera-only [data-testid="stPopover"] > button p {
-        font-size: 24px !important;
-        margin: 0 !important;
-    }
+    .mobile-camera-only [data-testid="stPopover"] > button p { font-size: 24px !important; margin: 0 !important; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -291,7 +274,7 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
 # --- 側邊欄 Logo 文字 ---
 st.sidebar.markdown("<h2 class='时研logo'>時研國際設計股份有限公司</h2>", unsafe_allow_html=True)
 
-# --- 2. 路徑定位與 GitHub 金鑰設定 ---
+# --- 2. 路徑定位與 GitHub 金鑰設定 (正式版) ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
 D_FILE = os.path.join(B_DIR, "database.csv")
@@ -409,7 +392,6 @@ def read_csv_robust(filepath):
         except: continue
     return pd.DataFrame()
 
-# ★ 自動修復損壞的「狀態」資料 ★
 def load_data():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
@@ -923,7 +905,6 @@ if st.session_state.get('req_review_id'):
 
 # 如果沒有進入簽核視窗，則顯示正常選單頁面
 else:
-    # --- 8. 簽核列表渲染模組 ---
     def render_signing_table(df_list, sign_type, is_history=False):
         if df_list.empty:
             st.info("目前無相關紀錄")
@@ -1002,7 +983,6 @@ else:
                 st.rerun()
                 
         else:
-            # ★ 升級排序：讓所有的表格都由新到舊排列 ★
             df_list = df_list.sort_values(by="單號", ascending=False).reset_index(drop=True)
 
             if is_admin:
@@ -1037,7 +1017,6 @@ else:
                 if st.session_state.req_view_id == r["單號"]:
                     render_inline_preview(r, f"in_{sign_type}_{r['單號']}_{is_history}")
 
-    # ================= 各頁面顯示邏輯 =================
     if menu == "1. 填寫申請單":
         if st.session_state.get('req_edit_id'):
             st.subheader(f"📝 目前表單 :red[{st.session_state.req_edit_id}] 號正進行修改")
@@ -1094,7 +1073,6 @@ else:
         exe_options = active_staffs.copy()
         if dv["exe"] and dv["exe"] not in exe_options: exe_options.append(dv["exe"])
 
-        # 初始化 Session State
         if net_key not in st.session_state: st.session_state[net_key] = int(dv["net_amt"])
         if tax_key not in st.session_state: st.session_state[tax_key] = int(dv["tax_amt"])
 
@@ -1323,7 +1301,6 @@ else:
             if st.session_state.req_view_id == r["單號"]:
                 render_inline_preview(r, f"in_trk_{r['單號']}_{i}")
 
-    # ================= 頁面 2: 專案執行長簽核 =================
     elif menu == "2. 專案執行長簽核":
         st.subheader("👨‍💼 專案執行長簽核管理")
         f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
@@ -1331,44 +1308,43 @@ else:
         with t1:
             pending = req_db[req_db["狀態"].isin(["待簽核", "待初審"])]
             if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
-            # ★ 加入由大到小排序 ★
             pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(pending, "EXE")
         with t2:
             history_exe = req_db[req_db["狀態"].isin(["已核准", "已駁回", "待複審"])]
             if not is_admin: history_exe = history_exe[(history_exe["初審人"] == curr_name) | (history_exe["專案負責人"] == curr_name) | (history_exe["申請人"] == curr_name) | (history_exe["代申請人"] == curr_name)]
-            # ★ 加入由大到小排序 ★
             history_exe = history_exe.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(history_exe, "EXE", is_history=True)
 
-    # ================= 頁面 3: 財務長簽核 =================
     elif menu == "3. 財務長簽核":
         st.subheader("💰 財務長簽核管理")
         f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
         t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
         with t1:
             pending = req_db[req_db["狀態"] == "待複審"]
-            if not is_admin and curr_name != CFO_NAME: pending = pd.DataFrame()
-            # ★ 加入由大到小排序 ★
-            pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
-            render_signing_table(pending, "CFO")
+            if not is_admin and curr_name != CFO_NAME:
+                # 修正 KeyError: 保留欄位，並過濾出與自己相關的單據
+                pending = pending[(pending["申請人"] == curr_name) | (pending["代申請人"] == curr_name) | (pending["專案負責人"] == curr_name)]
+                pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                # 強制使用 is_history=True，讓一般人只能看不能點選核准
+                render_signing_table(pending, "CFO", is_history=True)
+            else:
+                pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                render_signing_table(pending, "CFO", is_history=False)
         with t2:
             history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
-            if not is_admin and curr_name != CFO_NAME: history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
-            # ★ 加入由大到小排序 ★
+            if not is_admin and curr_name != CFO_NAME: 
+                history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
             history_cfo = history_cfo.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(history_cfo, "CFO", is_history=True)
 
-    # ================= 頁面 4: 總覽 =================
     elif menu == "4. 表單狀態總覽":
         st.subheader("📊 表單狀態總覽")
         f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
         if not is_admin: my_db = my_db[(my_db["申請人"] == curr_name) | (my_db["專案負責人"] == curr_name)]
-        # ★ 加入由大到小排序 ★
         my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
         st.dataframe(my_db[["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式", "匯款狀態", "匯款日期"]], hide_index=True)
 
-    # ================= 頁面 5: 系統設定 =================
     elif menu == "5. 請款狀態/系統設定":
         st.subheader("⚙️ 請款狀態 / 系統設定")
         if is_admin:
@@ -1469,7 +1445,6 @@ else:
         f_db = load_data(); df_pay = f_db[f_db["類型"]=="請款單"].copy()
         if not is_admin and curr_name != CFO_NAME: df_pay = df_pay[(df_pay["申請人"] == curr_name) | (df_pay["專案負責人"] == curr_name)]
         
-        # ★ 加入由大到小排序 ★
         df_pay = df_pay.sort_values(by="單號", ascending=False).reset_index(drop=True)
         
         if not df_pay.empty:
@@ -1481,7 +1456,6 @@ else:
                     save_data(f_db); st.success("已更新"); st.rerun()
             else: st.dataframe(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True)
 
-    # 針對從上方表單點擊「列印」或在全域狀態下開啟的列印模組
     if st.session_state.get('req_print_id'):
         r_df = load_data()
         r_df = r_df[r_df["單號"]==st.session_state.req_print_id]
