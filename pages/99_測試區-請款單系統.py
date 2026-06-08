@@ -1322,10 +1322,8 @@ else:
         with t1:
             pending = req_db[req_db["狀態"] == "待複審"]
             if not is_admin and curr_name != CFO_NAME:
-                # 修正 KeyError: 保留欄位，並過濾出與自己相關的單據
                 pending = pending[(pending["申請人"] == curr_name) | (pending["代申請人"] == curr_name) | (pending["專案負責人"] == curr_name)]
                 pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
-                # 強制使用 is_history=True，讓一般人只能看不能點選核准
                 render_signing_table(pending, "CFO", is_history=True)
             else:
                 pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
@@ -1347,7 +1345,7 @@ else:
     elif menu == "5. 請款狀態/系統設定":
         st.subheader("⚙️ 請款狀態 / 系統設定")
         if is_admin:
-            with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
+            with st.expander("🐙 4. GitHub 自動備份同步設定 (測試區獨立版)", expanded=True):
                 st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
                 g_token, g_repo = "", ""
                 if os.path.exists(G_FILE):
@@ -1362,7 +1360,7 @@ else:
                                 except: g_token = raw_t
                     except: pass
                 i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
-                i_repo = st.text_input("GitHub 倉庫名稱 (格式: 帳號/倉庫名，例如 anitalin/timelab-ops)", value=g_repo)
+                i_repo = st.text_input("GitHub 倉庫名稱 (建議開一個新的，例如 anitalin/timelab-demo)", value=g_repo)
                 c_btn1, c_btn2 = st.columns([1, 1])
                 if c_btn1.button("💾 測試連線並儲存設定"):
                     clean_token = "".join(c for c in i_token if c.isascii()).strip()
