@@ -284,23 +284,37 @@ G_FILE = os.path.join(B_DIR, "demo_github_credentials.txt")
 P_FILE = os.path.join(B_DIR, "demo_projects.csv")
 V_FILE = os.path.join(B_DIR, "demo_vendors.csv")
 
+# =========================================================================
+# ★ 測試區專屬預設參數 (寫死在這裡，確保雲端重啟後絕對不會遺失！) ★
+# =========================================================================
+# 👇 請將您的 GitHub Token (ghp_開頭) 貼在下方兩個引號中間
+DEFAULT_GITHUB_TOKEN = "" 
+DEFAULT_GITHUB_REPO = "anitalintimelab-ops/timelab-demo"
+
+# 👇 請將您的 LINE Channel Access Token 貼在下方兩個引號中間
+DEFAULT_LINE_TOKEN = ""   
+DEFAULT_LINE_UID = "Ub97aa7dffc679f81fd30bdc43c7e481e"
+# =========================================================================
+
 ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
 # --- GitHub 自動同步引擎 (Base64 防攔截版) ---
 def _background_github_sync(filepath):
-    token, repo = "", ""
+    token, repo = DEFAULT_GITHUB_TOKEN, DEFAULT_GITHUB_REPO
     if os.path.exists(G_FILE):
         try:
             with open(G_FILE, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
                 raw_t = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
-                repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
-                if raw_t.startswith("ghp_"): token = raw_t
-                else:
-                    try: token = base64.b64decode(raw_t).decode()
-                    except: token = raw_t
+                r_val = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
+                if raw_t:
+                    if raw_t.startswith("ghp_"): token = raw_t
+                    else:
+                        try: token = base64.b64decode(raw_t).decode()
+                        except: token = raw_t
+                if r_val: repo = r_val
         except: pass
 
     if not token or not repo or not os.path.exists(filepath): 
@@ -367,9 +381,11 @@ def get_line_credentials():
         try:
             with open(L_FILE, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
-                return lines[0].strip() if len(lines) > 0 else "", lines[1].strip() if len(lines) > 1 else ""
+                t = lines[0].strip() if len(lines) > 0 and lines[0].strip() else DEFAULT_LINE_TOKEN
+                u = lines[1].strip() if len(lines) > 1 and lines[1].strip() else DEFAULT_LINE_UID
+                return t, u
         except: pass
-    return "", ""
+    return DEFAULT_LINE_TOKEN, DEFAULT_LINE_UID
 
 def save_line_credentials(token, user_id):
     try:
@@ -380,7 +396,9 @@ def save_line_credentials(token, user_id):
 def send_line_message(msg):
     token, _ = get_line_credentials()
     if token:
-        try: requests.post("https://api.line.me/v2/bot/message/broadcast", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"messages": [{"type": "text", "text": msg}]}, timeout=5)
+        try:
+            msg = f"🔔【測試區系統通知】\n{msg}"
+            requests.post("https://api.line.me/v2/bot/message/broadcast", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"messages": [{"type": "text", "text": msg}]}, timeout=5)
         except: pass
 
 def read_csv_robust(filepath):
@@ -1347,21 +1365,27 @@ else:
         if is_admin:
             with st.expander("🐙 4. GitHub 自動備份同步設定 (測試區獨立版)", expanded=True):
                 st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
-                g_token, g_repo = "", ""
+                
+                # 自動載入寫死在代碼最上方的預設參數
+                g_token, g_repo = DEFAULT_GITHUB_TOKEN, DEFAULT_GITHUB_REPO
                 if os.path.exists(G_FILE):
                     try:
                         with open(G_FILE, "r", encoding="utf-8") as f:
                             lines = f.read().splitlines()
                             raw_t = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
-                            g_repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
-                            if raw_t.startswith("ghp_"): g_token = raw_t
-                            else:
-                                try: g_token = base64.b64decode(raw_t).decode()
-                                except: g_token = raw_t
+                            r_val = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
+                            if raw_t:
+                                if raw_t.startswith("ghp_"): g_token = raw_t
+                                else:
+                                    try: g_token = base64.b64decode(raw_t).decode()
+                                    except: g_token = raw_t
+                            if r_val: g_repo = r_val
                     except: pass
+                    
                 i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
                 i_repo = st.text_input("GitHub 倉庫名稱 (建議開一個新的，例如 anitalin/timelab-demo)", value=g_repo)
                 c_btn1, c_btn2 = st.columns([1, 1])
+                
                 if c_btn1.button("💾 測試連線並儲存設定"):
                     clean_token = "".join(c for c in i_token if c.isascii()).strip()
                     clean_repo = "".join(c for c in i_repo if c.isascii()).strip()
