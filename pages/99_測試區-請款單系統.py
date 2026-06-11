@@ -1337,21 +1337,34 @@ else:
         st.subheader("💰 財務長簽核管理")
         f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
         t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
+        
+        is_cfo_role = (curr_name == CFO_NAME) or is_admin
+        
         with t1:
             pending = req_db[req_db["狀態"] == "待複審"]
-            if not is_admin and curr_name != CFO_NAME:
+            if not is_cfo_role:
                 pending = pending[(pending["申請人"] == curr_name) | (pending["代申請人"] == curr_name) | (pending["專案負責人"] == curr_name)]
-                pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
-                render_signing_table(pending, "CFO", is_history=True)
+                if not pending.empty:
+                    pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                    render_signing_table(pending, "CFO", is_history=True)
+                else:
+                    st.info("目前無相關紀錄")
             else:
-                pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
-                render_signing_table(pending, "CFO", is_history=False)
+                if not pending.empty:
+                    pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                    render_signing_table(pending, "CFO", is_history=False)
+                else:
+                    st.info("目前無待簽核單據")
         with t2:
             history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
-            if not is_admin and curr_name != CFO_NAME: 
+            if not is_cfo_role: 
                 history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
-            history_cfo = history_cfo.sort_values(by="單號", ascending=False).reset_index(drop=True)
-            render_signing_table(history_cfo, "CFO", is_history=True)
+            
+            if not history_cfo.empty:
+                history_cfo = history_cfo.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                render_signing_table(history_cfo, "CFO", is_history=True)
+            else:
+                st.info("目前無相關紀錄")
 
     elif menu == "4. 表單狀態總覽":
         st.subheader("📊 表單狀態總覽")
@@ -1434,6 +1447,8 @@ else:
                     st.write("⬇️ **步驟一：下載最新表單資料庫**")
                     if os.path.exists(D_FILE):
                         with open(D_FILE, "rb") as f: st.download_button("下載表單備份檔", f, file_name=f"時研系統表單備份(測試區)_{datetime.date.today()}.csv", mime="text/csv")
+                    else:
+                        st.download_button("下載表單備份檔", data=load_data().to_csv(index=False, encoding='utf-8-sig'), file_name=f"時研系統表單備份(測試區)_{datetime.date.today()}.csv", mime="text/csv")
                 with col_up:
                     st.write("⬆️ **步驟二：還原表單資料庫**")
                     up_db = st.file_uploader("上傳表單 CSV 檔", type=["csv"], key="up_db", label_visibility="collapsed")
@@ -1447,6 +1462,8 @@ else:
                     st.write("⬇️ **步驟一：下載最新人員資料 (含大頭貼與LINE ID)**")
                     if os.path.exists(S_FILE):
                         with open(S_FILE, "rb") as f: st.download_button("下載人員備份檔", f, file_name=f"時研系统人員備份(測試區)_{datetime.date.today()}.csv", mime="text/csv")
+                    else:
+                        st.download_button("下載人員備份檔", data=load_staff().to_csv(index=False, encoding='utf-8-sig'), file_name=f"時研系统人員備份(測試區)_{datetime.date.today()}.csv", mime="text/csv")
                 with col_up2:
                     st.write("⬆️ **步驟二：還原人員資料**")
                     uploaded_staff = st.file_uploader("上傳人員 CSV 檔", type=["csv"], key="up_staff", label_visibility="collapsed")
