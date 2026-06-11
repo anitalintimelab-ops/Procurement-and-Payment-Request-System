@@ -8,7 +8,11 @@ import requests
 import json
 import io
 import threading
-import csv
+try:
+    import openpyxl
+    from openpyxl.styles import Border, Side, Alignment
+except ImportError:
+    pass # 確保即使沒裝也能開啟網頁，但在產出報表時會報錯提示
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "請款單系統"
@@ -19,7 +23,7 @@ st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon
 # ==========================================
 st.markdown("""
 <style>
-/* ★ 正式版專用：將測試區選單(最後一個選項)變灰色且不可點選 ★ */
+/* ★ 正式版專用：將測試區選單變灰色且不可點選 ★ */
 [data-testid="stSidebarNav"] ul li:last-child { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
 
 /* 隱藏預設導覽列與防止 x 軸溢出 */
@@ -269,7 +273,7 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
 # --- 側邊欄 Logo 文字 ---
 st.sidebar.markdown("<h2 class='时研logo'>時研國際設計股份有限公司</h2>", unsafe_allow_html=True)
 
-# --- 2. 路徑定位與 GitHub 金鑰設定 (正式版) ---
+# --- 2. 路徑定位與 GitHub 金鑰設定 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
 D_FILE = os.path.join(B_DIR, "database.csv")
@@ -647,7 +651,7 @@ if not curr_user_info.empty and curr_user_info.iloc[0].get("status") == "離職"
     st.switch_page("app.py")
     st.stop()
 
-for k in ['req_edit_id', 'req_last_id', 'req_view_id', 'req_print_id', 'req_last_msg', 'req_review_id', 'req_review_type']: 
+for k in ['req_edit_id', 'req_last_id', 'req_view_id', 'req_print_id', 'req_last_msg', 'req_review_id', 'req_review_type', 'temp_xlsx_data', 'temp_xlsx_name', 'temp_xlsx_selected']: 
     if k not in st.session_state: st.session_state[k] = None
 
 if 'req_uploader_key' not in st.session_state: st.session_state.req_uploader_key = 0
@@ -749,7 +753,7 @@ if is_admin:
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
-# ★ 增加「5. 產出本期支出報表」給管理員
+# ★ 產出本期支出報表 - 權限設定 (僅財務長與管理員可見)
 if is_admin or curr_name == CFO_NAME:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定"]
 else:
@@ -1354,12 +1358,11 @@ else:
 
     elif menu == "5. 產出本期支出報表":
         st.subheader("📊 產出本期支出報表")
-        st.info("💡 勾選清單中您預計於「本期」支付的單據，系統將自動套用您專屬的 Excel 格式並結算餘額。")
+        st.info("💡 勾選清單中您預計於「本期」支付的單據，系統將自動套用您的 Excel 範本。")
         
         f_db = load_data()
         req_db = f_db[f_db["類型"] == "請款單"]
         
-        # 針對「已簽核」(包含待複審、已核准等進行過流程的表單) 進行篩選，排除草稿、刪除、駁回
         valid_states = ["待初審", "待複審", "已核准"]
         report_df = req_db[req_db["狀態"].isin(valid_states)].copy()
         
@@ -1387,64 +1390,127 @@ else:
             form_id = c3.text_input("報表單號", value=f"時支{tw_year}{datetime.date.today().month:02d}{datetime.date.today().day:02d}002")
             balance_before = c4.number_input("存摺預計餘額(扣掉固定費用)", value=0, step=1000)
             
-            if st.button("🚀 產生 CSV 支出報表"):
+            if st.button("🚀 產生 Excel 支出報表"):
                 if selected_rows.empty:
                     st.error("請至少勾選一筆單據！")
                 else:
-                    output = io.StringIO()
-                    writer = csv.writer(output)
-                    
-                    writer.writerow([f"時研國際設計股份有限公司\n{report_title}"] + [""] * 9)
-                    writer.writerow(["預計匯款/取款日", "", "", pay_date, "", "", "", "", form_id, ""])
-                    writer.writerow(["序號", "日期", "專案名稱", "廠商", "請款事由", "支出", "手續", "合計", "支付方式", "備註"])
-                    
-                    sum_transfer = 0.0
-                    sum_cash = 0.0
-                    
-                    for idx, row_id in enumerate(selected_rows["單號"], 1):
-                        r = req_db[req_db["單號"] == row_id].iloc[0]
-                        date_str = str(r.get("日期", ""))
-                        proj = str(r.get("專案名稱", ""))
-                        vendor = str(r.get("請款廠商", ""))
-                        
-                        desc_raw = str(r.get("請款說明", ""))
-                        jd = parse_req_json(desc_raw)
-                        reason = jd.get("desc", desc_raw).replace("\n", " ")
-                        
-                        amt = float(clean_amount(r.get("總金額", 0)))
-                        pay_method_raw = str(r.get("付款方式", ""))
-                        
-                        if "匯款" in pay_method_raw:
-                            pay_method = "匯款"
-                            fee = float(jd.get("fee", 15.0 if "扣" in pay_method_raw else 0.0))
-                        elif "現金" in pay_method_raw or "零用金" in pay_method_raw:
-                            pay_method = "現金"
-                            fee = 0.0
-                        else:
-                            pay_method = pay_method_raw
-                            fee = 0.0
+                    TEMPLATE_FILE = os.path.join(B_DIR, "支出表-專案 空白.xlsx")
+                    if not os.path.exists(TEMPLATE_FILE):
+                        st.error(f"找不到範本檔案！請確認 `支出表-專案 空白.xlsx` 是否已上傳至 GitHub 主目錄。")
+                    else:
+                        try:
+                            # 確保有 openpyxl 套件
+                            import openpyxl
+                            from openpyxl.styles import Border, Side, Alignment
                             
-                        total = amt + fee
-                        if pay_method == "匯款": sum_transfer += total
-                        else: sum_cash += total
-                        
-                        writer.writerow([float(idx), date_str, proj, vendor, reason, amt, fee if fee else "", total, pay_method, r["單號"]])
-                    
-                    sum_all = sum_transfer + sum_cash
-                    balance_after = float(balance_before) - sum_all if balance_before else 0.0
-                    
-                    writer.writerow(["匯款(含手續費)", "", "小計", "", "", "", "", sum_transfer, "", ""])
-                    writer.writerow(["支票", "", "小計", "", "", "", "", 0.0, "", ""])
-                    writer.writerow(["現金", "", "小計", "", "", "", "", sum_cash, "", ""])
-                    writer.writerow(["合計(匯款+現金)", "", "", "", "", "", "", sum_all, "", ""])
-                    
-                    balance_str = f"存摺預計餘額(扣掉固定費用){int(balance_before)}\n存摺預計餘額(扣掉此次專案總共支出)" if balance_before else "存摺預計餘額(扣掉此次專案總共支出)"
-                    writer.writerow([balance_str, "", "", "", "", "", "", "", balance_after, ""])
-                    writer.writerow(["表單製作人", "", "", "財務監督人簽核", "", "", "", "", "財務", ""])
-                    
-                    csv_data = output.getvalue().encode('utf-8-sig')
-                    st.download_button(label="📥 點擊下載報表 (CSV)", data=csv_data, file_name=f"支出報表_{pay_date}.csv", mime="text/csv")
-                    st.success("報表已成功產生！請點擊上方按鈕下載。")
+                            wb = openpyxl.load_workbook(TEMPLATE_FILE)
+                            ws = wb.active
+                            
+                            # 1. 填入標題與表頭變數
+                            ws["A1"] = f"時研國際設計股份有限公司\n{report_title}"
+                            ws["D2"] = pay_date
+                            ws["I2"] = form_id
+                            
+                            # 2. 準備寫入資料
+                            start_row = 4
+                            current_row = start_row
+                            sum_transfer = 0.0
+                            sum_cash = 0.0
+                            
+                            thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                            
+                            for idx, row_id in enumerate(selected_rows["單號"], 1):
+                                r = req_db[req_db["單號"] == row_id].iloc[0]
+                                date_str = str(r.get("日期", ""))
+                                proj = str(r.get("專案名稱", ""))
+                                vendor = str(r.get("請款廠商", ""))
+                                
+                                desc_raw = str(r.get("請款說明", ""))
+                                jd = parse_req_json(desc_raw)
+                                reason = jd.get("desc", desc_raw).replace("\n", " ")
+                                
+                                amt = float(clean_amount(r.get("總金額", 0)))
+                                pay_method_raw = str(r.get("付款方式", ""))
+                                
+                                if "匯款" in pay_method_raw:
+                                    pay_method = "匯款"
+                                    fee = float(jd.get("fee", 15.0 if "扣" in pay_method_raw else 0.0))
+                                elif "現金" in pay_method_raw or "零用金" in pay_method_raw:
+                                    pay_method = "現金"
+                                    fee = 0.0
+                                else:
+                                    pay_method = pay_method_raw
+                                    fee = 0.0
+                                    
+                                total = amt + fee
+                                if pay_method == "匯款": sum_transfer += total
+                                else: sum_cash += total
+                                
+                                row_data = [idx, date_str, proj, vendor, reason, amt, fee if fee else "", total, pay_method, r["單號"]]
+                                for col_idx, val in enumerate(row_data, 1):
+                                    cell = ws.cell(row=current_row, column=col_idx)
+                                    cell.value = val
+                                    cell.border = thin_border
+                                    cell.alignment = Alignment(wrap_text=True, vertical='center')
+                                
+                                current_row += 1
+                                
+                            # 3. 填入結算區塊
+                            sum_all = sum_transfer + sum_cash
+                            balance_after = float(balance_before) - sum_all if balance_before else 0.0
+                            
+                            balance_str = f"存摺預計餘額(扣掉固定費用){int(balance_before)}\n存摺預計餘額(扣掉此次專案總共支出)" if balance_before else "存摺預計餘額(扣掉此次專案總共支出)"
+                            
+                            summary_data = [
+                                ("匯款(含手續費)", "", "小計", "", "", "", "", sum_transfer, "", ""),
+                                ("支票", "", "小計", "", "", "", "", 0.0, "", ""),
+                                ("現金", "", "小計", "", "", "", "", sum_cash, "", ""),
+                                ("合計(匯款+現金)", "", "", "", "", "", "", sum_all, "", ""),
+                                (balance_str, "", "", "", "", "", "", "", balance_after, ""),
+                                ("表單製作人", "", "", "財務監督人簽核", "", "", "", "", "財務", "")
+                            ]
+                            
+                            for s_row in summary_data:
+                                for col_idx, val in enumerate(s_row, 1):
+                                    cell = ws.cell(row=current_row, column=col_idx)
+                                    cell.value = val
+                                    cell.border = thin_border
+                                    cell.alignment = Alignment(wrap_text=True, vertical='center')
+                                current_row += 1
+                                
+                            # 儲存
+                            output = io.BytesIO()
+                            wb.save(output)
+                            xlsx_data = output.getvalue()
+                            
+                            st.session_state.temp_xlsx_data = xlsx_data
+                            st.session_state.temp_xlsx_name = f"支出報表_{pay_date}.xlsx"
+                            st.session_state.temp_xlsx_selected = selected_rows["單號"].tolist()
+                            st.success("🎉 Excel 報表產生成功！請點擊下方按鈕下載或標記為已匯款。")
+                            
+                        except Exception as e:
+                            st.error(f"產生 Excel 發生錯誤：{e}")
+            
+            # 若已經產生過報表，顯示下載與標記按鈕
+            if st.session_state.get('temp_xlsx_data'):
+                col_dl, col_mark = st.columns(2)
+                col_dl.download_button(
+                    label="📥 下載 Excel 報表", 
+                    data=st.session_state.temp_xlsx_data, 
+                    file_name=st.session_state.temp_xlsx_name, 
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                if col_mark.button("🚀 將上述單據標記為「已匯款」"):
+                    f_db = load_data()
+                    today_str = str(datetime.date.today())
+                    for sel_id in st.session_state.temp_xlsx_selected:
+                        idx = f_db[f_db["單號"]==sel_id].index[0]
+                        f_db.loc[idx, ["匯款狀態", "匯款日期"]] = ["已匯款", today_str]
+                    save_data(f_db)
+                    st.session_state.temp_xlsx_data = None  # Clear
+                    st.success("✅ 已成功標記為「已匯款」！")
+                    time.sleep(1.5)
+                    st.rerun()
 
     elif menu == "6. 請款狀態/系統設定":
         st.subheader("⚙️ 請款狀態 / 系統設定")
