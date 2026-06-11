@@ -1394,12 +1394,14 @@ else:
                 if selected_rows.empty:
                     st.error("請至少勾選一筆單據！")
                 else:
-                    TEMPLATE_FILE = os.path.join(B_DIR, "支出表-專案 空白.xlsx")
-                    if not os.path.exists(TEMPLATE_FILE):
-                        st.error(f"找不到範本檔案！請確認 `支出表-專案 空白.xlsx` 是否已上傳至 GitHub 主目錄。")
+                    # 動態模糊搜尋範本：找尋檔名包含 "支出表" 且結尾為 ".xlsx" 的檔案
+                    possible_templates = [f for f in os.listdir(B_DIR) if "支出表" in f and f.endswith(".xlsx")]
+                    
+                    if not possible_templates:
+                        st.error("找不到範本檔案！請確認您的 GitHub 主目錄中是否有包含「支出表」字眼且副檔名為 `.xlsx` 的檔案。")
                     else:
+                        TEMPLATE_FILE = os.path.join(B_DIR, possible_templates[0]) # 自動抓取符合條件的第一個檔案
                         try:
-                            # 確保有 openpyxl 套件
                             import openpyxl
                             from openpyxl.styles import Border, Side, Alignment
                             
