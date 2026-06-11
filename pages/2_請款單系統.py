@@ -12,7 +12,7 @@ try:
     import openpyxl
     from openpyxl.styles import Border, Side, Alignment
 except ImportError:
-    pass # 確保即使沒裝也能開啟網頁，但在產出報表時會報錯提示
+    pass 
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "請款單系統"
@@ -1394,13 +1394,12 @@ else:
                 if selected_rows.empty:
                     st.error("請至少勾選一筆單據！")
                 else:
-                    # 動態模糊搜尋範本：找尋檔名包含 "支出表" 且結尾為 ".xlsx" 的檔案
                     possible_templates = [f for f in os.listdir(B_DIR) if "支出表" in f and f.endswith(".xlsx")]
                     
                     if not possible_templates:
                         st.error("找不到範本檔案！請確認您的 GitHub 主目錄中是否有包含「支出表」字眼且副檔名為 `.xlsx` 的檔案。")
                     else:
-                        TEMPLATE_FILE = os.path.join(B_DIR, possible_templates[0]) # 自動抓取符合條件的第一個檔案
+                        TEMPLATE_FILE = os.path.join(B_DIR, possible_templates[0])
                         try:
                             import openpyxl
                             from openpyxl.styles import Border, Side, Alignment
@@ -1413,9 +1412,24 @@ else:
                             ws["D2"] = pay_date
                             ws["I2"] = form_id
                             
+                            # 尋找摘要區塊的起始位置
+                            summary_start_row = 4
+                            for r in range(4, 200):
+                                val = str(ws.cell(row=r, column=1).value or "").replace(" ", "")
+                                if "匯款(含手續費)" in val:
+                                    summary_start_row = r
+                                    break
+                                    
+                            available_rows = summary_start_row - 4
+                            num_items = len(selected_rows)
+                            
+                            # 動態擴充列數，保護下方摘要區不被覆蓋
+                            if num_items > available_rows and available_rows > 0:
+                                ws.insert_rows(summary_start_row, amount=(num_items - available_rows))
+                                summary_start_row += (num_items - available_rows)
+                                
                             # 2. 準備寫入資料
-                            start_row = 4
-                            current_row = start_row
+                            current_row = 4
                             sum_transfer = 0.0
                             sum_cash = 0.0
                             
@@ -1457,29 +1471,28 @@ else:
                                 
                                 current_row += 1
                                 
-                            # 3. 填入結算區塊
+                            # 3. 填入結算區塊數值 (不再重寫文字與框線，直接精準填寫數字到第 8 欄 Col H)
                             sum_all = sum_transfer + sum_cash
-                            balance_after = float(balance_before) - sum_all if balance_before else 0.0
                             
-                            balance_str = f"存摺預計餘額(扣掉固定費用){int(balance_before)}\n存摺預計餘額(扣掉此次專案總共支出)" if balance_before else "存摺預計餘額(扣掉此次專案總共支出)"
+                            # 依據需求：餘額扣除「全部匯款金額」
+                            balance_after = float(balance_before) - sum_transfer if balance_before else 0.0
                             
-                            summary_data = [
-                                ("匯款(含手續費)", "", "小計", "", "", "", "", sum_transfer, "", ""),
-                                ("支票", "", "小計", "", "", "", "", 0.0, "", ""),
-                                ("現金", "", "小計", "", "", "", "", sum_cash, "", ""),
-                                ("合計(匯款+現金)", "", "", "", "", "", "", sum_all, "", ""),
-                                (balance_str, "", "", "", "", "", "", "", balance_after, ""),
-                                ("表單製作人", "", "", "財務監督人簽核", "", "", "", "", "財務", "")
-                            ]
-                            
-                            for s_row in summary_data:
-                                for col_idx, val in enumerate(s_row, 1):
-                                    cell = ws.cell(row=current_row, column=col_idx)
-                                    cell.value = val
-                                    cell.border = thin_border
-                                    cell.alignment = Alignment(wrap_text=True, vertical='center')
-                                current_row += 1
+                            for r in range(summary_start_row, summary_start_row + 30):
+                                row_text = "".join([str(ws.cell(row=r, column=c).value or "").replace(" ", "") for c in range(1, 8)])
                                 
+                                if "匯款(含手續費)" in row_text:
+                                    ws.cell(row=r, column=8).value = sum_transfer
+                                elif row_text.startswith("支票") and "小計" in row_text:
+                                    ws.cell(row=r, column=8).value = 0.0
+                                elif row_text.startswith("現金") and "小計" in row_text:
+                                    ws.cell(row=r, column=8).value = sum_cash
+                                elif "合計(匯款+現金)" in row_text:
+                                    ws.cell(row=r, column=8).value = sum_all
+                                elif "扣掉固定費用" in row_text:
+                                    ws.cell(row=r, column=8).value = float(balance_before)
+                                elif "扣掉此次" in row_text:
+                                    ws.cell(row=r, column=8).value = balance_after
+                                    
                             # 儲存
                             output = io.BytesIO()
                             wb.save(output)
@@ -1509,7 +1522,7 @@ else:
                         idx = f_db[f_db["單號"]==sel_id].index[0]
                         f_db.loc[idx, ["匯款狀態", "匯款日期"]] = ["已匯款", today_str]
                     save_data(f_db)
-                    st.session_state.temp_xlsx_data = None  # Clear
+                    st.session_state.temp_xlsx_data = None 
                     st.success("✅ 已成功標記為「已匯款」！")
                     time.sleep(1.5)
                     st.rerun()
