@@ -8,6 +8,7 @@ import requests
 import json
 import io
 import threading
+import csv
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "請款單系統"
@@ -18,7 +19,7 @@ st.set_page_config(page_title="時研-請款單系統", layout="wide", page_icon
 # ==========================================
 st.markdown("""
 <style>
-/* ★ 正式版專用：將測試區選單變灰色且不可點選 ★ */
+/* ★ 正式版專用：將測試區選單(最後一個選項)變灰色且不可點選 ★ */
 [data-testid="stSidebarNav"] ul li:last-child { pointer-events: none !important; opacity: 0.4 !important; filter: grayscale(100%) !important; }
 
 /* 隱藏預設導覽列與防止 x 軸溢出 */
@@ -59,10 +60,6 @@ st.markdown("""
 [data-testid="stSidebar"] [data-testid="stDataFrame"] * {
     color: black !important;
 }
-
-/* ========================================================= */
-/* ★ 終極殺手鐧：徹底摧毀黑色方塊，強制顯示微軟 Excel 彩色圖示 */
-/* ========================================================= */
 
 /* 確保上傳拖曳區的背景是白色的，文字是黑色的 */
 div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #cbd5e1 !important; }
@@ -107,7 +104,6 @@ div[data-testid="stUploadedFile"] span,
 div[data-testid="stUploadedFile"] small {
     color: #1E293B !important;
 }
-/* ========================================================= */
 
 /* 「目前系統」標籤，直接白字 */
 [data-testid="stSidebar"] code {
@@ -256,7 +252,6 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
 }
 
-/* 手機版專屬相機小圖示 (LINE風格) */
 .mobile-camera-only { display: none !important; }
 @media screen and (max-width: 768px) {
     .mobile-camera-only {
@@ -404,7 +399,6 @@ def load_data():
         for c in ["總金額", "已請款金額", "尚未請款金額"]:
             df[c] = df[c].apply(clean_amount)
             
-        # 廣泛性修復：若不小心將 LINE 通知文字貼到狀態欄
         if "狀態" in df.columns:
             df.loc[df["狀態"].astype(str).str.contains("需要財務長", na=False), "狀態"] = "待複審"
             df.loc[df["狀態"].astype(str).str.contains("需要執行長", na=False), "狀態"] = "待簽核"
@@ -755,8 +749,9 @@ if is_admin:
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
-if is_admin:
-    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
+# ★ 增加「5. 產出本期支出報表」給管理員
+if is_admin or curr_name == CFO_NAME:
+    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定"]
 else:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
     
@@ -1073,6 +1068,7 @@ else:
         exe_options = active_staffs.copy()
         if dv["exe"] and dv["exe"] not in exe_options: exe_options.append(dv["exe"])
 
+        # 初始化 Session State
         if net_key not in st.session_state: st.session_state[net_key] = int(dv["net_amt"])
         if tax_key not in st.session_state: st.session_state[tax_key] = int(dv["tax_amt"])
 
@@ -1320,23 +1316,34 @@ else:
         st.subheader("💰 財務長簽核管理")
         f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
         t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
+        
+        is_cfo_role = (curr_name == CFO_NAME) or is_admin
+        
         with t1:
             pending = req_db[req_db["狀態"] == "待複審"]
-            if not is_admin and curr_name != CFO_NAME:
-                # 修正 KeyError: 保留欄位，並過濾出與自己相關的單據
+            if not is_cfo_role:
                 pending = pending[(pending["申請人"] == curr_name) | (pending["代申請人"] == curr_name) | (pending["專案負責人"] == curr_name)]
-                pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
-                # 強制使用 is_history=True，讓一般人只能看不能點選核准
-                render_signing_table(pending, "CFO", is_history=True)
+                if not pending.empty:
+                    pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                    render_signing_table(pending, "CFO", is_history=True)
+                else:
+                    st.info("目前無相關紀錄")
             else:
-                pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
-                render_signing_table(pending, "CFO", is_history=False)
+                if not pending.empty:
+                    pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                    render_signing_table(pending, "CFO", is_history=False)
+                else:
+                    st.info("目前無待簽核單據")
         with t2:
             history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
-            if not is_admin and curr_name != CFO_NAME: 
+            if not is_cfo_role: 
                 history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
-            history_cfo = history_cfo.sort_values(by="單號", ascending=False).reset_index(drop=True)
-            render_signing_table(history_cfo, "CFO", is_history=True)
+            
+            if not history_cfo.empty:
+                history_cfo = history_cfo.sort_values(by="單號", ascending=False).reset_index(drop=True)
+                render_signing_table(history_cfo, "CFO", is_history=True)
+            else:
+                st.info("目前無相關紀錄")
 
     elif menu == "4. 表單狀態總覽":
         st.subheader("📊 表單狀態總覽")
@@ -1345,7 +1352,101 @@ else:
         my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
         st.dataframe(my_db[["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式", "匯款狀態", "匯款日期"]], hide_index=True)
 
-    elif menu == "5. 請款狀態/系統設定":
+    elif menu == "5. 產出本期支出報表":
+        st.subheader("📊 產出本期支出報表")
+        st.info("💡 勾選清單中您預計於「本期」支付的單據，系統將自動套用您專屬的 Excel 格式並結算餘額。")
+        
+        f_db = load_data()
+        req_db = f_db[f_db["類型"] == "請款單"]
+        
+        # 針對「已簽核」(包含待複審、已核准等進行過流程的表單) 進行篩選，排除草稿、刪除、駁回
+        valid_states = ["待初審", "待複審", "已核准"]
+        report_df = req_db[req_db["狀態"].isin(valid_states)].copy()
+        
+        if report_df.empty:
+            st.warning("目前沒有符合條件的請款單。")
+        else:
+            report_df = report_df.sort_values(by="單號", ascending=False).reset_index(drop=True)
+            report_df.insert(0, "勾選加入報表", False)
+            
+            show_cols = ["勾選加入報表", "單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式"]
+            edited_df = st.data_editor(
+                report_df[show_cols],
+                hide_index=True,
+                use_container_width=True,
+                disabled=["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式"]
+            )
+            
+            selected_rows = edited_df[edited_df["勾選加入報表"] == True]
+            
+            st.markdown("### ⚙️ 報表參數設定")
+            c1, c2, c3, c4 = st.columns(4)
+            tw_year = datetime.date.today().year - 1911
+            report_title = c1.text_input("報表標題", value=f"{tw_year}.{datetime.date.today().month:02d}支出單-專案費用")
+            pay_date = c2.text_input("預計匯款/取款日", value=f"{tw_year}.{datetime.date.today().month:02d}.{datetime.date.today().day:02d}")
+            form_id = c3.text_input("報表單號", value=f"時支{tw_year}{datetime.date.today().month:02d}{datetime.date.today().day:02d}002")
+            balance_before = c4.number_input("存摺預計餘額(扣掉固定費用)", value=0, step=1000)
+            
+            if st.button("🚀 產生 CSV 支出報表"):
+                if selected_rows.empty:
+                    st.error("請至少勾選一筆單據！")
+                else:
+                    output = io.StringIO()
+                    writer = csv.writer(output)
+                    
+                    writer.writerow([f"時研國際設計股份有限公司\n{report_title}"] + [""] * 9)
+                    writer.writerow(["預計匯款/取款日", "", "", pay_date, "", "", "", "", form_id, ""])
+                    writer.writerow(["序號", "日期", "專案名稱", "廠商", "請款事由", "支出", "手續", "合計", "支付方式", "備註"])
+                    
+                    sum_transfer = 0.0
+                    sum_cash = 0.0
+                    
+                    for idx, row_id in enumerate(selected_rows["單號"], 1):
+                        r = req_db[req_db["單號"] == row_id].iloc[0]
+                        date_str = str(r.get("日期", ""))
+                        proj = str(r.get("專案名稱", ""))
+                        vendor = str(r.get("請款廠商", ""))
+                        
+                        desc_raw = str(r.get("請款說明", ""))
+                        jd = parse_req_json(desc_raw)
+                        reason = jd.get("desc", desc_raw).replace("\n", " ")
+                        
+                        amt = float(clean_amount(r.get("總金額", 0)))
+                        pay_method_raw = str(r.get("付款方式", ""))
+                        
+                        if "匯款" in pay_method_raw:
+                            pay_method = "匯款"
+                            fee = float(jd.get("fee", 15.0 if "扣" in pay_method_raw else 0.0))
+                        elif "現金" in pay_method_raw or "零用金" in pay_method_raw:
+                            pay_method = "現金"
+                            fee = 0.0
+                        else:
+                            pay_method = pay_method_raw
+                            fee = 0.0
+                            
+                        total = amt + fee
+                        if pay_method == "匯款": sum_transfer += total
+                        else: sum_cash += total
+                        
+                        writer.writerow([float(idx), date_str, proj, vendor, reason, amt, fee if fee else "", total, pay_method, r["單號"]])
+                    
+                    sum_all = sum_transfer + sum_cash
+                    balance_after = float(balance_before) - sum_all if balance_before else 0.0
+                    
+                    writer.writerow(["匯款(含手續費)", "", "小計", "", "", "", "", sum_transfer, "", ""])
+                    writer.writerow(["支票", "", "小計", "", "", "", "", 0.0, "", ""])
+                    writer.writerow(["現金", "", "小計", "", "", "", "", sum_cash, "", ""])
+                    writer.writerow(["合計(匯款+現金)", "", "", "", "", "", "", sum_all, "", ""])
+                    
+                    balance_str = f"存摺預計餘額(扣掉固定費用){int(balance_before)}\n存摺預計餘額(扣掉此次專案總共支出)" if balance_before else "存摺預計餘額(扣掉此次專案總共支出)"
+                    writer.writerow([balance_str, "", "", "", "", "", "", "", balance_after, ""])
+                    writer.writerow(["表單製作人", "", "", "財務監督人簽核", "", "", "", "", "財務", ""])
+                    
+                    csv_data = output.getvalue().encode('utf-8-sig')
+                    st.download_button(label="📥 點擊下載報表 (CSV)", data=csv_data, file_name=f"支出報表_{pay_date}.csv", mime="text/csv")
+                    st.success("報表已成功產生！請點擊上方按鈕下載。")
+
+    elif menu == "6. 請款狀態/系統設定":
         st.subheader("⚙️ 請款狀態 / 系統設定")
         if is_admin:
             with st.expander("🐙 4. GitHub 自動備份同步設定", expanded=True):
