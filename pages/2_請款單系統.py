@@ -285,23 +285,33 @@ G_FILE = os.path.join(B_DIR, "github_credentials.txt")
 P_FILE = os.path.join(B_DIR, "projects.csv")
 V_FILE = os.path.join(B_DIR, "vendors.csv")
 
+# =========================================================================
+# ★ 系統預設參數 (寫死在這裡，確保雲端重啟後絕對不會遺失！) ★
+# =========================================================================
+# 👇 請將您的 GitHub Token (ghp_開頭) 貼在下方兩個引號中間
+DEFAULT_GITHUB_TOKEN = "ghp_CLePrGwtyAaRfAM9FOQrYq9npXucZe0mz2" 
+DEFAULT_GITHUB_REPO = "anitalintimelab-ops/Procurement-and-Payment-Request-System"
+# =========================================================================
+
 ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
 # --- GitHub 自動同步引擎 (Base64 防攔截版) ---
 def _background_github_sync(filepath):
-    token, repo = "", ""
+    token, repo = DEFAULT_GITHUB_TOKEN, DEFAULT_GITHUB_REPO
     if os.path.exists(G_FILE):
         try:
             with open(G_FILE, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
                 raw_t = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
-                repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
-                if raw_t.startswith("ghp_"): token = raw_t
-                else:
-                    try: token = base64.b64decode(raw_t).decode()
-                    except: token = raw_t
+                r_val = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
+                if raw_t:
+                    if raw_t.startswith("ghp_"): token = raw_t
+                    else:
+                        try: token = base64.b64decode(raw_t).decode()
+                        except: token = raw_t
+                if r_val: repo = r_val
         except: pass
 
     if not token or not repo or not os.path.exists(filepath): 
@@ -1360,41 +1370,6 @@ else:
         st.subheader("📊 產出本期支出報表")
         st.info("💡 勾選清單中您預計於「本期」支付的單據，系統將自動套用您的 Excel 範本。")
         
-        # 定義：防呆寫入 Excel 函數 (極致穿透合併儲存格)
-        def safe_write_and_style(ws_obj, r_idx, c_idx, val=None, border=None, alignment=None):
-            try:
-                cell_obj = ws_obj.cell(row=r_idx, column=c_idx)
-                
-                # 如果是唯讀的 MergedCell，我們必須找到它的左上角主格
-                if type(cell_obj).__name__ == 'MergedCell':
-                    # 1. 正常透過 openpyxl 內建屬性尋找
-                    for m_range in ws_obj.merged_cells.ranges:
-                        if cell_obj.coordinate in m_range:
-                            tl_cell = ws_obj.cell(row=m_range.min_row, column=m_range.min_col)
-                            if type(tl_cell).__name__ != 'MergedCell':
-                                cell_obj = tl_cell
-                            break
-                            
-                # 2. 如果還是 MergedCell (代表被 insert_rows 弄壞了)，啟動強迫向左上尋找機制
-                if type(cell_obj).__name__ == 'MergedCell':
-                    found = False
-                    for sr in range(r_idx, max(0, r_idx - 5), -1):
-                        for sc in range(c_idx, max(0, c_idx - 5), -1):
-                            tc = ws_obj.cell(row=sr, column=sc)
-                            if type(tc).__name__ != 'MergedCell':
-                                cell_obj = tc
-                                found = True
-                                break
-                        if found: break
-
-                # 最終安全寫入 (只有正常的 Cell 才能寫入)
-                if type(cell_obj).__name__ != 'MergedCell':
-                    if val is not None: cell_obj.value = val
-                    if border is not None: cell_obj.border = border
-                    if alignment is not None: cell_obj.alignment = alignment
-            except Exception:
-                pass
-
         f_db = load_data()
         req_db = f_db[f_db["類型"] == "請款單"]
         
@@ -1442,31 +1417,54 @@ else:
                             wb = openpyxl.load_workbook(TEMPLATE_FILE)
                             ws = wb.active
                             
+                            # 防呆寫入：繞過合併儲存格陷阱，尋找合法主格寫入
+                            def safe_write(ws_obj, r_idx, c_idx, val):
+                                try:
+                                    cell_obj = ws_obj.cell(row=r_idx, column=c_idx)
+                                    if type(cell_obj).__name__ == 'MergedCell':
+                                        for m_range in ws_obj.merged_cells.ranges:
+                                            if cell_obj.coordinate in m_range:
+                                                tl_cell = ws_obj.cell(row=m_range.min_row, column=m_range.min_col)
+                                                if type(tl_cell).__name__ != 'MergedCell':
+                                                    tl_cell.value = val
+                                                return
+                                    else:
+                                        cell_obj.value = val
+                                except: pass
+
+                            def get_cell_text(ws_obj, r_idx, c_idx):
+                                try:
+                                    cell_obj = ws_obj.cell(row=r_idx, column=c_idx)
+                                    if type(cell_obj).__name__ == 'MergedCell':
+                                        for m_range in ws_obj.merged_cells.ranges:
+                                            if cell_obj.coordinate in m_range:
+                                                tl_cell = ws_obj.cell(row=m_range.min_row, column=m_range.min_col)
+                                                return str(tl_cell.value or "").replace(" ", "")
+                                    return str(cell_obj.value or "").replace(" ", "")
+                                except: return ""
+
                             # 1. 填入標題與表頭變數
-                            safe_write_and_style(ws, 1, 1, f"時研國際設計股份有限公司\n{report_title}")
-                            safe_write_and_style(ws, 2, 4, pay_date)
-                            safe_write_and_style(ws, 2, 9, form_id)
+                            safe_write(ws, 1, 1, f"時研國際設計股份有限公司\n{report_title}")
+                            safe_write(ws, 2, 4, pay_date)
+                            safe_write(ws, 2, 9, form_id)
                             
                             # 尋找摘要區塊的起始位置
                             summary_start_row = 4
                             for r in range(4, 200):
-                                try:
-                                    val = str(ws.cell(row=r, column=1).value or "").replace(" ", "")
-                                    if "匯款(含手續費)" in val:
-                                        summary_start_row = r
-                                        break
-                                except:
-                                    pass
+                                val = get_cell_text(ws, r, 1)
+                                if "匯款(含手續費)" in val:
+                                    summary_start_row = r
+                                    break
                                     
                             available_rows = summary_start_row - 4
                             num_items = len(selected_rows)
                             
-                            # 動態擴充列數
+                            # 動態擴充列數，保護下方摘要區不被覆蓋
                             if num_items > available_rows and available_rows > 0:
                                 ws.insert_rows(summary_start_row, amount=(num_items - available_rows))
                                 summary_start_row += (num_items - available_rows)
                                 
-                            # 2. 準備寫入明細資料
+                            # 2. 準備寫入資料
                             current_row = 4
                             sum_transfer = 0.0
                             sum_cash = 0.0
@@ -1502,36 +1500,37 @@ else:
                                 
                                 row_data = [idx, date_str, proj, vendor, reason, amt, fee if fee else "", total, pay_method, r["單號"]]
                                 for col_idx, val in enumerate(row_data, 1):
-                                    safe_write_and_style(ws, current_row, col_idx, val, thin_border, Alignment(wrap_text=True, vertical='center'))
+                                    try:
+                                        cell = ws.cell(row=current_row, column=col_idx)
+                                        if type(cell).__name__ != 'MergedCell':
+                                            cell.value = val
+                                            cell.border = thin_border
+                                            cell.alignment = Alignment(wrap_text=True, vertical='center')
+                                    except: pass
                                 
                                 current_row += 1
                                 
-                            # 3. 填入結算區塊數值 (只填數字到第 8 欄，完全不動原有文字)
+                            # 3. 填入結算區塊數值 (只填數字到第 8 欄，不破壞原有排版)
                             sum_all = sum_transfer + sum_cash
-                            # 依據需求：餘額僅扣除此次「匯款總支出」
                             balance_after = float(balance_before) - sum_transfer if balance_before else 0.0
                             
                             for r in range(summary_start_row, summary_start_row + 30):
                                 row_text = ""
                                 for c in range(1, 8):
-                                    try:
-                                        c_val = ws.cell(row=r, column=c).value
-                                        if c_val: row_text += str(c_val).replace(" ", "")
-                                    except:
-                                        pass
+                                    row_text += get_cell_text(ws, r, c)
                                         
                                 if "匯款(含手續費)" in row_text:
-                                    safe_write_and_style(ws, r, 8, sum_transfer)
+                                    safe_write(ws, r, 8, sum_transfer)
                                 elif row_text.startswith("支票") and "小計" in row_text:
-                                    safe_write_and_style(ws, r, 8, 0.0)
+                                    safe_write(ws, r, 8, 0.0)
                                 elif row_text.startswith("現金") and "小計" in row_text:
-                                    safe_write_and_style(ws, r, 8, sum_cash)
+                                    safe_write(ws, r, 8, sum_cash)
                                 elif "合計(匯款+現金)" in row_text:
-                                    safe_write_and_style(ws, r, 8, sum_all)
+                                    safe_write(ws, r, 8, sum_all)
                                 elif "扣掉固定費用" in row_text:
-                                    safe_write_and_style(ws, r, 8, float(balance_before))
+                                    safe_write(ws, r, 8, float(balance_before))
                                 elif "扣掉此次" in row_text:
-                                    safe_write_and_style(ws, r, 8, balance_after)
+                                    safe_write(ws, r, 8, balance_after)
                                     
                             # 儲存
                             output = io.BytesIO()
@@ -1584,6 +1583,11 @@ else:
                                 try: g_token = base64.b64decode(raw_t).decode()
                                 except: g_token = raw_t
                     except: pass
+                
+                # 自動載入寫死在代碼最上方的預設參數
+                if not g_token: g_token = DEFAULT_GITHUB_TOKEN
+                if not g_repo: g_repo = DEFAULT_GITHUB_REPO
+                
                 i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
                 i_repo = st.text_input("GitHub 倉庫名稱 (格式: 帳號/倉庫名，例如 anitalin/timelab-ops)", value=g_repo)
                 c_btn1, c_btn2 = st.columns([1, 1])
