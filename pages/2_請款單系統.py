@@ -289,7 +289,7 @@ V_FILE = os.path.join(B_DIR, "vendors.csv")
 # ★ 系統預設參數 (寫死在這裡，確保雲端重啟後絕對不會遺失！) ★
 # =========================================================================
 # 👇 請將您的 GitHub Token (ghp_開頭) 貼在下方兩個引號中間
-DEFAULT_GITHUB_TOKEN = "ghp_CLePrGwtyAaRfAM9FOQrYq9npXucZe0mz2"
+DEFAULT_GITHUB_TOKEN = "ghp_CLePrGwtyAaRfAM9FOQrYq9npXucZe0mz2" 
 DEFAULT_GITHUB_REPO = "anitalintimelab-ops/Procurement-and-Payment-Request-System"
 # =========================================================================
 
@@ -763,7 +763,7 @@ if is_admin:
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
-# ★ 權限分離：管理員獨家擁有「7. 專案 / 廠商資料庫」選單
+# ★ 權限設定與導覽列選單
 if is_admin:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定", "7. 專案 / 廠商資料庫"]
 elif curr_name == CFO_NAME:
@@ -1513,14 +1513,21 @@ else:
                             sum_all = sum_transfer + sum_cash
                             balance_after = float(balance_before) - sum_transfer if balance_before else 0.0
                             
+                            def get_cell_text(ws_obj, r_idx, c_idx):
+                                try:
+                                    cell_obj = ws_obj.cell(row=r_idx, column=c_idx)
+                                    if type(cell_obj).__name__ == 'MergedCell':
+                                        for m_range in ws_obj.merged_cells.ranges:
+                                            if cell_obj.coordinate in m_range:
+                                                tl_cell = ws_obj.cell(row=m_range.min_row, column=m_range.min_col)
+                                                return str(tl_cell.value or "").replace(" ", "")
+                                    return str(cell_obj.value or "").replace(" ", "")
+                                except: return ""
+
                             for r in range(summary_start_row, summary_start_row + 30):
                                 row_text = ""
                                 for c in range(1, 8):
-                                    try:
-                                        c_val = ws.cell(row=r, column=c).value
-                                        if c_val: row_text += str(c_val).replace(" ", "")
-                                    except:
-                                        pass
+                                    row_text += get_cell_text(ws, r, c)
                                         
                                 if "匯款(含手續費)" in row_text:
                                     safe_write_and_style(ws, r, 8, sum_transfer)
@@ -1684,36 +1691,34 @@ else:
 
     elif menu == "7. 專案 / 廠商資料庫":
         st.subheader("🗂️ 專案 / 廠商資料庫管理")
-        st.info("💡 只有管理員可以檢視、修改或刪除此處的資料。可以直接在表格內修改文字，或者選取整列後按下 Delete/Backspace 鍵進行刪除。")
+        st.info("💡 提示：您可以直接在表格中點擊欄位進行修改。若要刪除項目，請勾選該列最左側的方塊，然後點擊表格右上角的「垃圾桶」圖示，最後按下「儲存變更」。")
         
-        tab_proj, tab_vend = st.tabs(["📂 專案資料庫", "🏢 廠商資料庫"])
+        t1, t2 = st.tabs(["📂 專案資料庫", "🏢 廠商資料庫"])
         
-        with tab_proj:
+        with t1:
             p_db = load_projects()
-            edited_p = st.data_editor(
-                p_db,
-                num_rows="dynamic",
+            edited_p_db = st.data_editor(
+                p_db, 
+                num_rows="dynamic", 
                 use_container_width=True,
-                key="edit_projects",
-                hide_index=True
+                key="p_db_editor"
             )
-            if st.button("💾 儲存專案變更"):
-                save_projects(edited_p)
+            if st.button("💾 儲存專案變更", key="save_p_btn"):
+                save_projects(edited_p_db)
                 st.success("✅ 專案資料庫已更新！")
                 time.sleep(1)
                 st.rerun()
                 
-        with tab_vend:
+        with t2:
             v_db = load_vendors()
-            edited_v = st.data_editor(
-                v_db,
-                num_rows="dynamic",
+            edited_v_db = st.data_editor(
+                v_db, 
+                num_rows="dynamic", 
                 use_container_width=True,
-                key="edit_vendors",
-                hide_index=True
+                key="v_db_editor"
             )
-            if st.button("💾 儲存廠商變更"):
-                save_vendors(edited_v)
+            if st.button("💾 儲存廠商變更", key="save_v_btn"):
+                save_vendors(edited_v_db)
                 st.success("✅ 廠商資料庫已更新！")
                 time.sleep(1)
                 st.rerun()
