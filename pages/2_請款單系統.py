@@ -289,7 +289,7 @@ V_FILE = os.path.join(B_DIR, "vendors.csv")
 # ★ 系統預設參數 (寫死在這裡，確保雲端重啟後絕對不會遺失！) ★
 # =========================================================================
 # 👇 請將您的 GitHub Token (ghp_開頭) 貼在下方兩個引號中間
-DEFAULT_GITHUB_TOKEN = "ghp_CLePrGwtyAaRfAM9FOQrYq9npXucZe0mz2" 
+DEFAULT_GITHUB_TOKEN = "ghp_CLePrGwtyAaRfAM9FOQrYq9npXucZe0mz2"
 DEFAULT_GITHUB_REPO = "anitalintimelab-ops/Procurement-and-Payment-Request-System"
 # =========================================================================
 
@@ -763,8 +763,10 @@ if is_admin:
 
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
-# ★ 產出本期支出報表 - 權限設定 (僅財務長與管理員可見)
-if is_admin or curr_name == CFO_NAME:
+# ★ 權限分離：管理員獨家擁有「7. 專案 / 廠商資料庫」選單
+if is_admin:
+    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定", "7. 專案 / 廠商資料庫"]
+elif curr_name == CFO_NAME:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定"]
 else:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
@@ -1370,6 +1372,37 @@ else:
         st.subheader("📊 產出本期支出報表")
         st.info("💡 勾選清單中您預計於「本期」支付的單據，系統將自動套用您的 Excel 範本。")
         
+        # 定義：防呆寫入 Excel 函數 (極致穿透合併儲存格)
+        def safe_write_and_style(ws_obj, r_idx, c_idx, val=None, border=None, alignment=None):
+            try:
+                cell_obj = ws_obj.cell(row=r_idx, column=c_idx)
+                
+                if type(cell_obj).__name__ == 'MergedCell':
+                    for m_range in ws_obj.merged_cells.ranges:
+                        if cell_obj.coordinate in m_range:
+                            tl_cell = ws_obj.cell(row=m_range.min_row, column=m_range.min_col)
+                            if type(tl_cell).__name__ != 'MergedCell':
+                                cell_obj = tl_cell
+                            break
+                            
+                if type(cell_obj).__name__ == 'MergedCell':
+                    found = False
+                    for sr in range(r_idx, max(0, r_idx - 5), -1):
+                        for sc in range(c_idx, max(0, c_idx - 5), -1):
+                            tc = ws_obj.cell(row=sr, column=sc)
+                            if type(tc).__name__ != 'MergedCell':
+                                cell_obj = tc
+                                found = True
+                                break
+                        if found: break
+
+                if type(cell_obj).__name__ != 'MergedCell':
+                    if val is not None: cell_obj.value = val
+                    if border is not None: cell_obj.border = border
+                    if alignment is not None: cell_obj.alignment = alignment
+            except Exception:
+                pass
+
         f_db = load_data()
         req_db = f_db[f_db["類型"] == "請款單"]
         
@@ -1417,54 +1450,27 @@ else:
                             wb = openpyxl.load_workbook(TEMPLATE_FILE)
                             ws = wb.active
                             
-                            # 防呆寫入：繞過合併儲存格陷阱，尋找合法主格寫入
-                            def safe_write(ws_obj, r_idx, c_idx, val):
-                                try:
-                                    cell_obj = ws_obj.cell(row=r_idx, column=c_idx)
-                                    if type(cell_obj).__name__ == 'MergedCell':
-                                        for m_range in ws_obj.merged_cells.ranges:
-                                            if cell_obj.coordinate in m_range:
-                                                tl_cell = ws_obj.cell(row=m_range.min_row, column=m_range.min_col)
-                                                if type(tl_cell).__name__ != 'MergedCell':
-                                                    tl_cell.value = val
-                                                return
-                                    else:
-                                        cell_obj.value = val
-                                except: pass
-
-                            def get_cell_text(ws_obj, r_idx, c_idx):
-                                try:
-                                    cell_obj = ws_obj.cell(row=r_idx, column=c_idx)
-                                    if type(cell_obj).__name__ == 'MergedCell':
-                                        for m_range in ws_obj.merged_cells.ranges:
-                                            if cell_obj.coordinate in m_range:
-                                                tl_cell = ws_obj.cell(row=m_range.min_row, column=m_range.min_col)
-                                                return str(tl_cell.value or "").replace(" ", "")
-                                    return str(cell_obj.value or "").replace(" ", "")
-                                except: return ""
-
-                            # 1. 填入標題與表頭變數
-                            safe_write(ws, 1, 1, f"時研國際設計股份有限公司\n{report_title}")
-                            safe_write(ws, 2, 4, pay_date)
-                            safe_write(ws, 2, 9, form_id)
+                            safe_write_and_style(ws, 1, 1, f"時研國際設計股份有限公司\n{report_title}")
+                            safe_write_and_style(ws, 2, 4, pay_date)
+                            safe_write_and_style(ws, 2, 9, form_id)
                             
-                            # 尋找摘要區塊的起始位置
                             summary_start_row = 4
                             for r in range(4, 200):
-                                val = get_cell_text(ws, r, 1)
-                                if "匯款(含手續費)" in val:
-                                    summary_start_row = r
-                                    break
+                                try:
+                                    val = str(ws.cell(row=r, column=1).value or "").replace(" ", "")
+                                    if "匯款(含手續費)" in val:
+                                        summary_start_row = r
+                                        break
+                                except:
+                                    pass
                                     
                             available_rows = summary_start_row - 4
                             num_items = len(selected_rows)
                             
-                            # 動態擴充列數，保護下方摘要區不被覆蓋
                             if num_items > available_rows and available_rows > 0:
                                 ws.insert_rows(summary_start_row, amount=(num_items - available_rows))
                                 summary_start_row += (num_items - available_rows)
                                 
-                            # 2. 準備寫入資料
                             current_row = 4
                             sum_transfer = 0.0
                             sum_cash = 0.0
@@ -1500,39 +1506,35 @@ else:
                                 
                                 row_data = [idx, date_str, proj, vendor, reason, amt, fee if fee else "", total, pay_method, r["單號"]]
                                 for col_idx, val in enumerate(row_data, 1):
-                                    try:
-                                        cell = ws.cell(row=current_row, column=col_idx)
-                                        if type(cell).__name__ != 'MergedCell':
-                                            cell.value = val
-                                            cell.border = thin_border
-                                            cell.alignment = Alignment(wrap_text=True, vertical='center')
-                                    except: pass
+                                    safe_write_and_style(ws, current_row, col_idx, val, thin_border, Alignment(wrap_text=True, vertical='center'))
                                 
                                 current_row += 1
                                 
-                            # 3. 填入結算區塊數值 (只填數字到第 8 欄，不破壞原有排版)
                             sum_all = sum_transfer + sum_cash
                             balance_after = float(balance_before) - sum_transfer if balance_before else 0.0
                             
                             for r in range(summary_start_row, summary_start_row + 30):
                                 row_text = ""
                                 for c in range(1, 8):
-                                    row_text += get_cell_text(ws, r, c)
+                                    try:
+                                        c_val = ws.cell(row=r, column=c).value
+                                        if c_val: row_text += str(c_val).replace(" ", "")
+                                    except:
+                                        pass
                                         
                                 if "匯款(含手續費)" in row_text:
-                                    safe_write(ws, r, 8, sum_transfer)
+                                    safe_write_and_style(ws, r, 8, sum_transfer)
                                 elif row_text.startswith("支票") and "小計" in row_text:
-                                    safe_write(ws, r, 8, 0.0)
+                                    safe_write_and_style(ws, r, 8, 0.0)
                                 elif row_text.startswith("現金") and "小計" in row_text:
-                                    safe_write(ws, r, 8, sum_cash)
+                                    safe_write_and_style(ws, r, 8, sum_cash)
                                 elif "合計(匯款+現金)" in row_text:
-                                    safe_write(ws, r, 8, sum_all)
+                                    safe_write_and_style(ws, r, 8, sum_all)
                                 elif "扣掉固定費用" in row_text:
-                                    safe_write(ws, r, 8, float(balance_before))
+                                    safe_write_and_style(ws, r, 8, float(balance_before))
                                 elif "扣掉此次" in row_text:
-                                    safe_write(ws, r, 8, balance_after)
+                                    safe_write_and_style(ws, r, 8, balance_after)
                                     
-                            # 儲存
                             output = io.BytesIO()
                             wb.save(output)
                             xlsx_data = output.getvalue()
@@ -1545,7 +1547,6 @@ else:
                         except Exception as e:
                             st.error(f"產生 Excel 發生錯誤：{e}")
             
-            # 若已經產生過報表，顯示下載與標記按鈕
             if st.session_state.get('temp_xlsx_data'):
                 col_dl, col_mark = st.columns(2)
                 col_dl.download_button(
@@ -1584,7 +1585,6 @@ else:
                                 except: g_token = raw_t
                     except: pass
                 
-                # 自動載入寫死在代碼最上方的預設參數
                 if not g_token: g_token = DEFAULT_GITHUB_TOKEN
                 if not g_repo: g_repo = DEFAULT_GITHUB_REPO
                 
@@ -1681,6 +1681,42 @@ else:
                     for _, row in ed.iterrows(): f_db.loc[f_db["單號"]==row["單號"], ["匯款狀態", "匯款日期"]] = [row["匯款狀態"], str(row["匯款日期"]) if pd.notna(row["匯款日期"]) else ""]
                     save_data(f_db); st.success("已更新"); st.rerun()
             else: st.dataframe(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True)
+
+    elif menu == "7. 專案 / 廠商資料庫":
+        st.subheader("🗂️ 專案 / 廠商資料庫管理")
+        st.info("💡 只有管理員可以檢視、修改或刪除此處的資料。可以直接在表格內修改文字，或者選取整列後按下 Delete/Backspace 鍵進行刪除。")
+        
+        tab_proj, tab_vend = st.tabs(["📂 專案資料庫", "🏢 廠商資料庫"])
+        
+        with tab_proj:
+            p_db = load_projects()
+            edited_p = st.data_editor(
+                p_db,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="edit_projects",
+                hide_index=True
+            )
+            if st.button("💾 儲存專案變更"):
+                save_projects(edited_p)
+                st.success("✅ 專案資料庫已更新！")
+                time.sleep(1)
+                st.rerun()
+                
+        with tab_vend:
+            v_db = load_vendors()
+            edited_v = st.data_editor(
+                v_db,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="edit_vendors",
+                hide_index=True
+            )
+            if st.button("💾 儲存廠商變更"):
+                save_vendors(edited_v)
+                st.success("✅ 廠商資料庫已更新！")
+                time.sleep(1)
+                st.rerun()
 
     if st.session_state.get('req_print_id'):
         r_df = load_data()
