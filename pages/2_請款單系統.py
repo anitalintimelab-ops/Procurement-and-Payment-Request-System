@@ -286,10 +286,9 @@ P_FILE = os.path.join(B_DIR, "projects.csv")
 V_FILE = os.path.join(B_DIR, "vendors.csv")
 
 # =========================================================================
-# ★ 系統預設參數 (寫死在這裡，確保雲端重啟後絕對不會遺失！) ★
+# ★ 系統預設參數 (修正截斷的 Token) ★
 # =========================================================================
-# 👇 請將您的 GitHub Token (ghp_開頭) 貼在下方兩個引號中間
-DEFAULT_GITHUB_TOKEN = "ghp_CLePrGwtyAaRfAM9FOQrYq9npXucZe0mz2" 
+DEFAULT_GITHUB_TOKEN = "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" 
 DEFAULT_GITHUB_REPO = "anitalintimelab-ops/Procurement-and-Payment-Request-System"
 # =========================================================================
 
@@ -297,8 +296,8 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- GitHub 自動同步引擎 (Base64 防攔截版) ---
-def _background_github_sync(filepath):
+# --- GitHub 自動同步引擎 (同步檢查版：若失敗會直接在網頁報錯) ---
+def sync_to_github_core(filepath):
     token, repo = DEFAULT_GITHUB_TOKEN, DEFAULT_GITHUB_REPO
     if os.path.exists(G_FILE):
         try:
@@ -315,7 +314,7 @@ def _background_github_sync(filepath):
         except: pass
 
     if not token or not repo or not os.path.exists(filepath): 
-        return
+        return False, "缺少 GitHub Token 或檔案不存在"
         
     try:
         filename = os.path.basename(filepath)
@@ -330,12 +329,21 @@ def _background_github_sync(filepath):
             
         data = {"message": f"Auto sync {filename} from TimeLab System", "content": content}
         if sha: data["sha"] = sha
-        requests.put(url, headers=headers, json=data, timeout=10)
-    except:
-        pass 
+        
+        resp = requests.put(url, headers=headers, json=data, timeout=10)
+        
+        if resp.status_code in [200, 201]:
+            return True, "備份成功"
+        else:
+            return False, f"GitHub 拒絕存取 (錯誤碼: {resp.status_code})。可能是 Token 過期或沒有 repo 權限。"
+    except Exception as e:
+        return False, f"網路連線異常: {e}"
 
 def sync_to_github(filepath):
-    threading.Thread(target=_background_github_sync, args=(filepath,), daemon=True).start()
+    # 直接在前景執行，失敗馬上報錯
+    success, msg = sync_to_github_core(filepath)
+    if not success:
+        st.error(f"⚠️ 雲端備份失敗！請截圖此訊息：{msg}")
 
 # --- 3. 基礎工具 ---
 def get_taiwan_time(): 
@@ -425,7 +433,9 @@ def save_data(df):
     try: 
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
         sync_to_github(D_FILE) 
-    except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
+    except Exception as e: 
+        st.error(f"⚠️ 檔案寫入失敗！請重試。錯誤：{e}")
+        st.stop()
 
 def load_staff():
     df = read_csv_robust(S_FILE)
@@ -767,7 +777,7 @@ if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id
 if is_admin:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定", "7. 專案 / 廠商資料庫", "8. 表單資料庫"]
 elif curr_name == CFO_NAME:
-    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定"]
+    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定", "8. 表單資料庫"]
 else:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
     
