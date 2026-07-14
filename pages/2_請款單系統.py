@@ -288,7 +288,7 @@ V_FILE = os.path.join(B_DIR, "vendors.csv")
 # =========================================================================
 # ★ 系統預設參數 (修正截斷的 Token) ★
 # =========================================================================
-DEFAULT_GITHUB_TOKEN = "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" 
+DEFAULT_GITHUB_TOKEN = "ghp_CLePrGwtyAaRfAM9FOQrYq9npXucZe0mz2" 
 DEFAULT_GITHUB_REPO = "anitalintimelab-ops/Procurement-and-Payment-Request-System"
 # =========================================================================
 
