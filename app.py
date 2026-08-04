@@ -34,8 +34,8 @@ st.markdown("""
         font-size: 24px; font-weight: 900; color: #2C3E50; letter-spacing: 2px; line-height: 1.5;
     }
     
-    /* 按鈕美化 */
-    .stButton>button {
+    /* 按鈕美化 (加入支援 Form 按鈕，確保不跑版) */
+    .stButton>button, [data-testid="stFormSubmitButton"] > button {
         border-radius: 8px !important;
         font-weight: bold !important;
         border: 1px solid #c0c4cc !important;
@@ -45,7 +45,7 @@ st.markdown("""
         height: 42px !important;
         margin-top: 10px;
     }
-    .stButton>button:hover:not(:disabled) {
+    .stButton>button:hover:not(:disabled), [data-testid="stFormSubmitButton"] > button:hover:not(:disabled) {
         border-color: #3b82f6 !important;
         color: #3b82f6 !important;
         box-shadow: 0 2px 8px rgba(59,130,246,0.1) !important;
@@ -106,27 +106,31 @@ with st.container():
     if is_resigned:
         # 紅字顯示警告，並強制鎖死密碼與進入按鈕
         st.markdown("<p style='color:#E53935; font-size:15px; font-weight:bold; margin-top:-10px; margin-bottom:10px;'>目前已離職，無法登入畫面</p>", unsafe_allow_html=True)
-        password = st.text_input("密碼", type="password", disabled=True, placeholder="此帳號已停用")
-        sys_choice = st.selectbox("進入系統", sys_options, disabled=True)
-        st.button("登入系統", disabled=True, use_container_width=True)
+        # 用 form 包裝讓結構相同，border=False 隱藏原廠醜醜的框線
+        with st.form("disabled_form", border=False):
+            password = st.text_input("密碼", type="password", disabled=True, placeholder="此帳號已停用")
+            sys_choice = st.selectbox("進入系統", sys_options, disabled=True)
+            st.form_submit_button("登入系統", disabled=True, use_container_width=True)
 
     # 正常在職人員登入畫面
     else:
-        password = st.text_input("密碼", type="password")
-        sys_choice = st.selectbox("進入系統", sys_options)
+        # ★ 完美支援「直接按 Enter 登入」，且不影響任何版面設定
+        with st.form("login_form", border=False):
+            password = st.text_input("密碼", type="password")
+            sys_choice = st.selectbox("進入系統", sys_options)
 
-        if st.button("登入系統", use_container_width=True):
-            if not staff_df.empty:
-                user_row = staff_df[staff_df["name"] == selected_user].iloc[0]
-                
-                # 驗證密碼
-                if str(user_row["password"]) == str(password):
-                    # 將登入資訊寫入暫存記憶體
-                    st.session_state.user_id = selected_user
-                    st.session_state.user_status = "在職"
-                    st.session_state.sys_choice = sys_choice
+            if st.form_submit_button("登入系統", use_container_width=True):
+                if not staff_df.empty:
+                    user_row = staff_df[staff_df["name"] == selected_user].iloc[0]
                     
-                    # 跳轉到對應頁面
-                    st.switch_page(f"pages/{sys_choice}.py")
-                else:
-                    st.error("❌ 密碼錯誤，請重新輸入。")
+                    # 驗證密碼
+                    if str(user_row["password"]) == str(password):
+                        # 將登入資訊寫入暫存記憶體
+                        st.session_state.user_id = selected_user
+                        st.session_state.user_status = "在職"
+                        st.session_state.sys_choice = sys_choice
+                        
+                        # 跳轉到對應頁面
+                        st.switch_page(f"pages/{sys_choice}.py")
+                    else:
+                        st.error("❌ 密碼錯誤，請重新輸入。")
