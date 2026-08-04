@@ -297,7 +297,7 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- GitHub 自動同步引擎 (同步檢查版：若失敗會直接在網頁報錯) ---
+# --- GitHub 自動同步引擎 (★加入強制清除快取機制，解決 409 版本衝突) ---
 def sync_to_github_core(filepath):
     token, repo = DEFAULT_GITHUB_TOKEN, DEFAULT_GITHUB_REPO
     if os.path.exists(G_FILE):
@@ -319,10 +319,17 @@ def sync_to_github_core(filepath):
         
     try:
         filename = os.path.basename(filepath)
-        url = f"https://api.github.com/repos/{repo}/contents/{filename}"
-        headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+        # 加上 t={timestamp} 參數，強迫 GitHub API 給我們最新版本號，徹底杜絕 409 衝突！
+        get_url = f"https://api.github.com/repos/{repo}/contents/{filename}?t={int(time.time())}"
+        put_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
         
-        r = requests.get(url, headers=headers, timeout=5)
+        headers = {
+            "Authorization": f"token {token}", 
+            "Accept": "application/vnd.github.v3+json",
+            "Cache-Control": "no-cache"
+        }
+        
+        r = requests.get(get_url, headers=headers, timeout=5)
         sha = r.json().get("sha") if r.status_code == 200 else None
         
         with open(filepath, "rb") as f:
@@ -331,14 +338,14 @@ def sync_to_github_core(filepath):
         data = {"message": f"Auto sync {filename} from TimeLab System", "content": content}
         if sha: data["sha"] = sha
         
-        resp = requests.put(url, headers=headers, json=data, timeout=10)
+        resp = requests.put(put_url, headers=headers, json=data, timeout=10)
         
         if resp.status_code in [200, 201]:
             return True, "備份成功"
         else:
-            return False, f"GitHub 拒絕存取 (錯誤碼: {resp.status_code})。可能是 Token 過期或沒有 repo 權限。"
+            return False, f"上傳【{filename}】被 GitHub 拒絕 (錯誤碼: {resp.status_code})。可能是版本衝突或 Token 過期。"
     except Exception as e:
-        return False, f"網路連線異常: {e}"
+        return False, f"上傳【{filename}】時網路連線異常: {e}"
 
 def sync_to_github(filepath):
     # 直接在前景執行，失敗馬上報錯
