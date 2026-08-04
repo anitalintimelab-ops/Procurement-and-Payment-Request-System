@@ -91,13 +91,6 @@ if not sys_options:
     sys_options = ["1_採購單系統", "2_請款單系統"] # 防呆預設
 
 # --- 4. 登入表單 ---
-# ★ 定義觸發登入的回呼函式 (當在密碼框按下 Enter 時會觸發)
-def trigger_login():
-    st.session_state.enter_pressed = True
-
-if 'enter_pressed' not in st.session_state:
-    st.session_state.enter_pressed = False
-
 with st.container():
     st.write("") # 留一點空間
     selected_user = st.selectbox("身分", staff_list)
@@ -119,27 +112,33 @@ with st.container():
 
     # 正常在職人員登入畫面
     else:
-        # ★ 加上 on_change=trigger_login，只要在密碼框按下 Enter 就會觸發登入
-        password = st.text_input("密碼", type="password", on_change=trigger_login)
-        sys_choice = st.selectbox("進入系統", sys_options)
+        # ★ 完美支援「直接按 Enter 登入」，拋棄不穩定的 st.form，改用底層監聽
+        def process_login():
+            st.session_state.do_login = True
 
-        btn_clicked = st.button("登入系統", use_container_width=True)
+        # 只要密碼框輸入完成按下 Enter，就會觸發 on_change 進入 process_login
+        password = st.text_input("密碼", type="password", key="login_pw", on_change=process_login)
+        sys_choice = st.selectbox("進入系統", sys_options, key="sys_choice_val")
 
-        # 無論是「點擊按鈕」還是「在密碼框按下 Enter」，都會執行下方的登入驗證
-        if btn_clicked or st.session_state.enter_pressed:
-            st.session_state.enter_pressed = False # 執行後立即重置狀態
+        # 點擊按鈕一樣觸發 process_login
+        btn_clicked = st.button("登入系統", use_container_width=True, on_click=process_login)
+
+        if st.session_state.get('do_login', False):
+            st.session_state.do_login = False # 執行後立即重置狀態
+            pw_val = st.session_state.login_pw
             
-            if not staff_df.empty:
-                user_row = staff_df[staff_df["name"] == selected_user].iloc[0]
-                
-                # 驗證密碼
-                if str(user_row["password"]) == str(password):
-                    # 將登入資訊寫入暫存記憶體
-                    st.session_state.user_id = selected_user
-                    st.session_state.user_status = "在職"
-                    st.session_state.sys_choice = sys_choice
-                    
-                    # 跳轉到對應頁面
-                    st.switch_page(f"pages/{sys_choice}.py")
-                else:
-                    st.error("❌ 密碼錯誤，請重新輸入。")
+            if pw_val: # 只有當密碼有輸入時才進行驗證
+                if not staff_df.empty:
+                    user_row = staff_df[staff_df["name"] == selected_user].iloc[0]
+                    if str(user_row["password"]) == str(pw_val):
+                        # 將登入資訊寫入暫存記憶體
+                        st.session_state.user_id = selected_user
+                        st.session_state.user_status = "在職"
+                        st.session_state.sys_choice = st.session_state.sys_choice_val
+                        
+                        # 跳轉到對應頁面
+                        st.switch_page(f"pages/{st.session_state.sys_choice_val}.py")
+                    else:
+                        st.error("❌ 密碼錯誤，請重新輸入。")
+            elif btn_clicked:
+                st.error("❌ 請輸入密碼。")
