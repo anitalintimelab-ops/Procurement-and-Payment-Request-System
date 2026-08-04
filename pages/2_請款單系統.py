@@ -297,8 +297,14 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- GitHub 自動同步引擎 (★加入強制清除快取機制，解決 409 版本衝突) ---
+# --- GitHub 自動同步引擎 (★加入強制清除快取與密碼保護機制) ---
 def sync_to_github_core(filepath):
+    filename = os.path.basename(filepath)
+    
+    # 🛑 安全防護機制：絕對不要把包含密碼的檔案備份到 GitHub 上！
+    if filename in ["github_credentials.txt", "line_credentials.txt"]:
+        return True, f"🔒 為保護帳號安全，【{filename}】僅儲存於主機，不上傳至 GitHub。"
+
     token, repo = DEFAULT_GITHUB_TOKEN, DEFAULT_GITHUB_REPO
     if os.path.exists(G_FILE):
         try:
@@ -318,8 +324,7 @@ def sync_to_github_core(filepath):
         return False, "缺少 GitHub Token 或檔案不存在"
         
     try:
-        filename = os.path.basename(filepath)
-        # 加上 t={timestamp} 參數，強迫 GitHub API 給我們最新版本號，徹底杜絕 409 衝突！
+        # 加上 t={timestamp} 參數，強迫 GitHub API 給我們最新版本號，徹底杜絕 409 衝突
         get_url = f"https://api.github.com/repos/{repo}/contents/{filename}?t={int(time.time())}"
         put_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
         
@@ -348,7 +353,7 @@ def sync_to_github_core(filepath):
         return False, f"上傳【{filename}】時網路連線異常: {e}"
 
 def sync_to_github(filepath):
-    # 直接在前景執行，失敗馬上報錯
+    # 直接在前景執行，失敗馬上報錯，如果是安全檔案則顯示成功提示
     success, msg = sync_to_github_core(filepath)
     if not success:
         st.error(f"⚠️ 雲端備份失敗！請截圖此訊息：{msg}")
