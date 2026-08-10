@@ -300,6 +300,15 @@ DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 # --- GitHub 自動同步引擎 (★完全放行上傳，由 Base64 負責躲避掃描) ---
 def sync_to_github_core(filepath):
     filename = os.path.basename(filepath)
+
+    # 憑證含有 Token，GitHub Secret Push Protection 會以 409 拒絕；
+    # 保留在部署環境，不上傳敏感憑證檔案。
+    if os.path.abspath(filepath) in {
+        os.path.abspath(G_FILE),
+        os.path.abspath(L_FILE)
+    }:
+        return True, "敏感憑證檔案不予上傳"
+
     token, repo = DEFAULT_GITHUB_TOKEN, DEFAULT_GITHUB_REPO
     if os.path.exists(G_FILE):
         try:
