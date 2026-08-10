@@ -374,7 +374,9 @@ def sync_to_github_core(filepath):
         return False, f"上傳 {filename} 時發生錯誤：{e}"
 
 def sync_to_github(filepath):
-    # 直接在前景執行，失敗馬上報錯，如果是安全檔案則顯示成功提示
+    # 憑證檔案含有 Token，禁止送往 GitHub，避免 Secret Push Protection 409。
+    if os.path.basename(filepath) in {"github_credentials.txt", "line_credentials.txt"}:
+        return
     success, msg = sync_to_github_core(filepath)
     if not success:
         st.error(f"⚠️ 雲端備份失敗！請截圖此訊息：{msg}")
