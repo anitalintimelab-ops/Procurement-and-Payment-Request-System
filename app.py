@@ -77,6 +77,13 @@ div[data-testid="stVerticalBlock"] > div > div > div[data-testid="stVerticalBloc
     .stButton > button { width: 100% !important; min-height: 42px !important; }
     [data-baseweb="select"] > div, .stTextInput input { min-height: 42px !important; }
 }
+@media screen and (orientation: landscape) and (max-height: 600px) {
+    .block-container { padding: .5rem 1rem !important; }
+    .global-logo-container { margin: .25rem 0 .5rem !important; }
+    .global-logo-en { font-size: 2.5rem !important; }
+    .global-logo-tw { font-size: 1.25rem !important; }
+    div[data-testid="stVerticalBlock"] > div > div > div[data-testid="stVerticalBlock"] { padding: 16px !important; }
+}
 @media screen and (max-width: 600px) {
     .block-container { width: 100% !important; max-width: 100vw !important; padding: .75rem !important; overflow-x: hidden !important; }
     .global-logo-container { margin-top: .5rem !important; margin-bottom: 1rem !important; }
