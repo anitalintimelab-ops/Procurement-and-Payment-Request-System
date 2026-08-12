@@ -33,14 +33,6 @@ st.markdown("""
 }
 
 /* 側邊欄渐變和文字顏色 */
-[data-testid="stSidebar"] {
-    background: linear-gradient(135deg, #4A00E0 0%, #8E2DE2 100%), radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.1) 0%, transparent 40%);
-    background-blend-mode: overlay;
-    color: white !important;
-}
-[data-testid="stSidebar"] * {
-    color: white !important;
-}
 
 /* 側邊欄展開區塊 (Expander) 強制透明背景與白字 */
 [data-testid="stSidebar"] details,
@@ -50,18 +42,6 @@ st.markdown("""
     background: transparent !important;
     border: none !important;
 }
-[data-testid="stSidebar"] details summary * {
-    color: white !important;
-}
-[data-testid="stSidebar"] div[data-testid="stExpanderDetails"] p,
-[data-testid="stSidebar"] div[data-testid="stExpanderDetails"] label,
-[data-testid="stSidebar"] div[data-testid="stExpanderDetails"] span {
-    color: white !important;
-}
-[data-testid="stSidebar"] [data-testid="stDataFrame"] * {
-    color: black !important;
-}
-
 /* 確保上傳拖曳區的背景是白色的，文字是黑色的 */
 div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #cbd5e1 !important; }
 div[data-testid="stFileUploader"] label, div[data-testid="stFileUploadDropzone"] p, div[data-testid="stFileUploadDropzone"] span, div[data-testid="stFileUploadDropzone"] small { color: #1E293B !important; }
@@ -111,37 +91,16 @@ div[data-testid="stUploadedFile"] small {
     background: transparent !important;
     background-color: transparent !important;
     border: none !important;
-    color: white !important;
+    color: #214653 !important;
     padding: 0 !important;
     font-size: 15px !important;
     box-shadow: none !important;
 }
 
 /* 側邊欄按鈕 (如：登出系統)，變成淺綠色，字體黑色 */
-[data-testid="stSidebar"] .stButton > button {
-    background-color: #9DC350 !important; 
-    border: none !important;
-    border-radius: 8px !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-    transition: all 0.2s ease !important;
-}
-[data-testid="stSidebar"] .stButton > button, 
-[data-testid="stSidebar"] .stButton > button p,
-[data-testid="stSidebar"] .stButton > button span,
-[data-testid="stSidebar"] .stButton > button div,
-[data-testid="stSidebar"] .stButton > button * {
-    color: black !important;
-    font-weight: 900 !important;
-}
-[data-testid="stSidebar"] .stButton > button:hover {
-    background-color: #8bb340 !important; 
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
-}
-
 /* 側邊欄 Logo 文字 */
 [data-testid="stSidebar"] .时研logo {
-    color: white !important;
+    color: #214653 !important;
     font-size: 20px;
     font-weight: 700;
     text-align: center;
