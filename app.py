@@ -53,6 +53,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+:root { --login-ink: #2b2926; --login-brown: #8b6a43; --login-gold: #b9965a; --login-paper: #fbf8f2; --login-line: #d8cbbb; }
+.stApp { background: #f3f0e9 !important; color: var(--login-ink) !important; }
+[data-testid="stHeader"] { background: transparent !important; }
+div[data-testid="stVerticalBlock"] > div > div > div[data-testid="stVerticalBlock"] { background: rgba(255, 253, 248, .98) !important; border: 1px solid var(--login-line) !important; border-radius: 4px !important; box-shadow: 0 14px 35px rgba(43, 41, 38, .10) !important; }
+.global-logo-en { color: var(--login-ink) !important; }
+.global-logo-en span { color: var(--login-gold) !important; }
+.global-logo-tw { color: #5f513f !important; }
+.stTextInput label, .stSelectbox label { color: #665643 !important; font-weight: 700 !important; }
+.stTextInput input, [data-baseweb="select"] > div { background: var(--login-paper) !important; color: var(--login-ink) !important; border: 1px solid var(--login-line) !important; border-radius: 3px !important; }
+.stButton > button { background: var(--login-ink) !important; color: #fffdf8 !important; border: 1px solid var(--login-ink) !important; border-radius: 3px !important; letter-spacing: .04em !important; }
+.stButton > button:hover:not(:disabled) { background: var(--login-brown) !important; border-color: var(--login-brown) !important; color: #fffdf8 !important; box-shadow: 0 4px 12px rgba(139, 106, 67, .22) !important; }
+.stButton>button:hover:not(:disabled) { background: var(--login-brown) !important; border-color: var(--login-brown) !important; color: #fffdf8 !important; box-shadow: 0 4px 12px rgba(139, 106, 67, .22) !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # --- 2. 顯示 Logo ---
 st.markdown("""
     <div class='global-logo-container'>

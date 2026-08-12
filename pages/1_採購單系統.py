@@ -29,6 +29,30 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+:root { --ink: #2b2926; --brown: #8b6a43; --gold: #b9965a; --paper: #fbf8f2; --line: #d8cbbb; }
+.stApp { background: #f3f0e9 !important; color: var(--ink) !important; }
+[data-testid="stHeader"] { background: transparent !important; }
+[data-testid="stSidebar"] { background: #2b2926 !important; color: #f8f3ea !important; border-right: 1px solid #4b4034 !important; }
+[data-testid="stSidebar"] * { color: #f8f3ea !important; }
+[data-testid="stSidebar"] .stButton > button { background: var(--gold) !important; color: #fffdf8 !important; border: 1px solid var(--gold) !important; border-radius: 3px !important; }
+[data-testid="stSidebar"] .stButton > button:hover { background: var(--brown) !important; border-color: var(--brown) !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label { border-radius: 3px !important; padding: 5px 8px !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) { background: var(--brown) !important; }
+[data-testid="stSidebar"] [data-testid="stExpander"], [data-testid="stSidebar"] details { border-color: #514638 !important; }
+.block-container { color: var(--ink) !important; }
+h1, h2, h3 { color: var(--ink) !important; font-family: Georgia, "Noto Serif TC", serif !important; letter-spacing: .02em; }
+.stButton > button { background: var(--paper) !important; color: #4a3826 !important; border: 1px solid #9b7748 !important; border-radius: 3px !important; }
+.stButton > button:hover:not(:disabled) { background: var(--brown) !important; color: #fffdf8 !important; border-color: var(--brown) !important; }
+[data-baseweb="input"] > div, [data-baseweb="select"] > div, textarea { background: var(--paper) !important; color: var(--ink) !important; border-color: var(--line) !important; }
+input, textarea { color: var(--ink) !important; }
+[data-testid="stExpander"], [data-testid="stForm"] { background: rgba(255, 253, 248, .72) !important; border-color: var(--line) !important; }
+[data-testid="stFileUploader"] section { background: var(--paper) !important; border: 1px dashed var(--gold) !important; }
+[data-testid="stAlert"] { background: #eee7da !important; border-left: 4px solid var(--gold) !important; color: var(--ink) !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # --- 絕對路徑定位 (穿透 pages 資料夾尋找根目錄) ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 

@@ -267,6 +267,29 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+:root { --test-ink: #173b4a; --test-teal: #2f8f83; --test-mint: #8fd0c2; --test-paper: #f7fbfa; --test-line: #b9d3cf; }
+.stApp { background: #eaf3f2 !important; color: var(--test-ink) !important; }
+[data-testid="stHeader"] { background: transparent !important; }
+[data-testid="stSidebar"] { background: #173b4a !important; color: #effaf8 !important; border-right: 1px solid #285a68 !important; }
+[data-testid="stSidebar"] * { color: #effaf8 !important; }
+[data-testid="stSidebar"] .stButton > button { background: var(--test-mint) !important; color: #173b4a !important; border: 1px solid var(--test-mint) !important; border-radius: 3px !important; }
+[data-testid="stSidebar"] .stButton > button:hover { background: var(--test-teal) !important; border-color: var(--test-teal) !important; color: #fff !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label { border-radius: 3px !important; padding: 5px 8px !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) { background: var(--test-teal) !important; }
+.block-container { color: var(--test-ink) !important; }
+h1, h2, h3 { color: var(--test-ink) !important; font-family: Georgia, "Noto Serif TC", serif !important; letter-spacing: .02em; }
+.stButton > button { background: var(--test-paper) !important; color: var(--test-ink) !important; border: 1px solid var(--test-teal) !important; border-radius: 3px !important; }
+.stButton > button:hover:not(:disabled) { background: var(--test-teal) !important; color: #fff !important; border-color: var(--test-teal) !important; }
+[data-baseweb="input"] > div, [data-baseweb="select"] > div, textarea { background: var(--test-paper) !important; color: var(--test-ink) !important; border-color: var(--test-line) !important; }
+input, textarea { color: var(--test-ink) !important; }
+[data-testid="stExpander"], [data-testid="stForm"] { background: rgba(247, 251, 250, .78) !important; border-color: var(--test-line) !important; }
+[data-testid="stFileUploader"] section { background: var(--test-paper) !important; border: 1px dashed var(--test-teal) !important; }
+[data-testid="stAlert"] { background: #dcefeb !important; border-left: 4px solid var(--test-teal) !important; color: var(--test-ink) !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # --- 側邊欄 Logo 文字 ---
 st.sidebar.markdown("<h2 class='时研logo'>時研國際設計股份有限公司</h2>", unsafe_allow_html=True)
 
