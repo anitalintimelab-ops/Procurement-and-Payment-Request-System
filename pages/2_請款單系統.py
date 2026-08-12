@@ -191,28 +191,14 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     color: #00BFFF !important;
 }
 
-/* 手機版直式排版拒絕拉伸 */
+/* 手機版採用與報價單一致的響應式欄位配置 */
 @media screen and (max-width: 768px) {
-    .block-container { padding-top: 1rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
-    div[data-testid="stHorizontalBlock"] { 
-        display: flex !important;
-        flex-direction: row !important; 
-        flex-wrap: nowrap !important; 
-        overflow-x: auto !important; 
-        padding-bottom: 5px; 
-        gap: 6px !important; 
-        justify-content: flex-start !important; 
-    }
-    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { 
-        flex: 0 0 max-content !important; 
-        width: max-content !important; 
-        min-width: max-content !important; 
-        max-width: max-content !important;
-        padding: 0 !important; 
-    }
-    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: max-content !important; }
-    div[data-testid="column"] p { font-size: 13px !important; white-space: nowrap !important; margin-bottom: 0 !important; }
-    .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
+    .block-container { padding-top: 1.5rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
+    div[data-testid="stHorizontalBlock"] { display: flex !important; flex-wrap: wrap !important; gap: .75rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { flex: 1 1 46% !important; width: auto !important; min-width: 46% !important; max-width: 100% !important; padding: 0 !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; }
+    div[data-testid="column"] p { font-size: 13px !important; white-space: normal !important; overflow-wrap: anywhere !important; margin-bottom: 0 !important; }
+    .stButton > button { padding: 4px 8px !important; font-size: 13px !important; min-height: 32px !important; }
 }
 
 .mobile-camera-only { display: none !important; }
@@ -248,6 +234,22 @@ st.markdown("""
 [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked), [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) { background: #e3d8c8 !important; color: #2b2926 !important; font-weight: 700 !important; }
 [data-testid="stSidebar"] .stButton > button { background: transparent !important; color: #3d3934 !important; border: 1px solid transparent !important; box-shadow: none !important; }
 [data-testid="stSidebar"] .stButton > button:hover { background: #ebe6de !important; color: #2b2926 !important; border-color: #ebe6de !important; transform: none !important; }
+@media screen and (max-width: 600px) {
+    .block-container { width: 100% !important; max-width: 100vw !important; padding: 1rem .75rem 2rem !important; overflow-x: hidden !important; }
+    div[data-testid="stHorizontalBlock"] { flex-direction: column !important; flex-wrap: nowrap !important; gap: .65rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { flex: 1 1 100% !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 0 !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; }
+    div[data-testid="column"] p { white-space: normal !important; overflow-wrap: anywhere !important; }
+    .stButton > button { width: 100% !important; min-height: 40px !important; }
+    h1 { font-size: 1.65rem !important; } h2 { font-size: 1.35rem !important; } h3 { font-size: 1.15rem !important; }
+    [data-testid="stFileUploader"] section { padding: .75rem !important; }
+    [data-testid="stDataFrame"], table { max-width: 100% !important; overflow-x: auto !important; }
+}
+@media screen and (min-width: 601px) and (max-width: 900px) {
+    .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+    div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: .75rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { min-width: 46% !important; flex: 1 1 46% !important; }
+}
 .block-container { color: var(--ink) !important; }
 h1, h2, h3 { color: var(--ink) !important; font-family: Georgia, "Noto Serif TC", serif !important; letter-spacing: .02em; }
 .stButton > button { background: var(--paper) !important; color: #4a3826 !important; border: 1px solid #9b7748 !important; border-radius: 3px !important; }
@@ -257,6 +259,17 @@ input, textarea { color: var(--ink) !important; }
 [data-testid="stExpander"], [data-testid="stForm"] { background: rgba(255, 253, 248, .72) !important; border-color: var(--line) !important; }
 [data-testid="stFileUploader"] section { background: var(--paper) !important; border: 1px dashed var(--gold) !important; }
 [data-testid="stAlert"] { background: #eee7da !important; border-left: 4px solid var(--gold) !important; color: var(--ink) !important; }
+@media screen and (max-width: 768px) {
+    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main { max-width: 100vw !important; overflow-x: hidden !important; }
+    .block-container { width: 100% !important; max-width: 100vw !important; padding: 1rem .75rem 2rem !important; }
+    div[data-testid="stHorizontalBlock"] { display: flex !important; flex-direction: column !important; flex-wrap: nowrap !important; gap: .65rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { flex: 1 1 100% !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 0 !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; }
+    div[data-testid="column"] p { white-space: normal !important; overflow-wrap: anywhere !important; }
+    .stButton > button { width: 100% !important; min-height: 40px !important; }
+    h1 { font-size: 1.65rem !important; } h2 { font-size: 1.35rem !important; } h3 { font-size: 1.15rem !important; }
+    [data-testid="stFileUploader"] section { padding: .75rem !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 

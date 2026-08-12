@@ -39,6 +39,20 @@ st.markdown("""
 [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked), [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) { background: #e3d8c8 !important; color: #2b2926 !important; font-weight: 700 !important; }
 [data-testid="stSidebar"] .stButton > button { background: transparent !important; color: #3d3934 !important; border: 1px solid transparent !important; box-shadow: none !important; }
 [data-testid="stSidebar"] .stButton > button:hover { background: #ebe6de !important; color: #2b2926 !important; border-color: #ebe6de !important; transform: none !important; }
+@media screen and (max-width: 600px) {
+    .block-container { width: 100% !important; max-width: 100vw !important; padding: 1rem .75rem 2rem !important; overflow-x: hidden !important; }
+    div[data-testid="stHorizontalBlock"] { flex-direction: column !important; flex-wrap: nowrap !important; gap: .65rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { flex: 1 1 100% !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 0 !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; }
+    .stButton > button { width: 100% !important; min-height: 40px !important; }
+    h1 { font-size: 1.65rem !important; } h2 { font-size: 1.35rem !important; } h3 { font-size: 1.15rem !important; }
+    [data-testid="stDataFrame"], table { max-width: 100% !important; overflow-x: auto !important; }
+}
+@media screen and (min-width: 601px) and (max-width: 900px) {
+    .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+    div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: .75rem !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { min-width: 46% !important; flex: 1 1 46% !important; }
+}
 .block-container { color: var(--ink) !important; }
 h1, h2, h3 { color: var(--ink) !important; font-family: Georgia, "Noto Serif TC", serif !important; letter-spacing: .02em; }
 .stButton > button { background: var(--paper) !important; color: #4a3826 !important; border: 1px solid #9b7748 !important; border-radius: 3px !important; }
@@ -47,6 +61,15 @@ h1, h2, h3 { color: var(--ink) !important; font-family: Georgia, "Noto Serif TC"
 input, textarea { color: var(--ink) !important; }
 [data-testid="stExpander"], [data-testid="stForm"] { background: rgba(255, 253, 248, .72) !important; border-color: var(--line) !important; }
 [data-testid="stFileUploader"] section { background: var(--paper) !important; border: 1px dashed var(--gold) !important; }
+@media screen and (max-width: 768px) {
+    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main { max-width: 100vw !important; overflow-x: hidden !important; }
+    .block-container { width: 100% !important; max-width: 100vw !important; padding: 1rem .75rem 2rem !important; }
+    div[data-testid="stHorizontalBlock"] { display: flex !important; flex-direction: column !important; flex-wrap: nowrap !important; gap: .65rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { flex: 1 1 100% !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 0 !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; }
+    .stButton > button { width: 100% !important; min-height: 40px !important; }
+    h1 { font-size: 1.65rem !important; } h2 { font-size: 1.35rem !important; } h3 { font-size: 1.15rem !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 

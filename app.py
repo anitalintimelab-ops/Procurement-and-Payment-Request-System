@@ -67,6 +67,30 @@ div[data-testid="stVerticalBlock"] > div > div > div[data-testid="stVerticalBloc
 .stButton > button { background: var(--login-ink) !important; color: #fffdf8 !important; border: 1px solid var(--login-ink) !important; border-radius: 3px !important; letter-spacing: .04em !important; }
 .stButton > button:hover:not(:disabled) { background: var(--login-brown) !important; border-color: var(--login-brown) !important; color: #fffdf8 !important; box-shadow: 0 4px 12px rgba(139, 106, 67, .22) !important; }
 .stButton>button:hover:not(:disabled) { background: var(--login-brown) !important; border-color: var(--login-brown) !important; color: #fffdf8 !important; box-shadow: 0 4px 12px rgba(139, 106, 67, .22) !important; }
+@media screen and (max-width: 768px) {
+    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main { max-width: 100vw !important; overflow-x: hidden !important; }
+    .block-container { width: 100% !important; max-width: 100vw !important; padding: .75rem !important; }
+    .global-logo-container { margin-top: .5rem !important; margin-bottom: 1rem !important; }
+    .global-logo-en { font-size: 2rem !important; }
+    .global-logo-tw { font-size: 1rem !important; letter-spacing: .08em !important; }
+    div[data-testid="stVerticalBlock"] > div > div > div[data-testid="stVerticalBlock"] { padding: 18px !important; }
+    .stButton > button { width: 100% !important; min-height: 42px !important; }
+    [data-baseweb="select"] > div, .stTextInput input { min-height: 42px !important; }
+}
+@media screen and (max-width: 600px) {
+    .block-container { width: 100% !important; max-width: 100vw !important; padding: .75rem !important; overflow-x: hidden !important; }
+    .global-logo-container { margin-top: .5rem !important; margin-bottom: 1rem !important; }
+    .global-logo-en { font-size: 2rem !important; }
+    .global-logo-tw { font-size: 1rem !important; letter-spacing: .08em !important; }
+    div[data-testid="stVerticalBlock"] > div > div > div[data-testid="stVerticalBlock"] { padding: 18px !important; }
+    .stButton > button { width: 100% !important; min-height: 42px !important; }
+    [data-baseweb="select"] > div, .stTextInput input { min-height: 42px !important; }
+}
+@media screen and (min-width: 601px) and (max-width: 900px) {
+    .block-container { padding: 1rem !important; }
+    .global-logo-en { font-size: 2.5rem !important; }
+    .global-logo-tw { font-size: 1.25rem !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
