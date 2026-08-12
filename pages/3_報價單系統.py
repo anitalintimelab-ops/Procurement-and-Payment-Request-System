@@ -70,6 +70,13 @@ input, textarea { color: var(--ink) !important; }
     .stButton > button { width: 100% !important; min-height: 40px !important; }
     h1 { font-size: 1.65rem !important; } h2 { font-size: 1.35rem !important; } h3 { font-size: 1.15rem !important; }
 }
+@media screen and (orientation: landscape) and (max-height: 600px) {
+    .block-container { padding: .75rem 1rem 1.5rem !important; }
+    div[data-testid="stHorizontalBlock"] { display: flex !important; flex-direction: row !important; flex-wrap: wrap !important; gap: .75rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { flex: 1 1 46% !important; width: auto !important; min-width: 46% !important; max-width: 100% !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; }
+    .stButton > button { width: auto !important; min-height: 32px !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
