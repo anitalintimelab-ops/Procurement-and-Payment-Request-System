@@ -31,6 +31,14 @@ st.markdown("""
 [data-testid="stSidebar"] .stButton > button:hover { background: var(--brown) !important; border-color: var(--brown) !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] label { border-radius: 3px !important; padding: 5px 8px !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) { background: var(--brown) !important; }
+[data-testid="stSidebar"] { background: #f7f5f0 !important; color: #3d3934 !important; border-right: 1px solid #ddd7ce !important; }
+[data-testid="stSidebar"] * { color: #3d3934 !important; }
+[data-testid="stSidebar"] svg { fill: #817a71 !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label, [data-testid="stSidebar"] [role="radiogroup"] label { background: transparent !important; border-radius: 4px !important; color: #3d3934 !important; transition: background .15s ease, color .15s ease; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label:hover, [data-testid="stSidebar"] [role="radiogroup"] label:hover { background: #ebe6de !important; color: #2b2926 !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked), [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) { background: #e3d8c8 !important; color: #2b2926 !important; font-weight: 700 !important; }
+[data-testid="stSidebar"] .stButton > button { background: transparent !important; color: #3d3934 !important; border: 1px solid transparent !important; box-shadow: none !important; }
+[data-testid="stSidebar"] .stButton > button:hover { background: #ebe6de !important; color: #2b2926 !important; border-color: #ebe6de !important; transform: none !important; }
 .block-container { color: var(--ink) !important; }
 h1, h2, h3 { color: var(--ink) !important; font-family: Georgia, "Noto Serif TC", serif !important; letter-spacing: .02em; }
 .stButton > button { background: var(--paper) !important; color: #4a3826 !important; border: 1px solid #9b7748 !important; border-radius: 3px !important; }

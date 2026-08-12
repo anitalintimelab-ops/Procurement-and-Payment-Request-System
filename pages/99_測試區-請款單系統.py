@@ -278,6 +278,14 @@ st.markdown("""
 [data-testid="stSidebar"] .stButton > button:hover { background: var(--test-teal) !important; border-color: var(--test-teal) !important; color: #fff !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] label { border-radius: 3px !important; padding: 5px 8px !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) { background: var(--test-teal) !important; }
+[data-testid="stSidebar"] { background: #edf4f4 !important; color: #214653 !important; border-right: 1px solid #c9dcda !important; }
+[data-testid="stSidebar"] * { color: #214653 !important; }
+[data-testid="stSidebar"] svg { fill: #5d8587 !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label, [data-testid="stSidebar"] [role="radiogroup"] label { background: transparent !important; border-radius: 4px !important; color: #214653 !important; transition: background .15s ease, color .15s ease; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label:hover, [data-testid="stSidebar"] [role="radiogroup"] label:hover { background: #d9ece9 !important; color: #173b4a !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked), [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) { background: #c5e3de !important; color: #173b4a !important; font-weight: 700 !important; }
+[data-testid="stSidebar"] .stButton > button { background: transparent !important; color: #214653 !important; border: 1px solid transparent !important; box-shadow: none !important; }
+[data-testid="stSidebar"] .stButton > button:hover { background: #d9ece9 !important; color: #173b4a !important; border-color: #d9ece9 !important; transform: none !important; }
 .block-container { color: var(--test-ink) !important; }
 h1, h2, h3 { color: var(--test-ink) !important; font-family: Georgia, "Noto Serif TC", serif !important; letter-spacing: .02em; }
 .stButton > button { background: var(--test-paper) !important; color: var(--test-ink) !important; border: 1px solid var(--test-teal) !important; border-radius: 3px !important; }
