@@ -316,29 +316,38 @@ def _decode_saved_credential(value):
         return value
 
 def get_github_config():
-    """Return (token, repo, branch, source), preferring local settings for development."""
+    """Return (token, repo, branch, source), preferring deployment Secrets."""
     token, repo, branch, source = "", "", "", "Not configured"
+
+    # Deployment Secrets must win over stale files left on a reused host.
+    token = os.getenv("GITHUB_TOKEN", "").strip() or _secret_value("GITHUB_TOKEN")
+    repo = os.getenv("GITHUB_REPO", "").strip() or _secret_value("GITHUB_REPO")
+    branch = os.getenv("GITHUB_BRANCH", "").strip() or _secret_value("GITHUB_BRANCH")
+    if token:
+        source = "environment variable / Streamlit Secrets"
 
     if os.path.exists(G_FILE):
         try:
             with open(G_FILE, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
-            token = _decode_saved_credential(lines[0]) if lines else ""
-            repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines) > 1 else ""
-            branch = "".join(c for c in lines[2] if c.isascii()).strip() if len(lines) > 2 else ""
-            if token or repo:
+            file_token = _decode_saved_credential(lines[0]) if lines else ""
+            file_repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines) > 1 else ""
+            file_branch = "".join(c for c in lines[2] if c.isascii()).strip() if len(lines) > 2 else ""
+            if not token:
+                token = file_token
+            if not repo:
+                repo = file_repo
+            if not branch:
+                branch = file_branch
+            if not source and (file_token or file_repo):
                 source = "local settings file"
         except Exception:
-            token, repo, branch = "", "", ""
+            pass
 
-    if not token:
-        token = os.getenv("GITHUB_TOKEN", "").strip() or _secret_value("GITHUB_TOKEN")
-        if token:
-            source = "environment variable / Streamlit Secrets"
     if not repo:
-        repo = os.getenv("GITHUB_REPO", "").strip() or _secret_value("GITHUB_REPO") or DEFAULT_GITHUB_REPO
+        repo = DEFAULT_GITHUB_REPO
     if not branch:
-        branch = os.getenv("GITHUB_BRANCH", "").strip() or _secret_value("GITHUB_BRANCH") or DEFAULT_GITHUB_BRANCH
+        branch = DEFAULT_GITHUB_BRANCH
     return token, repo, branch, source
 # =========================================================================
 
