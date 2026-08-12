@@ -776,7 +776,7 @@ if is_admin:
 else:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
     
-menu = st.sidebar.radio("導覽", menu_options, key="req_menu_radio")
+menu = st.sidebar.radio("工作項目", menu_options, key="req_menu_radio")
 
 if "req_prev_state_menu" not in st.session_state:
     st.session_state.req_prev_state_menu = menu
