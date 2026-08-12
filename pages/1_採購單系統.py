@@ -299,7 +299,7 @@ menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長�
 if is_admin: menu_options.append("5. 請款狀態/系統設定")
 
 if 'menu_radio' in st.session_state and st.session_state.menu_radio not in menu_options: st.session_state.menu_radio = "1. 填寫申請單"
-menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
+menu = st.sidebar.radio("工作項目", menu_options, key="menu_radio")
 
 def get_filtered_db():
     db = load_data()
