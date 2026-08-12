@@ -245,6 +245,22 @@ st.markdown("""
 [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked), [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) { background: #c5e3de !important; color: #173b4a !important; font-weight: 700 !important; }
 [data-testid="stSidebar"] .stButton > button { background: transparent !important; color: #214653 !important; border: 1px solid transparent !important; box-shadow: none !important; }
 [data-testid="stSidebar"] .stButton > button:hover { background: #d9ece9 !important; color: #173b4a !important; border-color: #d9ece9 !important; transform: none !important; }
+@media screen and (max-width: 600px) {
+    .block-container { width: 100% !important; max-width: 100vw !important; padding: 1rem .75rem 2rem !important; overflow-x: hidden !important; }
+    div[data-testid="stHorizontalBlock"] { flex-direction: column !important; flex-wrap: nowrap !important; gap: .65rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { flex: 1 1 100% !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 0 !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; }
+    div[data-testid="column"] p { white-space: normal !important; overflow-wrap: anywhere !important; }
+    .stButton > button { width: 100% !important; min-height: 40px !important; }
+    h1 { font-size: 1.65rem !important; } h2 { font-size: 1.35rem !important; } h3 { font-size: 1.15rem !important; }
+    [data-testid="stFileUploader"] section { padding: .75rem !important; }
+    [data-testid="stDataFrame"], table { max-width: 100% !important; overflow-x: auto !important; }
+}
+@media screen and (min-width: 601px) and (max-width: 900px) {
+    .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+    div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: .75rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { min-width: 46% !important; flex: 1 1 46% !important; }
+}
 .block-container { color: var(--test-ink) !important; }
 h1, h2, h3 { color: var(--test-ink) !important; font-family: Georgia, "Noto Serif TC", serif !important; letter-spacing: .02em; }
 .stButton > button { background: var(--test-paper) !important; color: var(--test-ink) !important; border: 1px solid var(--test-teal) !important; border-radius: 3px !important; }
@@ -254,6 +270,16 @@ input, textarea { color: var(--test-ink) !important; }
 [data-testid="stExpander"], [data-testid="stForm"] { background: rgba(247, 251, 250, .78) !important; border-color: var(--test-line) !important; }
 [data-testid="stFileUploader"] section { background: var(--test-paper) !important; border: 1px dashed var(--test-teal) !important; }
 [data-testid="stAlert"] { background: #dcefeb !important; border-left: 4px solid var(--test-teal) !important; color: var(--test-ink) !important; }
+@media screen and (max-width: 768px) {
+    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main { max-width: 100vw !important; overflow-x: hidden !important; }
+    .block-container { width: 100% !important; max-width: 100vw !important; padding: 1rem .75rem 2rem !important; }
+    div[data-testid="stHorizontalBlock"] { display: flex !important; flex-direction: column !important; flex-wrap: nowrap !important; gap: .65rem !important; overflow: visible !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { flex: 1 1 100% !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 0 !important; }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; }
+    div[data-testid="column"] p { white-space: normal !important; overflow-wrap: anywhere !important; }
+    .stButton > button { width: 100% !important; min-height: 40px !important; }
+    h1 { font-size: 1.65rem !important; } h2 { font-size: 1.35rem !important; } h3 { font-size: 1.15rem !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
