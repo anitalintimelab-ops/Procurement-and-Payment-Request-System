@@ -1,0 +1,9 @@
+# Local credentials and deployment secrets
+github_credentials.txt
+line_credentials.txt
+.streamlit/secrets.toml
+
+# Local/runtime files
+online.csv
+__pycache__/
+*.pyc
