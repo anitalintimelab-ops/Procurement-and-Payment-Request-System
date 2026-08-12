@@ -278,6 +278,23 @@ input, textarea { color: var(--ink) !important; }
     div[data-testid="column"] p { white-space: normal !important; overflow-wrap: anywhere !important; }
     .stButton > button { width: auto !important; min-height: 32px !important; }
 }
+@media screen and (orientation: portrait) and (max-width: 768px) {
+    .req-mobile-list-marker, .req-mobile-signing-marker { display: none !important; }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"],
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] {
+        display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; overflow-x: auto !important; gap: 6px !important; padding-bottom: 6px !important;
+    }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        flex: 0 0 max-content !important; width: max-content !important; min-width: max-content !important; max-width: max-content !important; padding: 0 !important;
+    }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div,
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: max-content !important; }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] p,
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] p { white-space: nowrap !important; }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] .stButton > button,
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] .stButton > button { width: auto !important; min-height: 32px !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1031,6 +1048,7 @@ else:
         if df_list.empty:
             st.info("目前無相關紀錄")
             return
+        st.markdown("<span class='req-mobile-signing-marker'></span>", unsafe_allow_html=True)
         
         chk_disabled = (curr_name == "Anita")
         
@@ -1341,7 +1359,9 @@ else:
 
             if btn_next: st.session_state.req_edit_id = None; st.session_state.req_last_id = None; st.session_state.req_last_msg = None; st.session_state.req_uploader_key += 1; st.rerun()
 
-        st.divider(); st.subheader("📋 申請追蹤清單")
+        st.divider()
+        st.markdown("<span class='req-mobile-list-marker'></span>", unsafe_allow_html=True)
+        st.subheader("📋 申請追蹤清單")
         f_db = load_data(); my_db = f_db[f_db["類型"]=="請款單"]
         if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
         
