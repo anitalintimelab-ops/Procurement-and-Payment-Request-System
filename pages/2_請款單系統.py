@@ -282,18 +282,22 @@ input, textarea { color: var(--ink) !important; }
     .req-mobile-list-marker, .req-mobile-signing-marker { display: none !important; }
     div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"],
     div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] {
-        display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; overflow-x: auto !important; gap: 6px !important; padding-bottom: 6px !important;
+        display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; overflow: hidden !important; gap: 3px !important; padding-bottom: 4px !important; width: 100% !important; max-width: 100% !important;
     }
     div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
     div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-        flex: 0 0 max-content !important; width: max-content !important; min-width: max-content !important; max-width: max-content !important; padding: 0 !important;
+        flex: 1 1 0 !important; width: 0 !important; min-width: 0 !important; max-width: none !important; padding: 0 2px !important; overflow: hidden !important;
     }
     div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div,
-    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: max-content !important; }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
     div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] p,
-    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] p { white-space: nowrap !important; }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] p { white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; font-size: 10px !important; line-height: 1.15 !important; }
     div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] .stButton > button,
-    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] .stButton > button { width: auto !important; min-height: 32px !important; }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] .stButton > button { width: 100% !important; min-height: 28px !important; padding: 2px 3px !important; font-size: 10px !important; white-space: normal !important; line-height: 1.1 !important; }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:last-child) > div[data-testid="column"]:last-child,
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:last-child) > div[data-testid="column"]:last-child { flex: 1.8 1 0 !important; }
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) > div[data-testid="stHorizontalBlock"],
+    div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) > div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; overflow: visible !important; gap: 2px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
