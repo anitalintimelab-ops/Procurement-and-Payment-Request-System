@@ -299,6 +299,18 @@ input, textarea { color: var(--ink) !important; }
     div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-list-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) > div[data-testid="stHorizontalBlock"],
     div[data-testid="stVerticalBlock"] > div[data-testid="element-container"]:has(.req-mobile-signing-marker) ~ div[data-testid="element-container"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) > div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; overflow: visible !important; gap: 2px !important; }
 }
+@media screen and (orientation: portrait) and (max-width: 768px) {
+    .req-mobile-row-marker { display: none !important; }
+    div[data-testid="stHorizontalBlock"]:has(.req-mobile-row-marker) { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; overflow: hidden !important; width: 100% !important; max-width: 100% !important; gap: 3px !important; }
+    div[data-testid="stHorizontalBlock"]:has(.req-mobile-row-marker) > div[data-testid="column"] { flex: 1 1 0 !important; width: 0 !important; min-width: 0 !important; max-width: none !important; padding: 0 2px !important; overflow: hidden !important; }
+    div[data-testid="stHorizontalBlock"]:has(.req-mobile-row-marker) > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+    div[data-testid="stHorizontalBlock"]:has(.req-mobile-row-marker) p { white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; font-size: 10px !important; line-height: 1.15 !important; }
+    div[data-testid="stHorizontalBlock"]:has(.req-mobile-row-marker) .stButton > button { width: 100% !important; min-height: 28px !important; padding: 2px 3px !important; font-size: 10px !important; white-space: normal !important; line-height: 1.1 !important; }
+    div[data-testid="stHorizontalBlock"]:has(.req-mobile-row-marker) > div[data-testid="column"]:last-child { flex: 1.8 1 0 !important; }
+    div[data-testid="stHorizontalBlock"]:has(.req-mobile-row-marker) > div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) > div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; overflow: visible !important; gap: 2px !important; }
+    div[data-testid="stDataEditor"] { width: 100% !important; max-width: 100% !important; overflow: hidden !important; }
+    div[data-testid="stDataEditor"] [role="gridcell"], div[data-testid="stDataEditor"] [role="columnheader"] { font-size: 10px !important; white-space: normal !important; overflow-wrap: anywhere !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1136,6 +1148,7 @@ else:
                 cols_header = st.columns([1.2, 1.8, 1.0, 2.4])
                 headers = ["單號", "專案名稱", "金額", "操作"]
 
+            cols_header[0].markdown("<span class='req-mobile-row-marker'></span>", unsafe_allow_html=True)
             for c, h in zip(cols_header, headers): c.write(f"**{h}**")
 
             for i, r in df_list.iterrows():
@@ -1149,6 +1162,8 @@ else:
                     if len(p_name) > 8: p_name = p_name[:7] + "..."
                     c[0].write(r["單號"]); c[1].write(p_name); c[2].write(f"${clean_amount(r['總金額']):,}")
                     btn_c = c[3]
+
+                c[0].markdown("<span class='req-mobile-row-marker'></span>", unsafe_allow_html=True)
 
                 with btn_c:
                     btn_col1, btn_col2, btn_col3 = st.columns(3)
@@ -1378,6 +1393,7 @@ else:
             cols = st.columns([1.2, 1.8, 1.0, 1.5, 2.5])
             headers = ["單號", "專案名稱", "金額", "狀態", "操作"]
 
+        cols[0].markdown("<span class='req-mobile-row-marker'></span>", unsafe_allow_html=True)
         for c, h in zip(cols, headers): c.write(f"**{h}**")
         
         for i, r in my_db.iterrows():
@@ -1391,6 +1407,8 @@ else:
                 c = st.columns([1.2, 1.8, 1.0, 1.5, 2.5])
                 c[0].write(r["單號"]); c[1].write(p_name); c[2].write(f"${clean_amount(r['總金額']):,}")
                 stt_col, btn_col = c[3], c[4]
+
+            c[0].markdown("<span class='req-mobile-row-marker'></span>", unsafe_allow_html=True)
             
             stt_raw = safe_str(r.get("狀態")).strip()
             stt_display = "已存檔未提交" if stt_raw in ["已儲存", "草稿"] else stt_raw
