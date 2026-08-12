@@ -133,7 +133,7 @@ if is_admin:
 if st.sidebar.button("登出系統"): st.session_state.user_id = None; st.switch_page("app.py")
 
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽及轉採購單", "5. 請款狀態/系統設定"]
-menu = st.sidebar.radio("導覽", menu_options, key="menu_radio")
+menu = st.sidebar.radio("工作項目", menu_options, key="menu_radio")
 
 # ================= 頁面 1: 填寫申請單 (恢復工程與細項) =================
 if menu == "1. 填寫申請單":
