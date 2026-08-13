@@ -311,6 +311,30 @@ input, textarea { color: var(--ink) !important; }
     div[data-testid="stDataEditor"] { width: 100% !important; max-width: 100% !important; overflow: hidden !important; }
     div[data-testid="stDataEditor"] [role="gridcell"], div[data-testid="stDataEditor"] [role="columnheader"] { font-size: 10px !important; white-space: normal !important; overflow-wrap: anywhere !important; }
 }
+@media screen and (orientation: portrait) and (max-width: 768px) {
+    [class*="st-key-req-mobile-signing-header-"] > div[data-testid="stHorizontalBlock"],
+    [class*="st-key-req-mobile-signing-row-"] > div[data-testid="stHorizontalBlock"],
+    [class*="st-key-req-mobile-tracking-header"] > div[data-testid="stHorizontalBlock"],
+    [class*="st-key-req-mobile-tracking-row-"] > div[data-testid="stHorizontalBlock"] {
+        display: grid !important; flex-direction: initial !important; flex-wrap: initial !important; overflow: hidden !important; width: 100% !important; max-width: 100% !important; gap: 3px !important; align-items: start !important;
+    }
+    [class*="st-key-req-mobile-signing-header-"] > div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(6)),
+    [class*="st-key-req-mobile-signing-row-"] > div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(6)) { grid-template-columns: .9fr 1.25fr 1fr .9fr 1fr 2.4fr !important; }
+    [class*="st-key-req-mobile-signing-header-"] > div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(4)),
+    [class*="st-key-req-mobile-signing-row-"] > div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(4)) { grid-template-columns: 1fr 1.45fr 1fr 2fr !important; }
+    [class*="st-key-req-mobile-tracking-header"] > div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(7)),
+    [class*="st-key-req-mobile-tracking-row-"] > div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(7)) { grid-template-columns: .9fr 1.15fr 1fr .9fr 1fr .9fr 2.3fr !important; }
+    [class*="st-key-req-mobile-tracking-header"] > div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(5)),
+    [class*="st-key-req-mobile-tracking-row-"] > div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(5)) { grid-template-columns: 1fr 1.25fr 1fr .9fr 2fr !important; }
+    [class*="st-key-req-mobile-signing-"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
+    [class*="st-key-req-mobile-tracking-"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { width: auto !important; min-width: 0 !important; max-width: none !important; flex: none !important; padding: 0 2px !important; overflow: hidden !important; }
+    [class*="st-key-req-mobile-signing-"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div,
+    [class*="st-key-req-mobile-tracking-"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+    [class*="st-key-req-mobile-signing-"] p, [class*="st-key-req-mobile-tracking-"] p { font-size: 10px !important; line-height: 1.15 !important; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; }
+    [class*="st-key-req-mobile-signing-"] .stButton > button, [class*="st-key-req-mobile-tracking-"] .stButton > button { width: 100% !important; min-height: 28px !important; padding: 2px 3px !important; font-size: 10px !important; line-height: 1.1 !important; white-space: normal !important; }
+    [class*="st-key-req-mobile-signing-"] div[data-testid="stHorizontalBlock"] div[data-testid="stHorizontalBlock"],
+    [class*="st-key-req-mobile-tracking-"] div[data-testid="stHorizontalBlock"] div[data-testid="stHorizontalBlock"] { display: flex !important; flex-direction: row !important; flex-wrap: wrap !important; overflow: visible !important; gap: 2px !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1141,23 +1165,25 @@ else:
         else:
             df_list = df_list.sort_values(by="單號", ascending=False).reset_index(drop=True)
 
+            signing_header = st.container(key=f"req-mobile-signing-header-{sign_type}-{is_history}")
             if is_admin:
-                cols_header = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
+                cols_header = signing_header.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                 headers = ["單號", "專案名稱", "負責執行長", "申請人", "請款金額", "操作"]
             else:
-                cols_header = st.columns([1.2, 1.8, 1.0, 2.4])
+                cols_header = signing_header.columns([1.2, 1.8, 1.0, 2.4])
                 headers = ["單號", "專案名稱", "金額", "操作"]
 
             cols_header[0].markdown("<span class='req-mobile-row-marker'></span>", unsafe_allow_html=True)
             for c, h in zip(cols_header, headers): c.write(f"**{h}**")
 
             for i, r in df_list.iterrows():
+                signing_row = st.container(key=f"req-mobile-signing-row-{sign_type}-{is_history}-{i}")
                 if is_admin:
-                    c = st.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
+                    c = signing_row.columns([1.2, 2.0, 1.2, 1.2, 1.2, 3.0])
                     c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"${clean_amount(r['總金額']):,}")
                     btn_c = c[5]
                 else:
-                    c = st.columns([1.2, 1.8, 1.0, 2.4])
+                    c = signing_row.columns([1.2, 1.8, 1.0, 2.4])
                     p_name = str(r["專案名稱"])
                     if len(p_name) > 8: p_name = p_name[:7] + "..."
                     c[0].write(r["單號"]); c[1].write(p_name); c[2].write(f"${clean_amount(r['總金額']):,}")
@@ -1386,25 +1412,27 @@ else:
         
         my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
         
+        tracking_header = st.container(key="req-mobile-tracking-header")
         if is_admin:
-            cols = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
+            cols = tracking_header.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
             headers = ["申請單號", "專案名稱", "負責執行長", "申請人", "請款總金額", "狀態", "操作"]
         else:
-            cols = st.columns([1.2, 1.8, 1.0, 1.5, 2.5])
+            cols = tracking_header.columns([1.2, 1.8, 1.0, 1.5, 2.5])
             headers = ["單號", "專案名稱", "金額", "狀態", "操作"]
 
         cols[0].markdown("<span class='req-mobile-row-marker'></span>", unsafe_allow_html=True)
         for c, h in zip(cols, headers): c.write(f"**{h}**")
         
         for i, r in my_db.iterrows():
+            tracking_row = st.container(key=f"req-mobile-tracking-row-{i}")
             if is_admin:
-                c = st.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
+                c = tracking_row.columns([1.2, 1.8, 1.2, 1, 1.2, 1.5, 3.5])
                 c[0].write(r["單號"]); c[1].write(r["專案名稱"]); c[2].write(clean_name(r["專案負責人"])); c[3].write(r["申請人"]); c[4].write(f"{r.get('幣別','TWD')} ${clean_amount(r['總金額']):,}")
                 stt_col, btn_col = c[5], c[6]
             else:
                 p_name = str(r["專案名稱"])
                 if len(p_name) > 8: p_name = p_name[:7] + "..."
-                c = st.columns([1.2, 1.8, 1.0, 1.5, 2.5])
+                c = tracking_row.columns([1.2, 1.8, 1.0, 1.5, 2.5])
                 c[0].write(r["單號"]); c[1].write(p_name); c[2].write(f"${clean_amount(r['總金額']):,}")
                 stt_col, btn_col = c[3], c[4]
 
