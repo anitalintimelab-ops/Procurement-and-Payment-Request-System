@@ -6,6 +6,7 @@ import base64
 import time
 import requests  
 import json 
+from ai_assistant import render_ai_operations_assistant
 
 # --- 強制系統身分鎖定 ---
 st.session_state['sys_choice'] = "採購單系統"
@@ -363,6 +364,7 @@ if is_admin: menu_options.append("5. 請款狀態/系統設定")
 
 if 'menu_radio' in st.session_state and st.session_state.menu_radio not in menu_options: st.session_state.menu_radio = "1. 填寫申請單"
 menu = st.sidebar.radio("工作項目", menu_options, key="menu_radio")
+render_ai_operations_assistant("採購單系統", load_data, curr_name, is_admin, key_prefix="procurement")
 
 def get_filtered_db():
     db = load_data()
