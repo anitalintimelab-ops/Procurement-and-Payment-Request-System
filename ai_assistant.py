@@ -147,7 +147,16 @@ def render_ai_operations_assistant(
     is_admin: bool = False,
     key_prefix: str = "system",
 ) -> None:
-    """Render the shared AI operations assistant at the top of the sidebar."""
+    """Show the temporarily disabled assistant entry without exposing its controls."""
+    st.sidebar.button(
+        "✦ AI 營運助理（暫停）",
+        key=f"ai_disabled_{key_prefix}",
+        disabled=True,
+        use_container_width=True,
+    )
+    return
+
+    # 保留以下實作，日後重新啟用時只需移除上面的停用區塊。
     query_key = f"ai_ops_query_{key_prefix}"
     answer_key = f"ai_ops_answer_{key_prefix}"
     if answer_key not in st.session_state:
