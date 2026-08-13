@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime, os, base64, time, requests, json, io
+from ai_assistant import render_ai_operations_assistant
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "報價單系統"
@@ -192,6 +193,7 @@ if is_admin:
 
 if st.sidebar.button("登出系統"): st.session_state.user_id = None; st.switch_page("app.py")
 
+render_ai_operations_assistant("報價單系統", load_data, curr_name, is_admin, key_prefix="quotation")
 menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽及轉採購單", "5. 請款狀態/系統設定"]
 menu = st.sidebar.radio("工作項目", menu_options, key="menu_radio")
 

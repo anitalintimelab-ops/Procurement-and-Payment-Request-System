@@ -8,6 +8,7 @@ import requests
 import json
 import io
 import threading
+from ai_assistant import render_ai_operations_assistant
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "測試區-請款單系統" 
@@ -800,6 +801,7 @@ if is_admin:
 else:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
     
+render_ai_operations_assistant("測試區-請款單系統", load_data, curr_name, is_admin, key_prefix="test-payment")
 menu = st.sidebar.radio("工作項目", menu_options, key="req_menu_radio")
 
 if "req_prev_state_menu" not in st.session_state:

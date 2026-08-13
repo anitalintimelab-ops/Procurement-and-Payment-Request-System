@@ -8,6 +8,7 @@ import requests
 import json
 import io
 import threading
+from ai_assistant import render_ai_operations_assistant
 try:
     import openpyxl
     from openpyxl.styles import Border, Side, Alignment
@@ -958,6 +959,7 @@ elif curr_name == CFO_NAME:
 else:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
     
+render_ai_operations_assistant("請款單系統", load_data, curr_name, is_admin, key_prefix="payment")
 menu = st.sidebar.radio("工作項目", menu_options, key="req_menu_radio")
 
 if "req_prev_state_menu" not in st.session_state:
