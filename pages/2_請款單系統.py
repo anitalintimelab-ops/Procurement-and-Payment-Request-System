@@ -335,6 +335,25 @@ input, textarea { color: var(--ink) !important; }
     [class*="st-key-req-mobile-signing-"] div[data-testid="stHorizontalBlock"] div[data-testid="stHorizontalBlock"],
     [class*="st-key-req-mobile-tracking-"] div[data-testid="stHorizontalBlock"] div[data-testid="stHorizontalBlock"] { display: flex !important; flex-direction: row !important; flex-wrap: wrap !important; overflow: visible !important; gap: 2px !important; }
 }
+/* 直式手機使用獨立卡片清單；桌機與橫式維持原本欄位版面 */
+[class*="st-key-req-mobile-tracking-cards"],
+[class*="st-key-req-mobile-signing-cards"] { display: none !important; }
+@media screen and (orientation: portrait) and (max-width: 768px) {
+    [class*="st-key-req-mobile-tracking-cards"],
+    [class*="st-key-req-mobile-signing-cards"] { display: block !important; }
+    [class*="st-key-req-mobile-tracking-header"],
+    [class*="st-key-req-mobile-tracking-row-"],
+    [class*="st-key-req-mobile-signing-header-"],
+    [class*="st-key-req-mobile-signing-row-"] { display: none !important; }
+    [class*="st-key-req-mobile-tracking-cards"] [data-testid="stVerticalBlockBorderWrapper"],
+    [class*="st-key-req-mobile-signing-cards"] [data-testid="stVerticalBlockBorderWrapper"] { background: #fffdf8 !important; border: 1px solid #d8cbbb !important; border-radius: 10px !important; padding: 12px !important; margin: 0 0 12px !important; }
+    [class*="st-key-req-mobile-tracking-cards"] .stButton > button,
+    [class*="st-key-req-mobile-signing-cards"] .stButton > button { width: 100% !important; min-height: 40px !important; margin: 3px 0 !important; }
+    [class*="st-key-req-mobile-tracking-cards"] p,
+    [class*="st-key-req-mobile-signing-cards"] p { overflow-wrap: anywhere !important; word-break: break-word !important; }
+    /* 待簽核直式版使用卡片操作，不顯示桌機用的寬型資料編輯器 */
+    section.main:has([class*="st-key-req-mobile-signing-cards"]) div[data-testid="stDataEditor"] { display: none !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1089,6 +1108,67 @@ else:
             st.info("目前無相關紀錄")
             return
         st.markdown("<span class='req-mobile-signing-marker'></span>", unsafe_allow_html=True)
+
+        # 直式手機：每筆簽核資料集中成卡片，避免原本多欄資料在窄螢幕被拆成長條直欄。
+        with st.container(key=f"req-mobile-signing-cards-{sign_type}-{is_history}"):
+            for mobile_i, mobile_r in df_list.reset_index(drop=True).iterrows():
+                mobile_id = safe_str(mobile_r.get("單號"))
+                with st.container(border=True):
+                    st.markdown(f"#### 🧾 {mobile_id}")
+                    st.write(f"**專案名稱：** {safe_str(mobile_r.get('專案名稱'))}")
+                    st.write(f"**負責執行長：** {clean_name(mobile_r.get('專案負責人'))}")
+                    st.write(f"**申請人：** {safe_str(mobile_r.get('申請人'))}")
+                    st.write(f"**請款金額：** {safe_str(mobile_r.get('幣別', 'TWD'))} ${clean_amount(mobile_r.get('總金額')):,}")
+                    st.write(f"**狀態：** {safe_str(mobile_r.get('狀態'))}")
+
+                    if not is_history:
+                        mobile_can_sign = (
+                            (mobile_r.get("專案負責人") == curr_name if sign_type == "EXE" else curr_name == CFO_NAME)
+                            and is_active and curr_name != "Anita"
+                        )
+                        if st.button("✅ 確認核准", key=f"mobile_sign_ok_{sign_type}_{mobile_id}_{mobile_i}", disabled=not mobile_can_sign, use_container_width=True):
+                            fresh_db = load_data()
+                            match_idx = fresh_db[fresh_db["單號"] == mobile_id].index
+                            if len(match_idx):
+                                idx = match_idx[0]
+                                if sign_type == "EXE":
+                                    fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
+                                    sys_name = st.session_state.get('sys_choice', '請款單系統')
+                                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{mobile_id}\n專案名稱：{mobile_r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
+                                else:
+                                    fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
+                                save_data(fresh_db)
+                                st.success("已核准！")
+                                time.sleep(0.5)
+                                st.rerun()
+
+                        if mobile_can_sign:
+                            with st.popover("❌ 駁回單據", use_container_width=True):
+                                mobile_reason = st.text_input("請輸入駁回原因", key=f"mobile_sign_reason_{sign_type}_{mobile_id}_{mobile_i}")
+                                if st.button("確認駁回", key=f"mobile_sign_reject_{sign_type}_{mobile_id}_{mobile_i}", use_container_width=True):
+                                    if mobile_reason.strip():
+                                        fresh_db = load_data()
+                                        match_idx = fresh_db[fresh_db["單號"] == mobile_id].index
+                                        if len(match_idx):
+                                            idx = match_idx[0]
+                                            field_prefix = "初審" if sign_type == "EXE" else "複審"
+                                            fresh_db.loc[idx, ["狀態", "駁回原因", f"{field_prefix}人", f"{field_prefix}時間"]] = ["已駁回", mobile_reason, curr_name, get_taiwan_time()]
+                                            save_data(fresh_db)
+                                            st.success("已駁回！")
+                                            time.sleep(0.5)
+                                            st.rerun()
+                                    else:
+                                        st.error("請輸入駁回原因")
+
+                    if st.button("📄 預覽 / 開啟簽核", key=f"mobile_sign_preview_{sign_type}_{mobile_id}_{mobile_i}", use_container_width=True):
+                        if is_history:
+                            st.session_state.req_view_id = None if st.session_state.req_view_id == mobile_id else mobile_id
+                        else:
+                            st.session_state.req_review_id = mobile_id
+                            st.session_state.req_review_type = sign_type
+                        st.rerun()
+                    if st.session_state.req_view_id == mobile_id:
+                        render_inline_preview(mobile_r, f"mobile_sign_preview_inline_{sign_type}_{mobile_id}_{mobile_i}")
         
         chk_disabled = (curr_name == "Anita")
         
@@ -1411,6 +1491,72 @@ else:
         if not is_admin: my_db = my_db[my_db["申請人"] == curr_name]
         
         my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
+
+        # 直式手機：申請追蹤清單改為可完整操作的單筆卡片；橫式仍使用下方原有欄位清單。
+        with st.container(key="req-mobile-tracking-cards"):
+            for mobile_i, mobile_r in my_db.iterrows():
+                mobile_id = safe_str(mobile_r.get("單號"))
+                mobile_status_raw = safe_str(mobile_r.get("狀態")).strip()
+                mobile_status = "已存檔未提交" if mobile_status_raw in ["已儲存", "草稿"] else mobile_status_raw
+                mobile_color = "blue" if mobile_status == "已存檔未提交" else "orange" if "待" in mobile_status else "green" if mobile_status == "已核准" else "red" if mobile_status == "已駁回" else "gray"
+                mobile_app = safe_str(mobile_r.get("申請人"))
+                mobile_proxy = safe_str(mobile_r.get("代申請人"))
+                mobile_is_own = (curr_name in mobile_app) or (curr_name in mobile_proxy) or (curr_name == "Anita")
+                mobile_can_edit = mobile_status_raw in ["已儲存", "草稿", "已駁回", "已存檔未提交"] and mobile_is_own and is_active
+
+                with st.container(border=True):
+                    st.markdown(f"#### 🧾 {mobile_id}")
+                    st.write(f"**專案名稱：** {safe_str(mobile_r.get('專案名稱'))}")
+                    st.write(f"**負責執行長：** {clean_name(mobile_r.get('專案負責人'))}")
+                    st.write(f"**申請人：** {mobile_app}")
+                    st.write(f"**請款金額：** {safe_str(mobile_r.get('幣別', 'TWD'))} ${clean_amount(mobile_r.get('總金額')):,}")
+                    st.markdown(f"**狀態：** :{mobile_color}[{mobile_status}]")
+
+                    if st.button("📤 提交", key=f"mobile_submit_{mobile_id}_{mobile_i}", disabled=not mobile_can_edit, use_container_width=True):
+                        st.session_state.req_edit_id = None
+                        st.session_state.req_uploader_key += 1
+                        fdb = load_data()
+                        fdb.loc[fdb["單號"] == mobile_id, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]
+                        save_data(fdb)
+                        sys_name = st.session_state.get('sys_choice', '請款單系統')
+                        send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{mobile_id}\n專案名稱：{mobile_r['專案名稱']}\n有一筆新的表單需要執行長 ({mobile_r['專案負責人']}) 進行簽核！")
+                        st.toast(f"🚀 單據 {mobile_id} 已成功提交！", icon="✅")
+                        st.rerun()
+
+                    if st.button("📄 預覽", key=f"mobile_track_preview_{mobile_id}_{mobile_i}", use_container_width=True):
+                        st.session_state.req_view_id = None if st.session_state.req_view_id == mobile_id else mobile_id
+                        st.rerun()
+
+                    if st.button("🖨️ 列印", key=f"mobile_track_print_{mobile_id}_{mobile_i}", use_container_width=True):
+                        html_str = clean_for_js(render_html_with_attachments(mobile_r))
+                        js_code = f"<script>var w=window.open('');w.document.write('{html_str}');w.document.close();setTimeout(function(){{w.print();w.close();}}, 1000);</script>"
+                        st.components.v1.html(js_code, height=0)
+
+                    if st.button("✏️ 修改", key=f"mobile_track_edit_{mobile_id}_{mobile_i}", disabled=not mobile_can_edit, use_container_width=True):
+                        st.session_state.req_edit_id = mobile_id
+                        st.session_state.req_uploader_key += 1
+                        st.rerun()
+
+                    if mobile_can_edit:
+                        with st.popover("🗑️ 刪除", use_container_width=True):
+                            mobile_delete_reason = st.text_input("刪除原因", key=f"mobile_delete_reason_{mobile_id}_{mobile_i}")
+                            if st.button("確認刪除", key=f"mobile_delete_{mobile_id}_{mobile_i}", use_container_width=True):
+                                if mobile_delete_reason.strip():
+                                    st.session_state.req_edit_id = None
+                                    st.session_state.req_uploader_key += 1
+                                    fresh_db = load_data()
+                                    fresh_db.loc[fresh_db["單號"] == mobile_id, ["狀態", "刪除人", "刪除時間", "刪除原因"]] = ["已刪除", curr_name, get_taiwan_time(), mobile_delete_reason]
+                                    save_data(fresh_db)
+                                    st.toast(f"🗑️ 單據 {mobile_id} 已成功刪除。", icon="✅")
+                                    st.rerun()
+                                else:
+                                    st.error("請輸入原因")
+                    else:
+                        st.button("🗑️ 刪除", disabled=True, key=f"mobile_fake_delete_{mobile_id}_{mobile_i}", use_container_width=True)
+
+                    render_upload_popover(st, mobile_r, f"mobile_upload_{mobile_id}_{mobile_i}")
+                    if st.session_state.req_view_id == mobile_id:
+                        render_inline_preview(mobile_r, f"mobile_track_preview_inline_{mobile_id}_{mobile_i}")
         
         tracking_header = st.container(key="req-mobile-tracking-header")
         if is_admin:
