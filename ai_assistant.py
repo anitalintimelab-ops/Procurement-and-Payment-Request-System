@@ -147,60 +147,47 @@ def render_ai_operations_assistant(
     is_admin: bool = False,
     key_prefix: str = "system",
 ) -> None:
-    """Render the shared AI operations assistant in a floating Streamlit popover."""
+    """Render the shared AI operations assistant at the top of the sidebar."""
     query_key = f"ai_ops_query_{key_prefix}"
     answer_key = f"ai_ops_answer_{key_prefix}"
     if answer_key not in st.session_state:
         st.session_state[answer_key] = ""
 
-    st.markdown(
-        """
-        <style>
-        [class*="st-key-ai-ops-assistant-"] { position: fixed !important; right: 1rem !important; bottom: 1rem !important; z-index: 1000 !important; width: auto !important; }
-        [class*="st-key-ai-ops-assistant-"] > div { width: auto !important; }
-        [class*="st-key-ai-ops-assistant-"] .stPopover > button { border-radius: 999px !important; min-height: 46px !important; padding: .55rem 1rem !important; background: #6f6258 !important; color: #fff !important; border: 1px solid #6f6258 !important; box-shadow: 0 4px 14px rgba(50, 40, 30, .28) !important; }
-        @media screen and (max-width: 768px) { [class*="st-key-ai-ops-assistant-"] { right: .65rem !important; bottom: .65rem !important; } }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    with st.sidebar.expander("✦ AI 營運助理", expanded=False):
+        st.markdown(f"### ✦ AI 營運助理\n目前系統：**{system_name}**")
+        st.caption("內建資料助理｜只讀取目前系統資料，不需要外部 API Token")
+        st.markdown("**常用查詢**")
+        shortcuts = [
+            ("今日任務", "今日任務"),
+            ("延遲項目", "延遲項目"),
+            ("專案進度", "專案進度"),
+            ("工作負載", "工作負載"),
+            ("財務摘要", "財務摘要"),
+            ("交接提醒", "交接提醒"),
+            ("建立日報草稿", "建立日報"),
+        ]
+        shortcut_query = None
+        for label, shortcut in shortcuts:
+            if st.button(label, key=f"ai_shortcut_{key_prefix}_{label}", use_container_width=True):
+                shortcut_query = shortcut
 
-    with st.container(key=f"ai-ops-assistant-{key_prefix}"):
-        with st.popover("✦ AI 營運助理"):
-            st.markdown(f"### ✦ AI 營運助理\n目前系統：**{system_name}**")
-            st.caption("內建資料助理｜只讀取目前系統資料，不需要外部 API Token")
-            st.markdown("**常用查詢**")
-            shortcuts = [
-                ("今日任務", "今日任務"),
-                ("延遲項目", "延遲項目"),
-                ("專案進度", "專案進度"),
-                ("工作負載", "工作負載"),
-                ("財務摘要", "財務摘要"),
-                ("交接提醒", "交接提醒"),
-                ("建立日報草稿", "建立日報"),
-            ]
-            shortcut_query = None
-            for label, shortcut in shortcuts:
-                if st.button(label, key=f"ai_shortcut_{key_prefix}_{label}", use_container_width=True):
-                    shortcut_query = shortcut
+        input_query = st.text_input(
+            "可查詢，也可輸入現場資訊建立日報",
+            key=query_key,
+            placeholder="例如：請整理本週待簽核與延遲項目",
+        )
+        if st.button("➤ 查詢", key=f"ai_submit_{key_prefix}", use_container_width=True):
+            shortcut_query = input_query or ""
 
-            input_query = st.text_input(
-                "可查詢，也可輸入現場資訊建立日報",
-                key=query_key,
-                placeholder="例如：請整理本週待簽核與延遲項目",
-            )
-            if st.button("➤ 查詢", key=f"ai_submit_{key_prefix}", use_container_width=True):
-                shortcut_query = input_query or ""
+        if shortcut_query is not None:
+            try:
+                data = data_loader()
+                if not isinstance(data, pd.DataFrame):
+                    data = pd.DataFrame(data)
+                st.session_state[answer_key] = _assistant_answer(shortcut_query, data, system_name, current_user, is_admin)
+            except Exception:
+                st.session_state[answer_key] = "目前無法讀取系統資料，請稍後再試。"
 
-            if shortcut_query is not None:
-                try:
-                    data = data_loader()
-                    if not isinstance(data, pd.DataFrame):
-                        data = pd.DataFrame(data)
-                    st.session_state[answer_key] = _assistant_answer(shortcut_query, data, system_name, current_user, is_admin)
-                except Exception:
-                    st.session_state[answer_key] = "目前無法讀取系統資料，請稍後再試。"
-
-            if st.session_state[answer_key]:
-                st.divider()
-                st.markdown(st.session_state[answer_key])
+        if st.session_state[answer_key]:
+            st.divider()
+            st.markdown(st.session_state[answer_key])
