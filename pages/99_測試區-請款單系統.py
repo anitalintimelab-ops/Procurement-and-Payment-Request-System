@@ -9,6 +9,7 @@ import json
 import io
 import threading
 from ai_assistant import render_ai_operations_assistant
+from mobile_camera import mobile_camera_input
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "測試區-請款單系統" 
@@ -689,10 +690,10 @@ def render_upload_popover(container, r, prefix):
         if cam_reset_key not in st.session_state: st.session_state[cam_reset_key] = 0
         with st.container(key=f"mobile-camera-only-{prefix}"):
             st.caption("手機可直接拍攝；若瀏覽器未開放相機，請使用上方檔案上傳。")
-            cam_acc = st.camera_input("📷 拍攝存摺／帳戶", key=f"{prefix}_cam_a_{st.session_state[cam_reset_key]}")
+            cam_acc = mobile_camera_input("拍攝存摺／帳戶", key=f"{prefix}_cam_a_{st.session_state[cam_reset_key]}")
             if cam_acc and st.button("🔄 重新拍攝存摺／帳戶", key=f"{prefix}_cam_a_retake"):
                 st.session_state[cam_reset_key] += 1; st.rerun()
-            cam_ims = st.camera_input("📷 拍攝憑證", key=f"{prefix}_cam_i_{st.session_state[cam_reset_key]}")
+            cam_ims = mobile_camera_input("拍攝憑證", key=f"{prefix}_cam_i_{st.session_state[cam_reset_key]}")
             if cam_ims and st.button("🔄 重新拍攝憑證", key=f"{prefix}_cam_i_retake"):
                 st.session_state[cam_reset_key] += 1; st.rerun()
         nf_acc = cam_acc or nf_acc
@@ -1217,10 +1218,10 @@ else:
             if cam_reset_key not in st.session_state: st.session_state[cam_reset_key] = 0
             with st.container(key=f"mobile-camera-only-request-{up_key}"):
                 st.caption("手機可直接拍攝；若瀏覽器未開放相機，請使用上方檔案上傳。")
-                cam_acc = st.camera_input("📷 拍攝存摺／帳戶", key=f"req_cam_acc_{up_key}_{st.session_state[cam_reset_key]}")
+                cam_acc = mobile_camera_input("拍攝存摺／帳戶", key=f"req_cam_acc_{up_key}_{st.session_state[cam_reset_key]}")
                 if cam_acc and st.button("🔄 重新拍攝存摺／帳戶", key=f"req_cam_acc_retake_{up_key}"):
                     st.session_state[cam_reset_key] += 1; st.rerun()
-                cam_ims = st.camera_input("📷 拍攝憑證", key=f"req_cam_ims_{up_key}_{st.session_state[cam_reset_key]}")
+                cam_ims = mobile_camera_input("拍攝憑證", key=f"req_cam_ims_{up_key}_{st.session_state[cam_reset_key]}")
                 if cam_ims and st.button("🔄 重新拍攝憑證", key=f"req_cam_ims_retake_{up_key}"):
                     st.session_state[cam_reset_key] += 1; st.rerun()
             f_acc = cam_acc or f_acc

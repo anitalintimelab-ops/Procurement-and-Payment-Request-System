@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: sans-serif; background: transparent; color: #1f2937; }
+    .camera-box { width: 100%; padding: 4px 0 8px; }
+    .camera-button, .retake-button {
+      width: 100%; border: 0; border-radius: 10px; padding: 12px 14px;
+      font-size: 16px; cursor: pointer; color: #fff; background: #111827;
+    }
+    .camera-button:active, .retake-button:active { transform: scale(.99); }
+    .retake-button { margin-top: 8px; background: #475569; }
+    .preview { display: none; margin-top: 8px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 10px; background: #f8fafc; }
+    .preview img { display: block; width: 100%; max-height: 280px; object-fit: contain; border-radius: 6px; }
+    .hint { margin: 6px 2px 0; font-size: 12px; color: #64748b; }
+    input { display: none; }
+  </style>
+</head>
+<body>
+  <div class="camera-box">
+    <button id="captureButton" class="camera-button" type="button">📷 <span id="label"></span></button>
+    <input id="captureInput" type="file" accept="image/*" capture="environment">
+    <div id="preview" class="preview"><img id="previewImage" alt="已拍攝照片"></div>
+    <button id="retakeButton" class="retake-button" type="button" hidden>🔄 重新拍攝／上傳</button>
+    <div class="hint">拍攝後會先預覽，按重新拍攝可更換照片。</div>
+  </div>
+  <script>
+    const input = document.getElementById('captureInput');
+    const captureButton = document.getElementById('captureButton');
+    const retakeButton = document.getElementById('retakeButton');
+    const preview = document.getElementById('preview');
+    const previewImage = document.getElementById('previewImage');
+    const label = document.getElementById('label');
+    let componentValue = null;
+
+    function sendValue(value) {
+      window.parent.postMessage({ isStreamlitMessage: true, type: 'streamlit:setComponentValue', value: value }, '*');
+    }
+    function setHeight() {
+      window.parent.postMessage({ isStreamlitMessage: true, type: 'streamlit:setFrameHeight', height: document.body.scrollHeight }, '*');
+    }
+    function ready() {
+      window.parent.postMessage({ isStreamlitMessage: true, type: 'streamlit:componentReady', apiVersion: 1 }, '*');
+      setHeight();
+    }
+    function clearCapture() {
+      input.value = '';
+      componentValue = null;
+      preview.style.display = 'none';
+      previewImage.removeAttribute('src');
+      retakeButton.hidden = true;
+      sendValue(null);
+      setHeight();
+    }
+    captureButton.addEventListener('click', () => input.click());
+    retakeButton.addEventListener('click', clearCapture);
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const comma = result.indexOf(',');
+        componentValue = {
+          name: file.name || 'camera.jpg',
+          mime_type: file.type || 'image/jpeg',
+          data: comma >= 0 ? result.slice(comma + 1) : result
+        };
+        previewImage.src = result;
+        preview.style.display = 'block';
+        retakeButton.hidden = false;
+        sendValue(componentValue);
+        setHeight();
+      };
+      reader.readAsDataURL(file);
+    });
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'streamlit:render') {
+        const args = event.data.args || {};
+        label.textContent = args.label || '拍照上傳';
+        setHeight();
+      }
+    });
+    ready();
+  </script>
+</body>
+</html>
