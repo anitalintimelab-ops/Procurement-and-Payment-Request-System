@@ -112,12 +112,32 @@ st.markdown("""
 # --- 3. 讀取人員資料庫 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 S_FILE = os.path.join(CURRENT_DIR, "staff_v2.csv")
+TEST_SYSTEM_NAME = "99_測試區-請款單系統"
+TEST_S_FILE = os.path.join(CURRENT_DIR, "demo_staff.csv")
 
-def load_staff():
-    if os.path.exists(S_FILE):
+def load_staff(filepath=S_FILE, fallback_path=None):
+    """Load staff for the selected environment without creating cross-environment writes."""
+    source_path = filepath if os.path.exists(filepath) else fallback_path
+    if source_path and os.path.exists(source_path):
         for enc in ['utf-8-sig', 'utf-8', 'cp950', 'big5']:
             try:
-                return pd.read_csv(S_FILE, encoding=enc, dtype=str).fillna("")
+                df = pd.read_csv(source_path, encoding=enc, dtype=str).fillna("")
+                # 舊版測試區曾用全員 0000 建立 demo_staff.csv；只在這種
+                # 全部仍是佔位密碼的情況下補上正式密碼，且只寫回測試檔。
+                if filepath == TEST_S_FILE and source_path == filepath and fallback_path:
+                    prod_df = pd.read_csv(fallback_path, encoding=enc, dtype=str).fillna("")
+                    if (
+                        "name" in df.columns and "password" in df.columns
+                        and "name" in prod_df.columns and "password" in prod_df.columns
+                        and not df.empty
+                        and df["password"].astype(str).str.strip().eq("0000").all()
+                    ):
+                        password_map = prod_df.set_index("name")["password"].to_dict()
+                        updated_passwords = df["name"].map(password_map).fillna(df["password"])
+                        if not updated_passwords.equals(df["password"]):
+                            df["password"] = updated_passwords
+                            df.to_csv(filepath, index=False, encoding="utf-8-sig")
+                return df
             except:
                 continue
     # 預設名單
@@ -127,20 +147,24 @@ def load_staff():
         "password": ["0000"]*6
     })
 
-staff_df = load_staff()
-staff_list = staff_df["name"].tolist() if not staff_df.empty else ["尚無人員資料"]
-
 # 動態抓取 pages 資料夾內的系統選項
 sys_options = []
 pages_dir = os.path.join(CURRENT_DIR, "pages")
 if os.path.exists(pages_dir):
     sys_options = sorted([f.replace(".py", "") for f in os.listdir(pages_dir) if f.endswith(".py")])
-if not sys_options: 
+if not sys_options:
     sys_options = ["1_採購單系統", "2_請款單系統"] # 防呆預設
 
 # --- 4. 登入表單 ---
 with st.container():
     st.write("") # 留一點空間
+    sys_choice = st.selectbox("進入系統", sys_options, key="sys_choice_val")
+    is_test_system = sys_choice == TEST_SYSTEM_NAME
+    staff_df = load_staff(
+        TEST_S_FILE if is_test_system else S_FILE,
+        fallback_path=S_FILE if is_test_system else None,
+    )
+    staff_list = staff_df["name"].tolist() if not staff_df.empty else ["尚無人員資料"]
     selected_user = st.selectbox("身分", staff_list)
 
     # 檢查是否為離職人員
@@ -155,7 +179,6 @@ with st.container():
         # 紅字顯示警告，並強制鎖死密碼與進入按鈕
         st.markdown("<p style='color:#E53935; font-size:15px; font-weight:bold; margin-top:-10px; margin-bottom:10px;'>目前已離職，無法登入畫面</p>", unsafe_allow_html=True)
         password = st.text_input("密碼", type="password", disabled=True, placeholder="此帳號已停用")
-        sys_choice = st.selectbox("進入系統", sys_options, disabled=True)
         st.button("登入系統", disabled=True, use_container_width=True)
 
     # 正常在職人員登入畫面
@@ -166,7 +189,6 @@ with st.container():
 
         # 只要密碼框輸入完成按下 Enter，就會觸發 on_change 進入 process_login
         password = st.text_input("密碼", type="password", key="login_pw", on_change=process_login)
-        sys_choice = st.selectbox("進入系統", sys_options, key="sys_choice_val")
 
         # 點擊按鈕一樣觸發 process_login
         btn_clicked = st.button("登入系統", use_container_width=True, on_click=process_login)
