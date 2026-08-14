@@ -302,6 +302,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 B_DIR = os.path.dirname(CURRENT_DIR) 
 D_FILE = os.path.join(B_DIR, "demo_database.csv")
 S_FILE = os.path.join(B_DIR, "demo_staff.csv")
+PROD_S_FILE = os.path.join(B_DIR, "staff_v2.csv")
 O_FILE = os.path.join(B_DIR, "demo_online.csv")
 L_FILE = os.path.join(B_DIR, "demo_line_credentials.txt") 
 G_FILE = os.path.join(B_DIR, "demo_github_credentials.txt") 
@@ -406,15 +407,23 @@ def get_line_credentials():
         try:
             with open(L_FILE, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
-                t = lines[0].strip() if len(lines) > 0 and lines[0].strip() else DEFAULT_LINE_TOKEN
-                u = lines[1].strip() if len(lines) > 1 and lines[1].strip() else DEFAULT_LINE_UID
+                raw_t = lines[0].strip() if len(lines) > 0 else ""
+                raw_u = lines[1].strip() if len(lines) > 1 else ""
+                try: t = base64.b64decode(raw_t[4:]).decode() if raw_t.startswith("b64:") else raw_t
+                except: t = raw_t
+                try: u = base64.b64decode(raw_u[4:]).decode() if raw_u.startswith("b64:") else raw_u
+                except: u = raw_u
+                t = t or DEFAULT_LINE_TOKEN
+                u = u or DEFAULT_LINE_UID
                 return t, u
         except: pass
     return DEFAULT_LINE_TOKEN, DEFAULT_LINE_UID
 
 def save_line_credentials(token, user_id):
     try:
-        with open(L_FILE, "w", encoding="utf-8") as f: f.write(f"{token.strip()}\n{user_id.strip()}")
+        enc_t = base64.b64encode(token.strip().encode()).decode() if token.strip() else ""
+        enc_u = base64.b64encode(user_id.strip().encode()).decode() if user_id.strip() else ""
+        with open(L_FILE, "w", encoding="utf-8") as f: f.write(f"b64:{enc_t}\nb64:{enc_u}")
         sync_to_github(L_FILE)
     except: pass
 
@@ -458,10 +467,27 @@ def save_data(df):
     try: 
         df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
         sync_to_github(D_FILE) 
-    except: st.error("⚠️ 檔案鎖定中！請關閉電腦上的 database.csv。"); st.stop()
+    except: st.error("⚠️ 檔案鎖定中！請關閉測試區的 demo_database.csv。"); st.stop()
 
 def load_staff():
+    # 測試區首次使用時，以正式人員資料（含目前真實密碼）作為唯讀初始基準。
+    # 後續所有測試區修改仍只會寫入 S_FILE，不會回寫正式 staff_v2.csv。
     df = read_csv_robust(S_FILE)
+    if df is None or df.empty:
+        df = read_csv_robust(PROD_S_FILE)
+    elif "name" in df.columns and "password" in df.columns:
+        # 相容舊版已建立、但密碼全部是 0000 的測試人員檔；只更新測試檔。
+        prod_df = read_csv_robust(PROD_S_FILE)
+        if (
+            prod_df is not None and not prod_df.empty
+            and "name" in prod_df.columns and "password" in prod_df.columns
+            and df["password"].astype(str).str.strip().eq("0000").all()
+        ):
+            password_map = prod_df.set_index("name")["password"].to_dict()
+            updated_passwords = df["name"].map(password_map).fillna(df["password"])
+            if not updated_passwords.equals(df["password"]):
+                df["password"] = updated_passwords
+                df.to_csv(S_FILE, index=False, encoding="utf-8-sig")
     default_roles = {"Andy": "執行長", "Charles": "執行長&財務長", "Eason": "執行長", "Sunglin": "執行長", "Anita": "管理員"}
     
     if df is None or df.empty: 
@@ -694,7 +720,7 @@ if not curr_user_info.empty and curr_user_info.iloc[0].get("status") == "離職"
     st.switch_page("app.py")
     st.stop()
 
-for k in ['req_edit_id', 'req_last_id', 'req_view_id', 'req_print_id', 'req_last_msg', 'req_review_id', 'req_review_type']: 
+for k in ['req_edit_id', 'req_last_id', 'req_view_id', 'req_print_id', 'req_last_msg', 'req_review_id', 'req_review_type', 'temp_xlsx_data', 'temp_xlsx_name', 'temp_xlsx_selected']:
     if k not in st.session_state: st.session_state[k] = None
 
 if 'req_uploader_key' not in st.session_state: st.session_state.req_uploader_key = 0
@@ -797,9 +823,17 @@ if is_admin:
 if st.sidebar.button("登出系統", key="req_logout"): st.session_state.user_id = None; st.switch_page("app.py")
 
 if is_admin:
-    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 請款狀態/系統設定"]
+    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定", "7. 專案 / 廠商資料庫", "8. 表單資料庫"]
+elif curr_name == CFO_NAME:
+    menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽", "5. 產出本期支出報表", "6. 請款狀態/系統設定", "8. 表單資料庫"]
 else:
     menu_options = ["1. 填寫申請單", "2. 專案執行長簽核", "3. 財務長簽核", "4. 表單狀態總覽"]
+
+# 舊工作階段可能仍保留舊版的「5. 請款狀態／系統設定」，升級後自動對應到新編號。
+if st.session_state.get("req_menu_radio") == "5. 請款狀態/系統設定":
+    st.session_state.req_menu_radio = "6. 請款狀態/系統設定"
+elif st.session_state.get("req_menu_radio") not in menu_options:
+    st.session_state.req_menu_radio = menu_options[0]
     
 render_ai_operations_assistant("測試區-請款單系統", load_data, curr_name, is_admin, key_prefix="test-payment")
 menu = st.sidebar.radio("工作項目", menu_options, key="req_menu_radio")
@@ -1399,7 +1433,161 @@ else:
         my_db = my_db.sort_values(by="單號", ascending=False).reset_index(drop=True)
         st.dataframe(my_db[["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式", "匯款狀態", "匯款日期"]], hide_index=True)
 
-    elif menu == "5. 請款狀態/系統設定":
+    elif menu == "5. 產出本期支出報表":
+        st.subheader("📊 產出本期支出報表")
+        st.info("💡 勾選清單中您預計於「本期」支付的單據，系統將自動套用您的 Excel 範本。")
+
+        def safe_write_and_style(ws_obj, r_idx, c_idx, val=None, border=None, alignment=None):
+            """安全寫入 Excel，避開合併儲存格造成的 MergedCell 錯誤。"""
+            try:
+                cell_obj = ws_obj.cell(row=r_idx, column=c_idx)
+                if type(cell_obj).__name__ == 'MergedCell':
+                    for m_range in ws_obj.merged_cells.ranges:
+                        if cell_obj.coordinate in m_range:
+                            cell_obj = ws_obj.cell(row=m_range.min_row, column=m_range.min_col)
+                            break
+                if type(cell_obj).__name__ != 'MergedCell':
+                    if val is not None: cell_obj.value = val
+                    if border is not None: cell_obj.border = border
+                    if alignment is not None: cell_obj.alignment = alignment
+            except Exception:
+                pass
+
+        f_db = load_data()
+        req_db = f_db[f_db["類型"] == "請款單"]
+        report_df = req_db[req_db["狀態"].isin(["待初審", "待複審", "已核准"])].copy()
+
+        if report_df.empty:
+            st.warning("目前沒有符合條件的請款單。")
+        else:
+            report_df = report_df.sort_values(by="單號", ascending=False).reset_index(drop=True)
+            report_df.insert(0, "勾選加入報表", False)
+            show_cols = ["勾選加入報表", "單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式"]
+            edited_df = st.data_editor(
+                report_df[show_cols],
+                hide_index=True,
+                use_container_width=True,
+                disabled=["單號", "專案名稱", "請款廠商", "總金額", "申請人", "狀態", "付款方式"]
+            )
+            selected_rows = edited_df[edited_df["勾選加入報表"] == True]
+
+            st.markdown("### ⚙️ 報表參數設定")
+            c1, c2, c3, c4 = st.columns(4)
+            tw_year = datetime.date.today().year - 1911
+            report_title = c1.text_input("報表標題", value=f"{tw_year}.{datetime.date.today().month:02d}支出單-專案費用")
+            pay_date = c2.text_input("預計匯款/取款日", value=f"{tw_year}.{datetime.date.today().month:02d}.{datetime.date.today().day:02d}")
+            form_id = c3.text_input("報表單號", value=f"時支{tw_year}{datetime.date.today().month:02d}{datetime.date.today().day:02d}002")
+            balance_before = c4.number_input("存摺預計餘額(扣掉固定費用)", value=0, step=1000)
+
+            if st.button("🚀 產生 Excel 支出報表"):
+                if selected_rows.empty:
+                    st.error("請至少勾選一筆單據！")
+                else:
+                    possible_templates = [f for f in os.listdir(B_DIR) if "支出表" in f and f.endswith(".xlsx")]
+                    if not possible_templates:
+                        st.error("找不到範本檔案！請確認主目錄中有包含「支出表」字眼且副檔名為 `.xlsx` 的檔案。")
+                    else:
+                        try:
+                            import openpyxl
+                            from openpyxl.styles import Border, Side, Alignment
+                            wb = openpyxl.load_workbook(os.path.join(B_DIR, possible_templates[0]))
+                            ws = wb.active
+
+                            safe_write_and_style(ws, 1, 1, f"時研國際設計股份有限公司\n{report_title}")
+                            safe_write_and_style(ws, 2, 4, pay_date)
+                            safe_write_and_style(ws, 2, 9, form_id)
+
+                            summary_start_row = 4
+                            for r in range(4, 200):
+                                try:
+                                    val = str(ws.cell(row=r, column=1).value or "").replace(" ", "")
+                                    if "匯款(含手續費)" in val:
+                                        summary_start_row = r
+                                        break
+                                except:
+                                    pass
+
+                            available_rows = summary_start_row - 4
+                            if len(selected_rows) > available_rows and available_rows > 0:
+                                ws.insert_rows(summary_start_row, amount=(len(selected_rows) - available_rows))
+                                summary_start_row += len(selected_rows) - available_rows
+
+                            current_row = 4
+                            sum_transfer = 0.0
+                            sum_cash = 0.0
+                            thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+                            for idx, row_id in enumerate(selected_rows["單號"], 1):
+                                row = req_db[req_db["單號"] == row_id].iloc[0]
+                                jd = parse_req_json(str(row.get("請款說明", "")))
+                                reason = jd.get("desc", str(row.get("請款說明", ""))).replace("\n", " ")
+                                amt = float(clean_amount(row.get("總金額", 0)))
+                                pay_method_raw = str(row.get("付款方式", ""))
+                                if "匯款" in pay_method_raw:
+                                    pay_method = "匯款"
+                                    fee = float(jd.get("fee", 15.0 if "扣" in pay_method_raw else 0.0))
+                                elif "現金" in pay_method_raw or "零用金" in pay_method_raw:
+                                    pay_method = "現金"
+                                    fee = 0.0
+                                else:
+                                    pay_method = pay_method_raw
+                                    fee = 0.0
+                                total = amt + fee
+                                if pay_method == "匯款": sum_transfer += total
+                                else: sum_cash += total
+                                row_data = [idx, str(row.get("日期", "")), str(row.get("專案名稱", "")), str(row.get("請款廠商", "")), reason, amt, fee if fee else "", total, pay_method, row["單號"]]
+                                for col_idx, val in enumerate(row_data, 1):
+                                    safe_write_and_style(ws, current_row, col_idx, val, thin_border, Alignment(wrap_text=True, vertical='center'))
+                                current_row += 1
+
+                            def get_cell_text(ws_obj, r_idx, c_idx):
+                                try:
+                                    cell_obj = ws_obj.cell(row=r_idx, column=c_idx)
+                                    if type(cell_obj).__name__ == 'MergedCell':
+                                        for m_range in ws_obj.merged_cells.ranges:
+                                            if cell_obj.coordinate in m_range:
+                                                cell_obj = ws_obj.cell(row=m_range.min_row, column=m_range.min_col)
+                                                break
+                                    return str(cell_obj.value or "").replace(" ", "")
+                                except:
+                                    return ""
+
+                            sum_all = sum_transfer + sum_cash
+                            balance_after = float(balance_before) - sum_transfer if balance_before else 0.0
+                            for r in range(summary_start_row, summary_start_row + 30):
+                                row_text = "".join(get_cell_text(ws, r, c) for c in range(1, 8))
+                                if "匯款(含手續費)" in row_text: safe_write_and_style(ws, r, 8, sum_transfer)
+                                elif row_text.startswith("支票") and "小計" in row_text: safe_write_and_style(ws, r, 8, 0.0)
+                                elif row_text.startswith("現金") and "小計" in row_text: safe_write_and_style(ws, r, 8, sum_cash)
+                                elif "合計(匯款+現金)" in row_text: safe_write_and_style(ws, r, 8, sum_all)
+                                elif "扣掉固定費用" in row_text: safe_write_and_style(ws, r, 8, float(balance_before))
+                                elif "扣掉此次" in row_text: safe_write_and_style(ws, r, 8, balance_after)
+
+                            output = io.BytesIO()
+                            wb.save(output)
+                            st.session_state.temp_xlsx_data = output.getvalue()
+                            st.session_state.temp_xlsx_name = f"支出報表_{pay_date}.xlsx"
+                            st.session_state.temp_xlsx_selected = selected_rows["單號"].tolist()
+                            st.success("🎉 Excel 報表產生成功！請點擊下方按鈕下載或標記為已匯款。")
+                        except Exception as e:
+                            st.error(f"產生 Excel 發生錯誤：{e}")
+
+            if st.session_state.get('temp_xlsx_data'):
+                col_dl, col_mark = st.columns(2)
+                col_dl.download_button(label="📥 下載 Excel 報表", data=st.session_state.temp_xlsx_data, file_name=st.session_state.temp_xlsx_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                if col_mark.button("🚀 將上述單據標記為「已匯款」"):
+                    f_db = load_data()
+                    today_str = str(datetime.date.today())
+                    for sel_id in st.session_state.temp_xlsx_selected:
+                        idx = f_db[f_db["單號"] == sel_id].index[0]
+                        f_db.loc[idx, ["匯款狀態", "匯款日期"]] = ["已匯款", today_str]
+                    save_data(f_db)
+                    st.session_state.temp_xlsx_data = None
+                    st.success("✅ 已成功標記為「已匯款」！")
+                    time.sleep(1.5)
+                    st.rerun()
+
+    elif menu == "6. 請款狀態/系統設定":
         st.subheader("⚙️ 請款狀態 / 系統設定")
         if is_admin:
             with st.expander("🐙 4. GitHub 自動備份同步設定 (測試區獨立版)", expanded=True):
@@ -1421,12 +1609,13 @@ else:
                             if r_val: g_repo = r_val
                     except: pass
                     
-                i_token = st.text_input("GitHub Token (ghp_開頭)", value=g_token, type="password")
+                st.caption("測試區 GitHub 設定獨立於正式區；Token 已設定時請留白，只有要更換時才重新輸入。")
+                i_token = st.text_input("GitHub Token（要更換才輸入）", value="", type="password", placeholder="已設定則留白")
                 i_repo = st.text_input("GitHub 倉庫名稱 (建議開一個新的，例如 anitalin/timelab-demo)", value=g_repo)
                 c_btn1, c_btn2 = st.columns([1, 1])
                 
                 if c_btn1.button("💾 測試連線並儲存設定"):
-                    clean_token = "".join(c for c in i_token if c.isascii()).strip()
+                    clean_token = "".join(c for c in i_token if c.isascii()).strip() or g_token
                     clean_repo = "".join(c for c in i_repo if c.isascii()).strip()
                     if not clean_token or not clean_repo: st.error("❌ 請輸入有效的 Token 與倉庫名稱。")
                     else:
@@ -1452,7 +1641,7 @@ else:
                     st.success("✅ 資料庫、人員密碼、專案、廠商與「設定參數」已全部發送至 GitHub 同步！")
 
             with st.expander("🧰 3. 專案與廠商資料庫 (備份、還原與重建)", expanded=False):
-                st.write("💡 **資料不見了怎麼辦？** 如果雲端重啟導致您之前建檔的廠商與專案消失，只要點擊下方按鈕，系統就會自動去「歷史表單 (database.csv)」裡面，把您曾經打過的專案跟廠商全部抓出來重建！")
+                st.write("💡 **資料不見了怎麼辦？** 如果雲端重啟導致測試區建檔的廠商與專案消失，只要點擊下方按鈕，系統就會自動從測試區歷史表單（demo_database.csv）把曾經輸入的專案與廠商重建！")
                 if st.button("🪄 一鍵從歷史單據找回/重建專案與廠商"):
                     with st.spinner("正在從歷史單據中打撈資料..."):
                         f_db = load_data()
@@ -1500,9 +1689,14 @@ else:
             with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)", expanded=True):
                 st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
                 ct, cu = get_line_credentials()
-                nt = st.text_input("Channel Access Token (長字串)", value=ct, type="password")
+                st.caption("測試區 LINE 設定獨立於正式區；Token 已設定時請留白，只有要更換時才重新輸入。")
+                nt = st.text_input("Channel Access Token (長字串；要更換才輸入)", value="", type="password", placeholder="已設定則留白")
                 nu = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=cu)
-                if st.button("💾 儲存 LINE 設定"): save_line_credentials(nt, nu); st.success("LINE 推播設定已成功儲存並啟用！"); time.sleep(1); st.rerun()
+                if st.button("💾 儲存 LINE 設定"):
+                    save_line_credentials(nt.strip() or ct, nu.strip() or cu)
+                    st.success("LINE 推播設定已成功儲存並啟用！")
+                    time.sleep(1)
+                    st.rerun()
             st.divider()
 
         st.subheader("💰 財務匯款註記")
@@ -1519,6 +1713,60 @@ else:
                     for _, row in ed.iterrows(): f_db.loc[f_db["單號"]==row["單號"], ["匯款狀態", "匯款日期"]] = [row["匯款狀態"], str(row["匯款日期"]) if pd.notna(row["匯款日期"]) else ""]
                     save_data(f_db); st.success("已更新"); st.rerun()
             else: st.dataframe(df_pay[["單號", "專案名稱", "請款廠商", "總金額", "匯款狀態", "匯款日期"]], hide_index=True)
+
+    elif menu == "7. 專案 / 廠商資料庫":
+        st.subheader("🗂️ 專案 / 廠商資料庫管理")
+        st.info("💡 提示：您可以直接在表格中點擊欄位進行修改；刪除資料後請按下對應的儲存按鈕。測試區資料只會儲存至 demo_projects.csv／demo_vendors.csv。")
+
+        t1, t2 = st.tabs(["📂 專案資料庫", "🏢 廠商資料庫"])
+        with t1:
+            p_db = load_projects()
+            edited_p_db = st.data_editor(p_db, num_rows="dynamic", use_container_width=True, key="test_p_db_editor")
+            if st.button("💾 儲存專案變更", key="test_save_p_btn"):
+                save_projects(edited_p_db)
+                st.success("✅ 測試區專案資料庫已更新！")
+                time.sleep(1)
+                st.rerun()
+
+        with t2:
+            v_db = load_vendors()
+            edited_v_db = st.data_editor(v_db, num_rows="dynamic", use_container_width=True, key="test_v_db_editor")
+            if st.button("💾 儲存廠商變更", key="test_save_v_btn"):
+                save_vendors(edited_v_db)
+                st.success("✅ 測試區廠商資料庫已更新！")
+                time.sleep(1)
+                st.rerun()
+
+    elif menu == "8. 表單資料庫":
+        st.subheader("🧹 8. 測試區表單資料庫清理 (僅限管理員)")
+        st.info("💡 這裡顯示測試區所有表單資料。刪除時只允許刪除狀態為「已核准」的單據，不會誤刪進行中的案件。")
+
+        f_db = load_data()
+        if f_db.empty:
+            st.warning("目前測試區資料庫沒有資料。")
+        else:
+            display_df = f_db.copy()
+            display_df.insert(0, "勾選刪除", False)
+            edited_clean = st.data_editor(
+                display_df[["勾選刪除", "單號", "專案名稱", "請款廠商", "總金額", "狀態", "申請人", "提交時間"]],
+                hide_index=True,
+                use_container_width=True,
+                disabled=["單號", "專案名稱", "請款廠商", "總金額", "狀態", "申請人", "提交時間"],
+                key="test_db_clean_editor"
+            )
+
+            if st.button("🔥 執行永久刪除已勾選的測試區單據", key="test_delete_db_btn"):
+                selected_to_del = edited_clean[(edited_clean["勾選刪除"] == True) & (edited_clean["狀態"] == "已核准")]["單號"].tolist()
+                invalid_selected = edited_clean[(edited_clean["勾選刪除"] == True) & (edited_clean["狀態"] != "已核准")]["單號"].tolist()
+                if invalid_selected:
+                    st.warning(f"⚠️ 以下單號因狀態非「已核准」已略過：{', '.join(invalid_selected)}")
+                if selected_to_del:
+                    save_data(f_db[~f_db["單號"].isin(selected_to_del)])
+                    st.success(f"✅ 已刪除 {len(selected_to_del)} 筆測試區已核准單據！")
+                    time.sleep(1.5)
+                    st.rerun()
+                elif not invalid_selected:
+                    st.error("請先勾選要刪除的單據！")
 
     if st.session_state.get('req_print_id'):
         r_df = load_data()
