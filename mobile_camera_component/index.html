@@ -14,6 +14,10 @@
     .choose-button { margin-top: 8px; color: #0f172a; background: #e2e8f0; }
     .camera-button:active, .choose-button:active, .retake-button:active { transform: scale(.99); }
     .retake-button { margin-top: 8px; background: #475569; }
+    .camera-stage { display: none; margin-top: 8px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 10px; background: #f8fafc; }
+    .camera-video { display: block; width: 100%; max-height: 320px; object-fit: cover; border-radius: 6px; background: #0f172a; }
+    .snap-button { width: 100%; margin-top: 8px; border: 0; border-radius: 10px; padding: 12px 14px; font-size: 16px; color: #fff; background: #16a34a; }
+    .camera-error { display: none; margin-top: 8px; padding: 8px; border-radius: 8px; color: #991b1b; background: #fee2e2; font-size: 13px; }
     .preview { display: none; margin-top: 8px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 10px; background: #f8fafc; }
     .preview img { display: block; width: 100%; max-height: 280px; object-fit: contain; border-radius: 6px; }
     .hint { margin: 6px 2px 0; font-size: 12px; color: #64748b; }
@@ -24,22 +28,32 @@
   <div class="camera-box">
     <button id="captureButton" class="camera-button" type="button">📷 直接拍照<span id="label"></span></button>
     <button id="chooseButton" class="choose-button" type="button">🖼️ 選擇照片</button>
-    <input id="captureInput" type="file" accept="image/*" capture="environment">
     <input id="chooseInput" type="file" accept="image/*">
+    <div id="cameraStage" class="camera-stage">
+      <video id="cameraVideo" class="camera-video" autoplay playsinline muted></video>
+      <button id="takeButton" class="snap-button" type="button">📸 拍下這張照片</button>
+    </div>
+    <canvas id="cameraCanvas" hidden></canvas>
+    <div id="cameraError" class="camera-error"></div>
     <div id="preview" class="preview"><img id="previewImage" alt="已拍攝照片"></div>
     <button id="retakeButton" class="retake-button" type="button" hidden>🔄 重新拍攝／上傳</button>
     <div class="hint">拍攝後會先預覽，按重新拍攝可更換照片。</div>
   </div>
   <script>
-    const input = document.getElementById('captureInput');
     const chooseInput = document.getElementById('chooseInput');
     const captureButton = document.getElementById('captureButton');
     const chooseButton = document.getElementById('chooseButton');
+    const takeButton = document.getElementById('takeButton');
+    const cameraStage = document.getElementById('cameraStage');
+    const cameraVideo = document.getElementById('cameraVideo');
+    const cameraCanvas = document.getElementById('cameraCanvas');
+    const cameraError = document.getElementById('cameraError');
     const retakeButton = document.getElementById('retakeButton');
     const preview = document.getElementById('preview');
     const previewImage = document.getElementById('previewImage');
     const label = document.getElementById('label');
     let componentValue = null;
+    let mediaStream = null;
 
     function sendValue(value) {
       window.parent.postMessage({ isStreamlitMessage: true, type: 'streamlit:setComponentValue', value: value }, '*');
@@ -52,7 +66,8 @@
       setHeight();
     }
     function clearCapture() {
-      input.value = '';
+      chooseInput.value = '';
+      stopCamera();
       componentValue = null;
       preview.style.display = 'none';
       previewImage.removeAttribute('src');
@@ -60,8 +75,51 @@
       sendValue(null);
       setHeight();
     }
-    captureButton.addEventListener('click', () => input.click());
+    function stopCamera() {
+      if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+      mediaStream = null;
+      cameraVideo.srcObject = null;
+      cameraStage.style.display = 'none';
+    }
+    async function startCamera() {
+      cameraError.style.display = 'none';
+      cameraError.textContent = '';
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        cameraError.textContent = '此瀏覽器不支援直接開啟相機，請改用手機 Chrome 或系統瀏覽器。';
+        cameraError.style.display = 'block';
+        setHeight();
+        return;
+      }
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+        cameraVideo.srcObject = mediaStream;
+        cameraStage.style.display = 'block';
+        await cameraVideo.play();
+        setHeight();
+      } catch (err) {
+        cameraError.textContent = '相機未開啟：請在瀏覽器設定允許相機權限；若目前是內嵌瀏覽器，請改用手機 Chrome 或系統瀏覽器。';
+        cameraError.style.display = 'block';
+        setHeight();
+      }
+    }
+    function takePhoto() {
+      if (!cameraVideo.videoWidth || !cameraVideo.videoHeight) return;
+      cameraCanvas.width = cameraVideo.videoWidth;
+      cameraCanvas.height = cameraVideo.videoHeight;
+      cameraCanvas.getContext('2d').drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+      const result = cameraCanvas.toDataURL('image/jpeg', 0.9);
+      const comma = result.indexOf(',');
+      componentValue = { name: `camera-${Date.now()}.jpg`, mime_type: 'image/jpeg', data: result.slice(comma + 1) };
+      previewImage.src = result;
+      preview.style.display = 'block';
+      retakeButton.hidden = false;
+      stopCamera();
+      sendValue(componentValue);
+      setHeight();
+    }
+    captureButton.addEventListener('click', startCamera);
     chooseButton.addEventListener('click', () => chooseInput.click());
+    takeButton.addEventListener('click', takePhoto);
     retakeButton.addEventListener('click', clearCapture);
     function handleFileChange(source) {
       const file = source.files && source.files[0];
@@ -83,7 +141,6 @@
       };
       reader.readAsDataURL(file);
     }
-    input.addEventListener('change', () => handleFileChange(input));
     chooseInput.addEventListener('change', () => handleFileChange(chooseInput));
     window.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'streamlit:render') {
