@@ -213,9 +213,9 @@ div[data-baseweb="popover"] ul[data-testid="stSelectboxVirtualDropdown"] li {
     .stButton > button { padding: 2px 6px !important; font-size: 13px !important; min-height: 28px !important; }
 }
 
-.mobile-camera-only { display: none !important; }
+.mobile-camera-only, [class*="st-key-mobile-camera-only"] { display: none !important; }
 @media screen and (max-width: 768px) {
-    .mobile-camera-only {
+    .mobile-camera-only, [class*="st-key-mobile-camera-only"] {
         display: flex !important; align-items: center !important; justify-content: center !important; margin-top: 28px !important;
     }
     .mobile-camera-only [data-testid="stPopover"] { display: block !important; }
@@ -685,6 +685,13 @@ def render_upload_popover(container, r, prefix):
         st.write("**上傳附件 (圖/Excel)**")
         nf_acc = st.file_uploader("存摺", type=["png", "jpg", "xlsx", "xls"], key=f"{prefix}_a")
         nf_ims = st.file_uploader("憑證", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"{prefix}_i")
+        with st.container(key=f"mobile-camera-only-{prefix}"):
+            cam_acc = st.camera_input("📷 開啟相機拍攝存摺／帳戶", key=f"{prefix}_cam_a")
+            cam_ims = st.camera_input("📷 開啟相機拍攝憑證", key=f"{prefix}_cam_i")
+        nf_acc = cam_acc or nf_acc
+        nf_ims = list(nf_ims or [])
+        if cam_ims:
+            nf_ims.append(cam_ims)
         if st.button("💾 儲存附件", key=f"{prefix}_b"):
             fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
             jd = parse_req_json(fresh_db.at[idx, "請款說明"])
@@ -1200,6 +1207,13 @@ else:
             
             f_acc = st.file_uploader("上傳存摺/匯款資料 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], key=f"req_f_acc_{up_key}")
             f_ims = st.file_uploader("上傳請款憑證 (圖/Excel)", type=["png", "jpg", "xlsx", "xls"], accept_multiple_files=True, key=f"req_f_ims_{up_key}")
+            with st.container(key=f"mobile-camera-only-request-{up_key}"):
+                cam_acc = st.camera_input("📷 開啟相機拍攝存摺／帳戶", key=f"req_cam_acc_{up_key}")
+                cam_ims = st.camera_input("📷 開啟相機拍攝憑證", key=f"req_cam_ims_{up_key}")
+            f_acc = cam_acc or f_acc
+            f_ims = list(f_ims or [])
+            if cam_ims:
+                f_ims.append(cam_ims)
             
             del_acc = False; del_ims = []; existing_ims = []; existing_ims_names = dv["ims_names"]
             
