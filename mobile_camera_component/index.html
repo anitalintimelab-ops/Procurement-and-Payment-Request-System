@@ -7,11 +7,12 @@
     * { box-sizing: border-box; }
     body { margin: 0; font-family: sans-serif; background: transparent; color: #1f2937; }
     .camera-box { width: 100%; padding: 4px 0 8px; }
-    .camera-button, .retake-button {
+    .camera-button, .choose-button, .retake-button {
       width: 100%; border: 0; border-radius: 10px; padding: 12px 14px;
       font-size: 16px; cursor: pointer; color: #fff; background: #111827;
     }
-    .camera-button:active, .retake-button:active { transform: scale(.99); }
+    .choose-button { margin-top: 8px; color: #0f172a; background: #e2e8f0; }
+    .camera-button:active, .choose-button:active, .retake-button:active { transform: scale(.99); }
     .retake-button { margin-top: 8px; background: #475569; }
     .preview { display: none; margin-top: 8px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 10px; background: #f8fafc; }
     .preview img { display: block; width: 100%; max-height: 280px; object-fit: contain; border-radius: 6px; }
@@ -21,15 +22,19 @@
 </head>
 <body>
   <div class="camera-box">
-    <button id="captureButton" class="camera-button" type="button">📷 <span id="label"></span></button>
+    <button id="captureButton" class="camera-button" type="button">📷 直接拍照<span id="label"></span></button>
+    <button id="chooseButton" class="choose-button" type="button">🖼️ 選擇照片</button>
     <input id="captureInput" type="file" accept="image/*" capture="environment">
+    <input id="chooseInput" type="file" accept="image/*">
     <div id="preview" class="preview"><img id="previewImage" alt="已拍攝照片"></div>
     <button id="retakeButton" class="retake-button" type="button" hidden>🔄 重新拍攝／上傳</button>
     <div class="hint">拍攝後會先預覽，按重新拍攝可更換照片。</div>
   </div>
   <script>
     const input = document.getElementById('captureInput');
+    const chooseInput = document.getElementById('chooseInput');
     const captureButton = document.getElementById('captureButton');
+    const chooseButton = document.getElementById('chooseButton');
     const retakeButton = document.getElementById('retakeButton');
     const preview = document.getElementById('preview');
     const previewImage = document.getElementById('previewImage');
@@ -56,9 +61,10 @@
       setHeight();
     }
     captureButton.addEventListener('click', () => input.click());
+    chooseButton.addEventListener('click', () => chooseInput.click());
     retakeButton.addEventListener('click', clearCapture);
-    input.addEventListener('change', () => {
-      const file = input.files && input.files[0];
+    function handleFileChange(source) {
+      const file = source.files && source.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
@@ -76,7 +82,9 @@
         setHeight();
       };
       reader.readAsDataURL(file);
-    });
+    }
+    input.addEventListener('change', () => handleFileChange(input));
+    chooseInput.addEventListener('change', () => handleFileChange(chooseInput));
     window.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'streamlit:render') {
         const args = event.data.args || {};
