@@ -312,14 +312,13 @@ P_FILE = os.path.join(B_DIR, "demo_projects.csv")
 V_FILE = os.path.join(B_DIR, "demo_vendors.csv")
 
 # =========================================================================
-# ★ 測試區專屬預設參數 (寫死在這裡，確保雲端重啟後絕對不會遺失！) ★
+# ★ 測試區專屬設定：敏感值由 Streamlit Secrets／環境變數提供，不寫入程式 ★
 # =========================================================================
-# 👇 請將您的 GitHub Token (ghp_開頭) 貼在下方兩個引號中間
-DEFAULT_GITHUB_TOKEN = "" 
+DEFAULT_GITHUB_TOKEN = ""
 DEFAULT_GITHUB_REPO = "anitalintimelab-ops/timelab-demo"
+DEFAULT_GITHUB_BRANCH = "main"
 
-# 👇 請將您的 LINE Channel Access Token 貼在下方兩個引號中間
-DEFAULT_LINE_TOKEN = ""   
+DEFAULT_LINE_TOKEN = ""
 DEFAULT_LINE_UID = "Ub97aa7dffc679f81fd30bdc43c7e481e"
 # =========================================================================
 
@@ -327,22 +326,62 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- GitHub 自動同步引擎 (Base64 防攔截版) ---
-def _background_github_sync(filepath):
-    token, repo = DEFAULT_GITHUB_TOKEN, DEFAULT_GITHUB_REPO
+def _test_secret_value(name):
+    """讀取測試區專用 Secret；正式區憑證不會與測試區混用。"""
+    try:
+        value = st.secrets.get(f"TEST_{name}", "")
+        if value:
+            return str(value).strip()
+        test_section = st.secrets.get("test", {})
+        if hasattr(test_section, "get"):
+            return str(test_section.get(name.lower(), "") or "").strip()
+    except Exception:
+        pass
+    return ""
+
+def _decode_saved_credential(value):
+    value = "".join(c for c in str(value) if c.isascii()).strip()
+    if not value or value.startswith(("ghp_", "gho_", "github_pat_")):
+        return value
+    try:
+        decoded = base64.b64decode(value).decode().strip()
+        return decoded or value
+    except Exception:
+        return value
+
+def get_test_github_config():
+    """回傳 (token, repo, branch, source)，優先使用部署環境的測試區 Secret。"""
+    token = os.getenv("TEST_GITHUB_TOKEN", "").strip() or _test_secret_value("GITHUB_TOKEN")
+    repo = os.getenv("TEST_GITHUB_REPO", "").strip() or _test_secret_value("GITHUB_REPO")
+    branch = os.getenv("TEST_GITHUB_BRANCH", "").strip() or _test_secret_value("GITHUB_BRANCH")
+    source = "environment variable / Streamlit Secrets" if token else "Not configured"
+
     if os.path.exists(G_FILE):
         try:
             with open(G_FILE, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
-                raw_t = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
-                r_val = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
-                if raw_t:
-                    if raw_t.startswith("ghp_"): token = raw_t
-                    else:
-                        try: token = base64.b64decode(raw_t).decode()
-                        except: token = raw_t
-                if r_val: repo = r_val
-        except: pass
+            file_token = _decode_saved_credential(lines[0]) if lines else ""
+            file_repo = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines) > 1 else ""
+            file_branch = "".join(c for c in lines[2] if c.isascii()).strip() if len(lines) > 2 else ""
+            if not token:
+                token = file_token
+            if not repo:
+                repo = file_repo
+            if not branch:
+                branch = file_branch
+            if source == "Not configured" and (file_token or file_repo):
+                source = "local settings file"
+        except Exception:
+            pass
+
+    return token, repo or DEFAULT_GITHUB_REPO, branch or DEFAULT_GITHUB_BRANCH, source
+
+# --- GitHub 自動同步引擎 (測試區資料同步；敏感憑證不上传) ---
+def _background_github_sync(filepath):
+    if os.path.basename(filepath) in {"demo_github_credentials.txt", "demo_line_credentials.txt"}:
+        return
+
+    token, repo, branch, _ = get_test_github_config()
 
     if not token or not repo or not os.path.exists(filepath): 
         return
@@ -352,19 +391,21 @@ def _background_github_sync(filepath):
         url = f"https://api.github.com/repos/{repo}/contents/{filename}"
         headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
         
-        r = requests.get(url, headers=headers, timeout=5)
+        r = requests.get(f"{url}?ref={branch}", headers=headers, timeout=5)
         sha = r.json().get("sha") if r.status_code == 200 else None
         
         with open(filepath, "rb") as f:
             content = base64.b64encode(f.read()).decode()
             
-        data = {"message": f"Auto sync {filename} from TimeLab System (DEMO)", "content": content}
+        data = {"message": f"Auto sync {filename} from TimeLab System (DEMO)", "content": content, "branch": branch}
         if sha: data["sha"] = sha
         requests.put(url, headers=headers, json=data, timeout=10)
     except:
         pass 
 
 def sync_to_github(filepath):
+    if os.path.basename(filepath) in {"demo_github_credentials.txt", "demo_line_credentials.txt"}:
+        return
     threading.Thread(target=_background_github_sync, args=(filepath,), daemon=True).start()
 
 # --- 3. 基礎工具 ---
@@ -404,6 +445,9 @@ def get_online_users(curr_user):
     except: return 1
 
 def get_line_credentials():
+    secret_token = os.getenv("TEST_LINE_TOKEN", "").strip() or _test_secret_value("LINE_TOKEN")
+    secret_uid = os.getenv("TEST_LINE_UID", "").strip() or _test_secret_value("LINE_UID")
+    file_token, file_uid = "", ""
     if os.path.exists(L_FILE):
         try:
             with open(L_FILE, "r", encoding="utf-8") as f:
@@ -414,11 +458,9 @@ def get_line_credentials():
                 except: t = raw_t
                 try: u = base64.b64decode(raw_u[4:]).decode() if raw_u.startswith("b64:") else raw_u
                 except: u = raw_u
-                t = t or DEFAULT_LINE_TOKEN
-                u = u or DEFAULT_LINE_UID
-                return t, u
+                file_token, file_uid = t, u
         except: pass
-    return DEFAULT_LINE_TOKEN, DEFAULT_LINE_UID
+    return secret_token or file_token or DEFAULT_LINE_TOKEN, secret_uid or file_uid or DEFAULT_LINE_UID
 
 def save_line_credentials(token, user_id):
     try:
@@ -1620,23 +1662,8 @@ else:
             with st.expander("🐙 4. GitHub 自動備份同步設定 (測試區獨立版)", expanded=True):
                 st.write("設定完成後，每次存檔都會自動覆蓋 GitHub 上的 CSV 檔！(永不遺失)")
                 
-                # 自動載入寫死在代碼最上方的預設參數
-                g_token, g_repo = DEFAULT_GITHUB_TOKEN, DEFAULT_GITHUB_REPO
-                if os.path.exists(G_FILE):
-                    try:
-                        with open(G_FILE, "r", encoding="utf-8") as f:
-                            lines = f.read().splitlines()
-                            raw_t = "".join(c for c in lines[0] if c.isascii()).strip() if len(lines)>0 else ""
-                            r_val = "".join(c for c in lines[1] if c.isascii()).strip() if len(lines)>1 else ""
-                            if raw_t:
-                                if raw_t.startswith("ghp_"): g_token = raw_t
-                                else:
-                                    try: g_token = base64.b64decode(raw_t).decode()
-                                    except: g_token = raw_t
-                            if r_val: g_repo = r_val
-                    except: pass
-                    
-                st.caption("測試區 GitHub 設定獨立於正式區；Token 已設定時請留白，只有要更換時才重新輸入。")
+                g_token, g_repo, g_branch, g_source = get_test_github_config()
+                st.caption(f"測試區 GitHub credential source: {g_source}；Token 已設定時請留白，只有要更換時才重新輸入。")
                 i_token = st.text_input("GitHub Token（要更換才輸入）", value="", type="password", placeholder="已設定則留白")
                 i_repo = st.text_input("GitHub 倉庫名稱 (建議開一個新的，例如 anitalin/timelab-demo)", value=g_repo)
                 c_btn1, c_btn2 = st.columns([1, 1])
@@ -1647,7 +1674,7 @@ else:
                     if not clean_token or not clean_repo: st.error("❌ 請輸入有效的 Token 與倉庫名稱。")
                     else:
                         encoded_token = base64.b64encode(clean_token.encode()).decode()
-                        with open(G_FILE, "w", encoding="utf-8") as f: f.write(f"{encoded_token}\n{clean_repo}")
+                        with open(G_FILE, "w", encoding="utf-8") as f: f.write(f"{encoded_token}\n{clean_repo}\n{g_branch}")
                         try:
                             url = f"https://api.github.com/repos/{clean_repo}"; headers = {"Authorization": f"token {clean_token}"}
                             res = requests.get(url, headers=headers, timeout=5)
