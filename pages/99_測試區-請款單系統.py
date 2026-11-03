@@ -391,7 +391,7 @@ def _decode_github_content(payload):
         return b""
     return base64.b64decode(encoded)
 
-def _merge_remote_csv(filepath, remote_bytes):
+def _merge_remote_csv(filepath, remote_bytes, prefer_local=False):
     if not remote_bytes:
         return
     filename = os.path.basename(filepath)
@@ -412,7 +412,7 @@ def _merge_remote_csv(filepath, remote_bytes):
             ], ignore_index=True, sort=False).fillna("")
             merged[key] = merged[key].astype(str).str.strip()
             merged = merged[merged[key] != ""]
-            if filename == "demo_database.csv":
+            if filename == "demo_database.csv" and not prefer_local:
                 timestamp_columns = ["提交時間", "初審時間", "複審時間", "刪除時間"]
                 parsed_times = [
                     pd.to_datetime(merged[column], errors="coerce")
@@ -456,7 +456,7 @@ def _fetch_github_file(get_url, headers, branch):
         detail = response.text
     return None, None, f"讀取 GitHub 遠端檔案失敗（錯誤碼：{response.status_code}）：{detail}"
 
-def sync_to_github_core(filepath):
+def sync_to_github_core(filepath, prefer_local=False):
     if os.path.basename(filepath) in {"demo_github_credentials.txt", "demo_line_credentials.txt"}:
         return True, "敏感憑證檔案不予上傳"
 
@@ -475,7 +475,7 @@ def sync_to_github_core(filepath):
                 if error:
                     return False, error
                 if remote_bytes:
-                    _merge_remote_csv(filepath, remote_bytes)
+                    _merge_remote_csv(filepath, remote_bytes, prefer_local=prefer_local)
                 if not os.path.exists(filepath):
                     return False, f"本機與 GitHub 都找不到 {filename}"
 
@@ -534,6 +534,14 @@ def restore_data_from_github_once():
                     _merge_remote_csv(filepath, remote_bytes)
     except Exception:
         return
+
+def _save_local_and_cloud(df, filepath, label):
+    """測試區先保存本機，再確認 GitHub 成功；失敗時停止後續畫面刷新。"""
+    df.reset_index(drop=True).to_csv(filepath, index=False, encoding="utf-8-sig")
+    success, message = sync_to_github_core(filepath, prefer_local=True)
+    if not success:
+        st.error(f"⚠️ 測試區{label}尚未寫入 GitHub，畫面不會刷新：{message}")
+        st.stop()
 
 # --- 3. 基礎工具 ---
 def get_taiwan_time(): 
@@ -635,10 +643,11 @@ def load_data():
         return pd.DataFrame(columns=cols)
 
 def save_data(df):
-    try: 
-        df.reset_index(drop=True).to_csv(D_FILE, index=False, encoding='utf-8-sig')
-        sync_to_github(D_FILE) 
-    except: st.error("⚠️ 檔案鎖定中！請關閉測試區的 demo_database.csv。"); st.stop()
+    try:
+        _save_local_and_cloud(df, D_FILE, "請款單資料")
+    except Exception as exc:
+        st.error(f"⚠️ 測試區檔案寫入失敗，請重試：{exc}")
+        st.stop()
 
 def load_staff():
     # 測試區首次使用時，以正式人員資料（含目前真實密碼）作為唯讀初始基準。
@@ -678,9 +687,8 @@ def load_staff():
     
     return df
 
-def save_staff(df): 
-    df.reset_index(drop=True).to_csv(S_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(S_FILE) 
+def save_staff(df):
+    _save_local_and_cloud(df, S_FILE, "人員資料")
 
 def load_projects():
     if not os.path.exists(P_FILE):
@@ -688,8 +696,7 @@ def load_projects():
     return read_csv_robust(P_FILE)
 
 def save_projects(df):
-    df.to_csv(P_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(P_FILE) 
+    _save_local_and_cloud(df, P_FILE, "專案資料")
 
 def load_vendors():
     if not os.path.exists(V_FILE):
@@ -697,8 +704,7 @@ def load_vendors():
     return read_csv_robust(V_FILE)
 
 def save_vendors(df):
-    df.to_csv(V_FILE, index=False, encoding='utf-8-sig')
-    sync_to_github(V_FILE) 
+    _save_local_and_cloud(df, V_FILE, "廠商資料")
 
 # --- 4. 請款單資料打包解析器 ---
 def parse_req_json(desc_raw):
@@ -1474,7 +1480,7 @@ else:
                     
                     save_data(f_db)
 
-                    st.toast(f"✅ 單據 {tid} 存檔成功！", icon="💾")
+                    st.toast(f"✅ 測試區單據 {tid} 已存檔並同步 GitHub！", icon="💾")
 
                     if btn_submit:
                         f_db = load_data(); idx = f_db[f_db["單號"]==tid].index[0]
