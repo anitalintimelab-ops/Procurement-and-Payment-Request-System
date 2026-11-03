@@ -530,6 +530,149 @@ def _fetch_github_file(get_url, headers, branch):
         detail = response.text
     return None, None, f"讀取 GitHub 遠端檔案失敗（錯誤碼：{response.status_code}）：{detail}"
 
+DATABASE_CHUNK_BYTES = 15 * 1024 * 1024
+
+def _split_database_csv(filepath):
+    """將資料庫依完整資料列切成 GitHub Contents API 可接受的小檔案。"""
+    if not os.path.exists(filepath):
+        return None, None, f"本機找不到 {os.path.basename(filepath)}"
+    df = read_csv_robust(filepath)
+    key = CSV_SYNC_KEYS.get(os.path.basename(filepath))
+    if df is None or df.empty or not key or key not in df.columns:
+        return None, None, f"{os.path.basename(filepath)} 缺少可用的 {key or '單號'} 欄位"
+    df = df.copy().fillna("")
+    df[key] = df[key].astype(str).str.strip()
+    df = df[df[key] != ""].reset_index(drop=True)
+    if df.empty:
+        return None, None, f"{os.path.basename(filepath)} 沒有可同步的資料列"
+
+    header = df.head(0).to_csv(index=False, header=True).encode("utf-8-sig")
+    parts = []
+    buffer = io.BytesIO()
+    buffer.write(header)
+    row_count = 0
+    for _, row in df.iterrows():
+        row_bytes = pd.DataFrame([row], columns=df.columns).to_csv(index=False, header=False).encode("utf-8")
+        if len(header) + len(row_bytes) > DATABASE_CHUNK_BYTES:
+            return None, None, f"單號 {row[key]} 單列超過 GitHub 分段上限，未上傳"
+        if row_count and buffer.tell() + len(row_bytes) > DATABASE_CHUNK_BYTES:
+            parts.append((f"{os.path.basename(filepath)}.part-{len(parts):03d}.csv", buffer.getvalue(), row_count))
+            buffer = io.BytesIO()
+            buffer.write(header)
+            row_count = 0
+        buffer.write(row_bytes)
+        row_count += 1
+    if row_count:
+        parts.append((f"{os.path.basename(filepath)}.part-{len(parts):03d}.csv", buffer.getvalue(), row_count))
+
+    manifest = {
+        "format": "timelab-database-chunks-v1",
+        "source": os.path.basename(filepath),
+        "row_count": int(len(df)),
+        "columns": [str(c) for c in df.columns],
+        "parts": [{"name": name, "rows": count} for name, _, count in parts],
+    }
+    return parts, manifest, ""
+
+def _github_file_sha(get_url, headers, branch):
+    response = requests.get(f"{get_url}?ref={branch}", headers=headers, timeout=20)
+    if response.status_code == 404:
+        return None, ""
+    if response.status_code == 200:
+        return response.json().get("sha"), ""
+    try:
+        detail = response.json().get("message", response.text)
+    except Exception:
+        detail = response.text
+    return None, f"讀取 GitHub 檔案資訊失敗（錯誤碼：{response.status_code}）：{detail}"
+
+def _put_github_bytes(repo, branch, filename, content, headers, message):
+    get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
+    for attempt in range(3):
+        sha, error = _github_file_sha(get_url, headers, branch)
+        if error:
+            return False, error
+        data = {
+            "message": message,
+            "content": base64.b64encode(content).decode("ascii"),
+            "branch": branch,
+        }
+        if sha:
+            data["sha"] = sha
+        response = requests.put(get_url, headers=headers, json=data, timeout=90)
+        if response.status_code in [200, 201]:
+            return True, ""
+        if response.status_code != 409 or attempt == 2:
+            try:
+                detail = response.json().get("message", response.text)
+            except Exception:
+                detail = response.text
+            return False, f"上傳 {filename} 被 GitHub 拒絕（錯誤碼：{response.status_code}）：{detail}"
+        time.sleep(0.8)
+    return False, f"上傳 {filename} 發生版本衝突，已重試仍未成功"
+
+def _restore_database_chunks(filepath, headers, repo, branch):
+    """優先從分段資料庫還原；沒有 manifest 時交由舊版 fallback 處理。"""
+    manifest_name = f"{os.path.basename(filepath)}.manifest.json"
+    manifest_url = f"https://api.github.com/repos/{repo}/contents/{manifest_name}"
+    manifest_bytes, _, error = _fetch_github_file(manifest_url, headers, branch)
+    if error or not manifest_bytes:
+        return False, error
+    try:
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+        part_frames = []
+        for part in manifest.get("parts", []):
+            name = part.get("name", "")
+            if not name:
+                raise ValueError("manifest 缺少分段檔名")
+            part_url = f"https://api.github.com/repos/{repo}/contents/{name}"
+            part_bytes, _, part_error = _fetch_github_file(part_url, headers, branch)
+            if part_error or not part_bytes:
+                raise ValueError(part_error or f"找不到分段 {name}")
+            part_frames.append(pd.read_csv(io.BytesIO(part_bytes), dtype=str, encoding="utf-8-sig").fillna(""))
+        if not part_frames:
+            raise ValueError("manifest 沒有資料分段")
+        merged = pd.concat(part_frames, ignore_index=True, sort=False)
+        merged.to_csv(filepath, index=False, encoding="utf-8-sig")
+        return True, ""
+    except Exception as exc:
+        return False, f"還原分段資料庫失敗：{exc}"
+
+def _sync_database_to_github(filepath):
+    """資料庫不再以單一大型 database.csv 上傳，改用分段檔與 manifest。"""
+    token, repo, branch, _ = get_github_config()
+    if not token or not repo:
+        return False, "缺少 GitHub Token 或 Repository"
+    parts, manifest, error = _split_database_csv(filepath)
+    if error:
+        return False, error
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+        "Cache-Control": "no-cache",
+    }
+    try:
+        with GITHUB_SYNC_LOCK:
+            for name, content, _ in parts:
+                ok, upload_error = _put_github_bytes(
+                    repo, branch, name, content, headers,
+                    f"Auto sync {name} from TimeLab System",
+                )
+                if not ok:
+                    return False, upload_error
+            manifest_name = f"{os.path.basename(filepath)}.manifest.json"
+            ok, upload_error = _put_github_bytes(
+                repo, branch, manifest_name,
+                json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
+                headers,
+                f"Update {manifest_name} from TimeLab System",
+            )
+            if not ok:
+                return False, upload_error
+        return True, f"同步成功（資料庫已安全分成 {len(parts)} 個檔案，共 {manifest['row_count']} 筆）"
+    except Exception as exc:
+        return False, f"同步資料庫分段時發生錯誤：{exc}"
+
 def sync_to_github_core(filepath, prefer_local=False):
     filename = os.path.basename(filepath)
 
@@ -545,6 +688,9 @@ def sync_to_github_core(filepath, prefer_local=False):
 
     if not token or not repo:
         return False, "缺少 GitHub Token 或 Repository"
+
+    if filename == os.path.basename(D_FILE):
+        return _sync_database_to_github(filepath)
 
     get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
     headers = {
@@ -617,7 +763,10 @@ def restore_data_from_github_once():
     }
     try:
         with GITHUB_SYNC_LOCK:
+            database_restored, _ = _restore_database_chunks(D_FILE, headers, repo, branch)
             for filepath in (D_FILE, S_FILE, P_FILE, V_FILE):
+                if filepath == D_FILE and database_restored:
+                    continue
                 filename = os.path.basename(filepath)
                 get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
                 remote_bytes, _, error = _fetch_github_file(get_url, headers, branch)
