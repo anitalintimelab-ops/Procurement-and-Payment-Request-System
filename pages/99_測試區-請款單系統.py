@@ -537,13 +537,13 @@ def _put_github_bytes(repo, branch, filename, content, headers, message):
         time.sleep(0.8)
     return False, f"上傳 {filename} 發生版本衝突，已重試仍未成功"
 
-def _restore_database_chunks(filepath, headers, repo, branch):
-    """優先從分段資料庫還原；沒有 manifest 時交由舊版 fallback 處理。"""
+def _read_database_chunks(filepath, headers, repo, branch):
+    """讀取測試區分段資料庫；沒有 manifest 時回傳 None，交由舊版 fallback 處理。"""
     manifest_name = f"{os.path.basename(filepath)}.manifest.json"
     manifest_url = f"https://api.github.com/repos/{repo}/contents/{manifest_name}"
     manifest_bytes, _, error = _fetch_github_file(manifest_url, headers, branch)
     if error or not manifest_bytes:
-        return False, error
+        return None, error
     try:
         manifest = json.loads(manifest_bytes.decode("utf-8"))
         part_frames = []
@@ -559,22 +559,52 @@ def _restore_database_chunks(filepath, headers, repo, branch):
         if not part_frames:
             raise ValueError("manifest 沒有資料分段")
         merged = pd.concat(part_frames, ignore_index=True, sort=False)
-        merged.to_csv(filepath, index=False, encoding="utf-8-sig")
-        return True, ""
+        return merged, ""
     except Exception as exc:
-        return False, f"還原分段資料庫失敗：{exc}"
+        return None, f"讀取分段資料庫失敗：{exc}"
+
+def _restore_database_chunks(filepath, headers, repo, branch):
+    """優先從分段資料庫還原；沒有 manifest 時交由舊版 fallback 處理。"""
+    remote_df, error = _read_database_chunks(filepath, headers, repo, branch)
+    if remote_df is None:
+        return False, error
+    remote_df.to_csv(filepath, index=False, encoding="utf-8-sig")
+    return True, ""
+
+def _merge_remote_database_snapshot(filepath, remote_df):
+    """同步前合併遠端快照，讓本次本機簽核結果優先且保留其他使用者新增資料。"""
+    key = CSV_SYNC_KEYS.get(os.path.basename(filepath))
+    local_df = read_csv_robust(filepath) if os.path.exists(filepath) else None
+    if not key or local_df is None or local_df.empty:
+        return
+    if key not in remote_df.columns or key not in local_df.columns:
+        raise ValueError(f"{os.path.basename(filepath)} 缺少合併欄位 {key}，已停止覆蓋")
+    merged = pd.concat([
+        remote_df.assign(_sync_source=0),
+        local_df.assign(_sync_source=1),
+    ], ignore_index=True, sort=False).fillna("")
+    merged[key] = merged[key].astype(str).str.strip()
+    merged = merged[merged[key] != ""]
+    merged = merged.drop_duplicates(subset=[key], keep="last")
+    merged = merged.drop(columns=["_sync_source"])
+    merged.to_csv(filepath, index=False, encoding="utf-8-sig")
 
 def _sync_database_to_github(filepath):
     """測試區資料庫不再以單一大型 demo_database.csv 上傳，改用分段檔與 manifest。"""
     token, repo, branch, _ = get_test_github_config()
     if not token or not repo:
         return False, "缺少測試區 GitHub Token 或 Repository"
-    parts, manifest, error = _split_database_csv(filepath)
-    if error:
-        return False, error
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json", "Cache-Control": "no-cache"}
     try:
         with GITHUB_SYNC_LOCK:
+            remote_df, remote_error = _read_database_chunks(filepath, headers, repo, branch)
+            if remote_error:
+                return False, remote_error
+            if remote_df is not None:
+                _merge_remote_database_snapshot(filepath, remote_df)
+            parts, manifest, error = _split_database_csv(filepath)
+            if error:
+                return False, error
             for name, content, _ in parts:
                 ok, upload_error = _put_github_bytes(
                     repo, branch, name, content, headers,
