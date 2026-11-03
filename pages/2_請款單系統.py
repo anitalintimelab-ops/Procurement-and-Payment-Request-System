@@ -444,7 +444,92 @@ ADMINS = ["Anita"]
 CFO_NAME = "Charles"
 DEFAULT_STAFF = ["Andy", "Charles", "Eason", "Sunglin", "Anita"]
 
-# --- GitHub 自動同步引擎 (★完全放行上傳，由 Base64 負責躲避掃描) ---
+# --- GitHub 自動同步引擎 ---
+# 同一個 Streamlit 主機可能同時處理多位使用者；所有 CSV 寫入先合併
+# 遠端版本，再以最新 sha 更新，避免短暫主機只剩一筆資料時覆蓋完整資料庫。
+GITHUB_SYNC_LOCK = threading.Lock()
+CSV_SYNC_KEYS = {
+    "database.csv": "單號",
+    "staff_v2.csv": "name",
+    "projects.csv": "專案名稱",
+    "vendors.csv": "請款廠商",
+}
+
+def _decode_github_content(payload):
+    encoded = "".join(str(payload.get("content", "")).split())
+    if not encoded:
+        return b""
+    return base64.b64decode(encoded)
+
+def _merge_remote_csv(filepath, remote_bytes):
+    """保留遠端歷史資料，讓本機資料以自然鍵新增或更新。"""
+    if not remote_bytes:
+        return
+    filename = os.path.basename(filepath)
+    key = CSV_SYNC_KEYS.get(filename)
+    if not key:
+        return
+
+    try:
+        remote_df = pd.read_csv(io.BytesIO(remote_bytes), dtype=str, encoding="utf-8-sig").fillna("")
+        local_df = read_csv_robust(filepath) if os.path.exists(filepath) else None
+        if local_df is None or local_df.empty:
+            merged = remote_df
+        elif key not in remote_df.columns or key not in local_df.columns:
+            raise ValueError(f"{filename} 缺少合併欄位 {key}，已停止覆蓋")
+        else:
+            merged = pd.concat([
+                remote_df.assign(_sync_source=0),
+                local_df.assign(_sync_source=1),
+            ], ignore_index=True, sort=False).fillna("")
+            merged[key] = merged[key].astype(str).str.strip()
+            merged = merged[merged[key] != ""]
+            if filename == "database.csv":
+                timestamp_columns = ["提交時間", "初審時間", "複審時間", "刪除時間"]
+                parsed_times = [
+                    pd.to_datetime(merged[column], errors="coerce")
+                    for column in timestamp_columns
+                    if column in merged.columns
+                ]
+                merged["_sync_timestamp"] = (
+                    pd.concat(parsed_times, axis=1).max(axis=1)
+                    if parsed_times else pd.NaT
+                )
+                merged = merged.sort_values(
+                    [key, "_sync_timestamp", "_sync_source"],
+                    kind="stable",
+                    na_position="first",
+                )
+            merged = merged.drop_duplicates(subset=[key], keep="last")
+            merged = merged.drop(columns=[c for c in ["_sync_source", "_sync_timestamp"] if c in merged.columns])
+        merged.to_csv(filepath, index=False, encoding="utf-8-sig")
+    except Exception as exc:
+        raise ValueError(f"合併 {filename} 失敗：{exc}") from exc
+
+def _fetch_github_file(get_url, headers, branch):
+    response = requests.get(f"{get_url}?ref={branch}", headers=headers, timeout=20)
+    if response.status_code == 200:
+        payload = response.json()
+        encoded = "".join(str(payload.get("content", "")).split())
+        if encoded:
+            return base64.b64decode(encoded), payload.get("sha"), ""
+        # GitHub 對超過 1 MB 的 Contents API 檔案可能不回傳 content，
+        # 改用同一個回應提供的 download_url 取得完整 CSV。
+        download_url = payload.get("download_url")
+        if download_url:
+            download = requests.get(download_url, headers=headers, timeout=60)
+            if download.status_code == 200:
+                return download.content, payload.get("sha"), ""
+            return None, None, f"下載 GitHub 大型檔案失敗（錯誤碼：{download.status_code}）：{download.text}"
+        return None, None, "GitHub 遠端檔案沒有可讀取的內容連結，已停止上傳"
+    if response.status_code == 404:
+        return b"", None, ""
+    try:
+        detail = response.json().get("message", response.text)
+    except Exception:
+        detail = response.text
+    return None, None, f"讀取 GitHub 遠端檔案失敗（錯誤碼：{response.status_code}）：{detail}"
+
 def sync_to_github_core(filepath):
     filename = os.path.basename(filepath)
 
@@ -458,8 +543,8 @@ def sync_to_github_core(filepath):
 
     token, repo, branch, _ = get_github_config()
 
-    if not token or not repo or not os.path.exists(filepath):
-        return False, "缺少 GitHub Token、Repository 或本機檔案"
+    if not token or not repo:
+        return False, "缺少 GitHub Token 或 Repository"
 
     get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
     headers = {
@@ -469,38 +554,38 @@ def sync_to_github_core(filepath):
     }
 
     try:
-        with open(filepath, "rb") as f:
-            content = base64.b64encode(f.read()).decode()
-        data = {"message": f"Auto sync {filename} from TimeLab System", "content": content, "branch": branch}
+        with GITHUB_SYNC_LOCK:
+            for attempt in range(3):
+                remote_bytes, sha, error = _fetch_github_file(get_url, headers, branch)
+                if error:
+                    return False, error
+                if remote_bytes:
+                    _merge_remote_csv(filepath, remote_bytes)
+                if not os.path.exists(filepath):
+                    return False, f"本機與 GitHub 都找不到 {filename}"
 
-        for attempt in range(3):
-            remote = requests.get(f"{get_url}?ref={branch}", headers=headers, timeout=5)
-            if remote.status_code == 200:
-                sha = remote.json().get("sha")
-                if not sha:
-                    return False, "GitHub 遠端檔案未回傳 sha，已停止上傳"
-                data["sha"] = sha
-            elif remote.status_code == 404:
-                data.pop("sha", None)
-            else:
-                try:
-                    detail = remote.json().get("message", remote.text)
-                except Exception:
-                    detail = remote.text
-                return False, f"讀取 GitHub 遠端檔案失敗（錯誤碼：{remote.status_code}）：{detail}"
+                with open(filepath, "rb") as f:
+                    content = base64.b64encode(f.read()).decode()
+                data = {
+                    "message": f"Auto sync {filename} from TimeLab System",
+                    "content": content,
+                    "branch": branch,
+                }
+                if sha:
+                    data["sha"] = sha
 
-            resp = requests.put(get_url, headers=headers, json=data, timeout=10)
-            if resp.status_code in [200, 201]:
-                return True, "同步成功"
-            if resp.status_code != 409 or attempt == 2:
-                try:
-                    detail = resp.json().get("message", resp.text)
-                except Exception:
-                    detail = resp.text
-                return False, f"上傳 {filename} 被 GitHub 拒絕（錯誤碼：{resp.status_code}）：{detail}"
-            time.sleep(0.5)
+                resp = requests.put(get_url, headers=headers, json=data, timeout=20)
+                if resp.status_code in [200, 201]:
+                    return True, "同步成功（已保留並合併 GitHub 舊資料）"
+                if resp.status_code != 409 or attempt == 2:
+                    try:
+                        detail = resp.json().get("message", resp.text)
+                    except Exception:
+                        detail = resp.text
+                    return False, f"上傳 {filename} 被 GitHub 拒絕（錯誤碼：{resp.status_code}）：{detail}"
+                time.sleep(0.8)
     except Exception as e:
-        return False, f"上傳 {filename} 時發生錯誤：{e}"
+        return False, f"同步 {filename} 時發生錯誤：{e}"
 
 def sync_to_github(filepath):
     # 憑證檔案含有 Token，禁止送往 GitHub，避免 Secret Push Protection 409。
@@ -509,6 +594,38 @@ def sync_to_github(filepath):
     success, msg = sync_to_github_core(filepath)
     if not success:
         st.error(f"⚠️ 雲端備份失敗！請截圖此訊息：{msg}")
+    return success, msg
+
+def sync_all_data_to_github():
+    results = []
+    for filepath in (D_FILE, S_FILE, P_FILE, V_FILE):
+        results.append((os.path.basename(filepath), *sync_to_github(filepath)))
+    return results
+
+def restore_data_from_github_once():
+    """主機重啟後首次載入時，先把 GitHub 資料合併回本機暫存檔。"""
+    if st.session_state.get("_github_data_reconciled"):
+        return
+    st.session_state["_github_data_reconciled"] = True
+    token, repo, branch, _ = get_github_config()
+    if not token or not repo:
+        return
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+        "Cache-Control": "no-cache",
+    }
+    try:
+        with GITHUB_SYNC_LOCK:
+            for filepath in (D_FILE, S_FILE, P_FILE, V_FILE):
+                filename = os.path.basename(filepath)
+                get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
+                remote_bytes, _, error = _fetch_github_file(get_url, headers, branch)
+                if remote_bytes and not error:
+                    _merge_remote_csv(filepath, remote_bytes)
+    except Exception:
+        # 啟動時網路暫時不可用時保留本機資料；按下強制同步會顯示明確錯誤。
+        return
 
 # --- 3. 基礎工具 ---
 def get_taiwan_time(): 
@@ -589,6 +706,7 @@ def read_csv_robust(filepath):
     return pd.DataFrame()
 
 def load_data():
+    restore_data_from_github_once()
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
     if df is None or df.empty: return pd.DataFrame(columns=cols)
@@ -1956,15 +2074,15 @@ else:
                         except Exception as e: st.error(f"❌ 網路連線異常：{e}")
                 st.markdown("---"); st.write("💡 **如果您的舊單據或人員密碼還沒上傳到 GitHub，請點擊下方按鈕強制備份：**")
                 if c_btn2.button("🚀 一鍵強制同步所有資料至 GitHub"):
-                    with st.spinner("正在將所有資料（包含舊單據與密碼）傳送至 GitHub，請稍候..."):
-                        if os.path.exists(D_FILE): sync_to_github(D_FILE)
-                        if os.path.exists(S_FILE): sync_to_github(S_FILE)
-                        if os.path.exists(P_FILE): sync_to_github(P_FILE)
-                        if os.path.exists(V_FILE): sync_to_github(V_FILE)
-                        if os.path.exists(L_FILE): sync_to_github(L_FILE) 
-                        if os.path.exists(G_FILE): sync_to_github(G_FILE)
-                        time.sleep(2) 
-                    st.success("✅ 資料庫、人員密碼、專案、廠商與「設定參數」已全部發送至 GitHub 同步！")
+                    with st.spinner("正在合併 GitHub 歷史資料與本機最新資料，請稍候..."):
+                        results = sync_all_data_to_github()
+                    failures = [f"{name}: {msg}" for name, ok, msg in results if not ok]
+                    if failures:
+                        st.error("❌ 同步未完成，為避免覆蓋資料已停止：\n\n" + "\n".join(failures))
+                    else:
+                        st.success("✅ 表單、人員、專案與廠商資料已合併並同步至 GitHub；憑證檔案不會上傳。")
+                        time.sleep(1)
+                        st.rerun()
 
             with st.expander("🧰 3. 專案與廠商資料庫 (備份、還原與重建)", expanded=False):
                 st.write("💡 **資料不見了怎麼辦？** 如果雲端重啟導致您之前建檔的廠商與專案消失，只要點擊下方按鈕，系統就會自動去「歷史表單 (database.csv)」裡面，把您曾經打過的專案跟廠商全部抓出來重建！")
