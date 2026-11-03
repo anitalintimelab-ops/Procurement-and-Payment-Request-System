@@ -7,7 +7,7 @@ import time
 import requests  
 import json
 import io
-import threading
+from request_persistence import DATABASE_IO_LOCK, database_fingerprint
 from ai_assistant import render_ai_operations_assistant
 from mobile_camera import mobile_camera_input
 
@@ -377,7 +377,7 @@ def get_test_github_config():
     return token, repo or DEFAULT_GITHUB_REPO, branch or DEFAULT_GITHUB_BRANCH, source
 
 # --- GitHub 自動同步引擎 (測試區資料同步；敏感憑證不上傳) ---
-GITHUB_SYNC_LOCK = threading.Lock()
+GITHUB_SYNC_LOCK = DATABASE_IO_LOCK
 CSV_SYNC_KEYS = {
     "demo_database.csv": "單號",
     "demo_staff.csv": "name",
@@ -684,39 +684,65 @@ def sync_all_data_to_github():
     return results
 
 def restore_data_from_github_once():
-    """測試區主機重啟後首次載入時，先合併還原 GitHub 資料。"""
-    if st.session_state.get("_github_data_reconciled"):
-        return
-    st.session_state["_github_data_reconciled"] = True
-    token, repo, branch, _ = get_test_github_config()
-    if not token or not repo:
-        return
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3+json",
-        "Cache-Control": "no-cache",
-    }
-    try:
-        with GITHUB_SYNC_LOCK:
-            database_restored, _ = _restore_database_chunks(D_FILE, headers, repo, branch)
+    """每個測試區本機快照還原一次；換回舊檔時必須重新讀取測試區雲端。"""
+    state_key = f"_github_reconciled_v2:{os.path.abspath(D_FILE)}"
+    with GITHUB_SYNC_LOCK:
+        previous = st.session_state.get(state_key)
+        current = database_fingerprint(D_FILE)
+        if previous is not None and previous == current:
+            return
+        token, repo, branch, _ = get_test_github_config()
+        if not token or not repo:
+            if previous is not None:
+                st.error("⚠️ 測試區本機資料版本已改變，缺少測試區 GitHub 設定，無法確認最新金額與簽核狀態。")
+                st.stop()
+            return
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+            "Cache-Control": "no-cache",
+        }
+        try:
+            database_restored, error = _restore_database_chunks(D_FILE, headers, repo, branch)
+            if error:
+                raise ValueError(error)
             for filepath in (D_FILE, S_FILE, P_FILE, V_FILE):
                 if filepath == D_FILE and database_restored:
+                    continue
+                if filepath != D_FILE and previous is not None:
                     continue
                 filename = os.path.basename(filepath)
                 get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
                 remote_bytes, _, error = _fetch_github_file(get_url, headers, branch)
+                if filepath == D_FILE and error:
+                    raise ValueError(error)
                 if remote_bytes and not error:
                     _merge_remote_csv(filepath, remote_bytes)
-    except Exception:
-        return
+                    if filepath == D_FILE:
+                        database_restored = True
+            if previous is not None and not database_restored:
+                raise ValueError("找不到測試區雲端資料庫，已停止顯示可能過期的金額及狀態")
+            st.session_state[state_key] = database_fingerprint(D_FILE)
+        except Exception as exc:
+            st.error(f"⚠️ 無法確認最新測試區雲端資料，請重新整理後重試：{exc}")
+            st.stop()
 
 def _save_local_and_cloud(df, filepath, label):
     """測試區先保存本機，再確認 GitHub 成功；失敗時停止後續畫面刷新。"""
-    df.reset_index(drop=True).to_csv(filepath, index=False, encoding="utf-8-sig")
-    success, message = sync_to_github_core(filepath, prefer_local=True)
-    if not success:
-        st.error(f"⚠️ 測試區{label}尚未寫入 GitHub，畫面不會刷新：{message}")
-        st.stop()
+    with GITHUB_SYNC_LOCK:
+        df.reset_index(drop=True).to_csv(filepath, index=False, encoding="utf-8-sig")
+        success, message = sync_to_github_core(filepath, prefer_local=True)
+        if not success:
+            st.error(f"⚠️ 測試區{label}尚未寫入 GitHub，畫面不會刷新：{message}")
+            st.stop()
+        if os.path.abspath(filepath) == os.path.abspath(D_FILE):
+            saved = read_csv_robust(filepath)
+            expected = df.fillna("").astype(str).set_index("單號")
+            actual = saved.set_index("單號").reindex(index=expected.index, columns=expected.columns)
+            if not expected.equals(actual):
+                raise ValueError("測試區存檔後回讀內容與本次修改不一致，未顯示存檔成功，請重新整理重試")
+            state_key = f"_github_reconciled_v2:{os.path.abspath(D_FILE)}"
+            st.session_state[state_key] = database_fingerprint(D_FILE)
 
 # --- 3. 基礎工具 ---
 def get_taiwan_time(): 
@@ -1608,7 +1634,6 @@ else:
             if st.session_state.req_edit_id:
                 c_btn1, c_btn3, c_btn4, c_btn5, c_btn6 = st.columns(5)
                 btn_save = c_btn1.button("💾 存檔", use_container_width=True)
-                btn_submit = False
                 btn_preview = c_btn3.button("🔍 預覽", use_container_width=True)
                 btn_print = c_btn4.button("🖨️ 列印", use_container_width=True)
                 btn_next = c_btn5.button("🆕 下一筆申請", use_container_width=True)
@@ -1616,7 +1641,6 @@ else:
             else:
                 c_btn1, c_btn3, c_btn4, c_btn5 = st.columns(4)
                 btn_save = c_btn1.button("💾 存檔", use_container_width=True)
-                btn_submit = False
                 btn_preview = c_btn3.button("🔍 預覽", use_container_width=True)
                 btn_print = c_btn4.button("🖨️ 列印", use_container_width=True)
                 btn_next = c_btn5.button("🆕 下一筆申請", use_container_width=True)
@@ -1625,7 +1649,7 @@ else:
             if btn_cancel:
                 st.session_state.req_edit_id = None; st.session_state.req_last_msg = "🚫 已取消修改，未儲存任何變更。"; st.session_state.req_uploader_key += 1; st.rerun()
                 
-            elif btn_save or btn_submit or btn_preview or btn_print:
+            elif btn_save or btn_preview or btn_print:
                 fee = 30 if pay == "匯款(扣30手續費)" else 0
                 total_amt = net_amt + tax_amt - fee
                 if not pn or (net_amt + tax_amt) <= 0: st.error("⚠️ 請填寫「專案名稱」且金額須大於 0")
@@ -1657,17 +1681,10 @@ else:
 
                     st.toast(f"✅ 測試區單據 {tid} 已存檔並同步 GitHub！", icon="💾")
 
-                    if btn_submit:
-                        f_db = load_data(); idx = f_db[f_db["單號"]==tid].index[0]
-                        f_db.loc[idx, ["狀態", "提交時間"]] = ["待簽核", get_taiwan_time()]; save_data(f_db)
-                        sys_name = st.session_state.get('sys_choice', '請款單系統')
-                        send_line_message(f"🔔【[測試區]待簽核提醒】\n系統：{sys_name}\n單號：{tid}\n專案名稱：{pn}\n有一筆新的表單需要執行長 ({exe}) 進行簽核！")
-                        st.session_state.req_edit_id = None; st.session_state.req_last_msg = f"🚀 單據 {tid} 已成功提交簽核！"
-                    else:
-                        st.session_state.req_edit_id = None  
-                        if btn_preview: st.session_state.req_view_id = tid; st.session_state.req_last_msg = f"📄 單據 {tid} 已{msg_prefix}，正在產生預覽..."
-                        elif btn_print: st.session_state.req_print_id = tid; st.session_state.req_last_msg = f"🖨️ 單據 {tid} 已{msg_prefix}，正在準備列印..."
-                        else: st.session_state.req_last_msg = f"✅ 單據 {tid} 已{msg_prefix}！請至下方清單確認並點擊「提交」。"
+                    st.session_state.req_edit_id = None
+                    if btn_preview: st.session_state.req_view_id = tid; st.session_state.req_last_msg = f"📄 單據 {tid} 已{msg_prefix}，正在產生預覽..."
+                    elif btn_print: st.session_state.req_print_id = tid; st.session_state.req_last_msg = f"🖨️ 單據 {tid} 已{msg_prefix}，正在準備列印..."
+                    else: st.session_state.req_last_msg = f"✅ 單據 {tid} 已{msg_prefix}，尚未提交簽核。"
                     
                     st.session_state.req_uploader_key += 1; st.rerun()
 
