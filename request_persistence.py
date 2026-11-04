@@ -8,6 +8,87 @@ import threading
 # A lock created in a page script is recreated on every rerun/session. Keep one
 # shared, reentrant lock here because saves call the synchronizer under the lock.
 DATABASE_IO_LOCK = threading.RLock()
+BASELINE_ATTR = "_request_database_baseline"
+
+
+def _field_digest(column, value):
+    text = str(value)
+    # These three columns are converted to integer zero by the page loader.
+    if column in {"總金額", "已請款金額", "尚未請款金額"} and text in {"", "0.0"}:
+        text = "0"
+    if column == "狀態":
+        if "需要財務長" in text:
+            text = "待複審"
+        elif "需要執行長" in text:
+            text = "待簽核"
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def capture_database_baseline(frame):
+    """Keep small cell hashes so an old form cannot resave unrelated old states."""
+    rows = {}
+    for row in frame.fillna("").astype(str).to_dict("records"):
+        rows[row["單號"]] = {col: _field_digest(col, value) for col, value in row.items()}
+    frame.attrs[BASELINE_ATTR] = rows
+    return frame
+
+
+def database_changes(frame):
+    baseline = frame.attrs.get(BASELINE_ATTR)
+    if baseline is None:
+        return None  # Compatibility for explicit imports/newly assembled snapshots.
+    changes = {}
+    for row in frame.fillna("").astype(str).to_dict("records"):
+        key = row["單號"]
+        before = baseline.get(key)
+        fields = {
+            col: {"before": before.get(col) if before else None, "value": value}
+            for col, value in row.items() if col != "單號"
+            and (before is None or before.get(col) != _field_digest(col, value))
+        }
+        if fields:
+            changes[key] = {"new": before is None, "fields": fields}
+    return changes
+
+
+def apply_database_changes(remote, changes):
+    """Patch only edited cells; refuse a conflicting edit instead of overwriting it."""
+    merged = remote.fillna("").astype(str).set_index("單號")
+    if not merged.index.is_unique:
+        raise ValueError("雲端資料含重複單號，已停止覆蓋")
+    for change in changes.values():
+        for column in change["fields"]:
+            if column not in merged.columns:
+                merged[column] = ""
+    for key, change in changes.items():
+        if change["new"] and key in merged.index:
+            raise ValueError(f"單號 {key} 已存在，請重新整理後重試")
+        if not change["new"] and key not in merged.index:
+            raise ValueError(f"單號 {key} 已不存在，請重新整理後重試")
+        if key not in merged.index:
+            merged.loc[key] = ""
+        for column, field in change["fields"].items():
+            current = merged.at[key, column] if column in merged.columns else ""
+            if not change["new"] and _field_digest(column, current) not in {
+                field["before"], _field_digest(column, field["value"]),
+            }:
+                raise ValueError(f"單號 {key} 的 {column} 已被其他操作更新，請重新整理後重試")
+            merged.loc[key, column] = field["value"]
+    return merged.reset_index().fillna("")
+
+
+def verify_database_changes(received, changes):
+    if received is None or "單號" not in received.columns:
+        raise ValueError("雲端回讀缺少單號，尚未確認存檔成功")
+    indexed = received.fillna("").astype(str).set_index("單號")
+    if not indexed.index.is_unique:
+        raise ValueError("雲端回讀含重複單號，尚未確認存檔成功")
+    for key, change in changes.items():
+        if key not in indexed.index:
+            raise ValueError(f"雲端回讀缺少單號 {key}，尚未確認存檔成功")
+        for column, field in change["fields"].items():
+            if column not in indexed.columns or _field_digest(column, indexed.at[key, column]) != _field_digest(column, field["value"]):
+                raise ValueError(f"雲端回讀不一致：單號 {key}、欄位 {column}，尚未確認存檔成功")
 
 
 def database_fingerprint(filepath):

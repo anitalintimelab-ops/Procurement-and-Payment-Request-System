@@ -56,9 +56,9 @@ class RejectionTests(unittest.TestCase):
     def test_local_reset_before_upload_cannot_change_staged_rejection(self):
         def scenario(h):
             sync = h.env["sync_to_github_core"]
-            def sync_after_checkout_reset(filepath, prefer_local=False):
+            def sync_after_checkout_reset(filepath, prefer_local=False, changes=None):
                 h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
-                return sync(filepath, prefer_local=prefer_local)
+                return sync(filepath, prefer_local=prefer_local, changes=changes)
             h.env["sync_to_github_core"] = sync_after_checkout_reset
             reject(h)
             self.assertEqual(h.errors, [])
