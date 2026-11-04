@@ -1,6 +1,9 @@
 # Local credentials and deployment secrets
 github_credentials.txt
 line_credentials.txt
+demo_line_credentials.txt
+line_notification_credentials.local
+demo_line_notification_credentials.local
 .streamlit/secrets.toml
 
 # Local/runtime files

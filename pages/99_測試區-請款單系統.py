@@ -14,6 +14,10 @@ from request_persistence import (
 )
 from ai_assistant import render_ai_operations_assistant
 from mobile_camera import mobile_camera_input
+from line_notifications import (
+    get_line_settings, save_line_settings, send_line_notification,
+    deployment_line_credentials, publish_line_state,
+)
 
 # --- 1. 系統鎖定與介面設定 ---
 st.session_state['sys_choice'] = "測試區-請款單系統" 
@@ -809,38 +813,20 @@ def get_online_users(curr_user):
     except: return 1
 
 def get_line_credentials():
-    secret_token = os.getenv("TEST_LINE_TOKEN", "").strip() or _test_secret_value("LINE_TOKEN")
-    secret_uid = os.getenv("TEST_LINE_UID", "").strip() or _test_secret_value("LINE_UID")
-    file_token, file_uid = "", ""
-    if os.path.exists(L_FILE):
-        try:
-            with open(L_FILE, "r", encoding="utf-8") as f:
-                lines = f.read().splitlines()
-                raw_t = lines[0].strip() if len(lines) > 0 else ""
-                raw_u = lines[1].strip() if len(lines) > 1 else ""
-                try: t = base64.b64decode(raw_t[4:]).decode() if raw_t.startswith("b64:") else raw_t
-                except: t = raw_t
-                try: u = base64.b64decode(raw_u[4:]).decode() if raw_u.startswith("b64:") else raw_u
-                except: u = raw_u
-                file_token, file_uid = t, u
-        except: pass
-    return secret_token or file_token or DEFAULT_LINE_TOKEN, secret_uid or file_uid or DEFAULT_LINE_UID
+    token, uid = deployment_line_credentials(st.secrets, test=True)
+    return get_line_settings(L_FILE, token, uid)
 
 def save_line_credentials(token, user_id):
     try:
-        enc_t = base64.b64encode(token.strip().encode()).decode() if token.strip() else ""
-        enc_u = base64.b64encode(user_id.strip().encode()).decode() if user_id.strip() else ""
-        with open(L_FILE, "w", encoding="utf-8") as f: f.write(f"b64:{enc_t}\nb64:{enc_u}")
-        sync_to_github(L_FILE)
-    except: pass
+        return save_line_settings(L_FILE, token, user_id, publish=lambda path:
+                                  publish_line_state(path, get_test_github_config(), requests))
+    except Exception as exc:
+        st.error(f"⚠️ 測試區 LINE 設定尚未完整保存，目前已停用推播；請重新儲存：{exc}")
+        st.stop()
 
 def send_line_message(msg):
-    token, _ = get_line_credentials()
-    if token:
-        try:
-            msg = f"🔔【測試區系統通知】\n{msg}"
-            requests.post("https://api.line.me/v2/bot/message/broadcast", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"messages": [{"type": "text", "text": msg}]}, timeout=5)
-        except: pass
+    token, uid = deployment_line_credentials(st.secrets, test=True)
+    return send_line_notification(L_FILE, msg, requests, token, uid, prefix="🔔【測試區系統通知】")
 
 def read_csv_robust(filepath):
     if not os.path.exists(filepath): return None
@@ -2128,12 +2114,13 @@ else:
             with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)", expanded=True):
                 st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
                 ct, cu = get_line_credentials()
-                st.caption("測試區 LINE 設定獨立於正式區；Token 已設定時請留白，只有要更換時才重新輸入。")
-                nt = st.text_input("Channel Access Token (長字串；要更換才輸入)", value="", type="password", placeholder="已設定則留白")
+                st.caption("目前測試區 LINE 推播：已啟用" if ct else "目前測試區 LINE 推播：已停用")
+                st.caption("測試區獨立設定。Token 留白或只有空白並儲存＝停用，不會取用舊 Token 或 Secrets。")
+                nt = st.text_input("Channel Access Token (長字串)", value=ct, type="password")
                 nu = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=cu)
                 if st.button("💾 儲存 LINE 設定"):
-                    save_line_credentials(nt.strip() or ct, nu.strip() or cu)
-                    st.success("LINE 推播設定已成功儲存並啟用！")
+                    enabled = save_line_credentials(nt, nu)
+                    st.success("測試區 LINE 推播已啟用。" if enabled else "測試區 LINE 推播已停用，空白設定不會發送訊息。")
                     time.sleep(1)
                     st.rerun()
             st.divider()

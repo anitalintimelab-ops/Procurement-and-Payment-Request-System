@@ -5,6 +5,10 @@ import os
 import base64
 import time
 import requests  
+from line_notifications import (
+    get_line_settings, save_line_settings, send_line_notification,
+    deployment_line_credentials, production_repository_config, publish_line_state,
+)
 import json 
 from ai_assistant import render_ai_operations_assistant
 
@@ -144,27 +148,20 @@ def get_online_users(curr_user):
     except: return 1
 
 def get_line_credentials():
-    if os.path.exists(L_FILE):
-        try:
-            with open(L_FILE, "r", encoding="utf-8") as f:
-                lines = f.read().splitlines()
-                return lines[0].strip(), lines[1].strip()
-        except: pass
-    return "", ""
+    token, uid = deployment_line_credentials(st.secrets)
+    return get_line_settings(L_FILE, token, uid)
 
 def save_line_credentials(token, user_id):
     try:
-        with open(L_FILE, "w", encoding="utf-8") as f:
-            f.write(f"{token.strip()}\n{user_id.strip()}")
-    except: pass
+        return save_line_settings(L_FILE, token, user_id, publish=lambda path:
+                                  publish_line_state(path, production_repository_config(B_DIR, st.secrets), requests))
+    except Exception as exc:
+        st.error(f"⚠️ LINE 設定尚未完整保存，目前已停用推播；請重新儲存：{exc}")
+        st.stop()
 
 def send_line_message(msg, target_name=""):
-    token, _ = get_line_credentials()
-    if not token: return  
-    url = "https://api.line.me/v2/bot/message/broadcast"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    try: requests.post(url, headers=headers, json={"messages": [{"type": "text", "text": msg}]}, timeout=5)
-    except: pass
+    token, uid = deployment_line_credentials(st.secrets)
+    return send_line_notification(L_FILE, msg, requests, token, uid)
 
 def read_csv_robust(filepath):
     if not os.path.exists(filepath): return None
@@ -927,11 +924,14 @@ elif menu == "5. 請款狀態/系統設定":
     with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)"):
         st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
         curr_token, curr_uid = get_line_credentials()
+        st.caption("目前 LINE 推播：已啟用" if curr_token else "目前 LINE 推播：已停用")
+        st.caption("此處與正式請款單共用 LINE 設定。Token 留白或只有空白並儲存＝停用推播。")
         new_token = st.text_input("Channel Access Token (長字串)", value=curr_token, type="password")
         new_uid = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=curr_uid)
         if st.button("💾 儲存 LINE 設定"):
-            save_line_credentials(new_token, new_uid) 
-            st.success("LINE 推播設定已成功儲存並啟用！"); time.sleep(1); st.rerun()
+            enabled = save_line_credentials(new_token, new_uid)
+            st.success("LINE 推播已啟用。" if enabled else "LINE 推播已停用，空白設定不會發送訊息。")
+            time.sleep(1); st.rerun()
 
     st.divider()
     st.subheader("💰 請款狀態 (Admin)")

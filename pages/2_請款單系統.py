@@ -14,6 +14,10 @@ from request_persistence import (
 )
 from ai_assistant import render_ai_operations_assistant
 from mobile_camera import mobile_camera_input
+from line_notifications import (
+    get_line_settings, save_line_settings, send_line_notification,
+    deployment_line_credentials, publish_line_state,
+)
 try:
     import openpyxl
     from openpyxl.styles import Border, Side, Alignment
@@ -905,40 +909,21 @@ def get_online_users(curr_user):
         df.to_csv(O_FILE, index=False); return len(df["user"].unique())
     except: return 1
 
-# ★ 修改：加入 Base64 自動解碼，還原您儲存的 LINE Token
 def get_line_credentials():
-    if os.path.exists(L_FILE):
-        try:
-            with open(L_FILE, "r", encoding="utf-8") as f:
-                lines = f.read().splitlines()
-                raw_t = lines[0].strip() if len(lines) > 0 else ""
-                raw_u = lines[1].strip() if len(lines) > 1 else ""
-                
-                try: t = base64.b64decode(raw_t).decode()
-                except: t = raw_t
-                
-                try: u = base64.b64decode(raw_u).decode()
-                except: u = raw_u
-                
-                return t, u
-        except: pass
-    return "", ""
+    token, uid = deployment_line_credentials(st.secrets)
+    return get_line_settings(L_FILE, token, uid)
 
-# ★ 修改：加入 Base64 自動加密，成功避開 GitHub 密碼掃描並永遠備份
 def save_line_credentials(token, user_id):
     try:
-        enc_t = base64.b64encode(token.strip().encode()).decode() if token.strip() else ""
-        enc_u = base64.b64encode(user_id.strip().encode()).decode() if user_id.strip() else ""
-        with open(L_FILE, "w", encoding="utf-8") as f: 
-            f.write(f"{enc_t}\n{enc_u}")
-        sync_to_github(L_FILE)
-    except: pass
+        return save_line_settings(L_FILE, token, user_id, publish=lambda path:
+                                  publish_line_state(path, get_github_config(), requests))
+    except Exception as exc:
+        st.error(f"⚠️ LINE 設定尚未完整保存，目前已停用推播；請重新儲存：{exc}")
+        st.stop()
 
 def send_line_message(msg):
-    token, _ = get_line_credentials()
-    if token:
-        try: requests.post("https://api.line.me/v2/bot/message/broadcast", headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={"messages": [{"type": "text", "text": msg}]}, timeout=5)
-        except: pass
+    token, uid = deployment_line_credentials(st.secrets)
+    return send_line_notification(L_FILE, msg, requests, token, uid)
 
 def read_csv_robust(filepath):
     if not os.path.exists(filepath): return None
@@ -2381,9 +2366,14 @@ else:
             with st.expander("🔔 3. LINE 官方帳號推播設定 (全域 Token & 行政副本 ID)", expanded=True):
                 st.write("請填寫從 LINE Developers 取得的兩組關鍵代碼：")
                 ct, cu = get_line_credentials()
+                st.caption("目前 LINE 推播：已啟用" if ct else "目前 LINE 推播：已停用")
+                st.caption("Token 留白或只有空白並儲存＝停用推播；重新填入 Token 並儲存才啟用。設定不會發送測試訊息。")
                 nt = st.text_input("Channel Access Token (長字串)", value=ct, type="password")
                 nu = st.text_input("行政專屬 User ID (U開頭，用來接收所有副本)", value=cu)
-                if st.button("💾 儲存 LINE 設定"): save_line_credentials(nt, nu); st.success("LINE 推播設定已成功儲存並啟用！"); time.sleep(1); st.rerun()
+                if st.button("💾 儲存 LINE 設定"):
+                    enabled = save_line_credentials(nt, nu)
+                    st.success("LINE 推播已啟用。" if enabled else "LINE 推播已停用，空白設定不會發送訊息。")
+                    time.sleep(1); st.rerun()
             st.divider()
 
         st.subheader("💰 財務匯款註記")
