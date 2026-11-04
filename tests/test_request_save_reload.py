@@ -44,7 +44,7 @@ class PageHarness:
             session_state=self.state, error=self.errors.append,
             stop=lambda: self._raise(PageStop), rerun=lambda: self._raise(PageRerun),
             toast=lambda text, **kw: self.messages.append(text),
-            success=self.messages.append, button=lambda *a, **kw: True,
+            success=self.messages.append, info=self.messages.append, button=lambda *a, **kw: True,
         )
         demo = page.name.startswith("99_")
         prefix = "demo_" if demo else ""
@@ -64,23 +64,28 @@ class PageHarness:
             "get_github_config": lambda: ("fake-token", "test/repo", "main", "fixture"),
             "get_test_github_config": lambda: ("fake-token", "test/demo", "main", "fixture"),
             "send_line_message": self.notifications.append,
+            "is_active": True,
         }
         wanted = {
             "_read_database_chunks", "_restore_database_chunks", "_merge_remote_database_snapshot",
             "_sync_database_to_github", "_split_database_csv", "sync_to_github_core",
             "restore_data_from_github_once", "_save_local_and_cloud", "read_csv_robust",
-            "load_data", "save_data", "clean_amount", "safe_str", "get_taiwan_time",
+            "load_data", "save_data", "clean_amount", "safe_str", "get_taiwan_time", "approve_requests",
         }
         nodes = [n for n in self.tree.body if isinstance(n, ast.FunctionDef) and n.name in wanted]
         exec(compile(ast.Module(body=nodes, type_ignores=[]), str(page), "exec"), self.env)
         try:
             from request_persistence import (
                 database_fingerprint, verify_database_snapshot, write_database_snapshot,
+                capture_database_baseline, database_changes, apply_database_changes, verify_database_changes,
             )
             self.env.update(
                 database_fingerprint=database_fingerprint,
                 verify_database_snapshot=verify_database_snapshot,
                 write_database_snapshot=write_database_snapshot,
+                capture_database_baseline=capture_database_baseline,
+                database_changes=database_changes, apply_database_changes=apply_database_changes,
+                verify_database_changes=verify_database_changes,
             )
         except ImportError:
             pass
@@ -265,6 +270,7 @@ class SaveReloadTests(unittest.TestCase):
             h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
             self.assertEqual(h.row()["狀態"], "已駁回")
             self.assertEqual(h.row()["駁回原因"], "測試退回")
+            h.submit()  # A rejected request must be explicitly resubmitted first.
             h.review(approve=True)
             h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
             self.assertEqual(h.row()["狀態"], "待複審")

@@ -10,6 +10,7 @@ import io
 import tempfile
 from request_persistence import (
     DATABASE_IO_LOCK, database_fingerprint, verify_database_snapshot, write_database_snapshot,
+    capture_database_baseline, database_changes, apply_database_changes, verify_database_changes,
 )
 from ai_assistant import render_ai_operations_assistant
 from mobile_camera import mobile_camera_input
@@ -650,8 +651,11 @@ def _restore_database_chunks(filepath, headers, repo, branch):
     remote_df.to_csv(filepath, index=False, encoding="utf-8-sig")
     return True, ""
 
-def _merge_remote_database_snapshot(filepath, remote_df):
+def _merge_remote_database_snapshot(filepath, remote_df, changes=None):
     """同步前合併遠端快照，讓本次本機簽核結果優先且保留其他使用者新增資料。"""
+    if changes is not None:
+        apply_database_changes(remote_df, changes).to_csv(filepath, index=False, encoding="utf-8-sig")
+        return
     key = CSV_SYNC_KEYS.get(os.path.basename(filepath))
     local_df = read_csv_robust(filepath) if os.path.exists(filepath) else None
     if not key or local_df is None or local_df.empty:
@@ -668,7 +672,7 @@ def _merge_remote_database_snapshot(filepath, remote_df):
     merged = merged.drop(columns=["_sync_source"])
     merged.to_csv(filepath, index=False, encoding="utf-8-sig")
 
-def _sync_database_to_github(filepath):
+def _sync_database_to_github(filepath, changes=None):
     """資料庫不再以單一大型 database.csv 上傳，改用分段檔與 manifest。"""
     token, repo, branch, _ = get_github_config()
     if not token or not repo:
@@ -684,7 +688,7 @@ def _sync_database_to_github(filepath):
             if remote_error:
                 return False, remote_error
             if remote_df is not None:
-                _merge_remote_database_snapshot(filepath, remote_df)
+                _merge_remote_database_snapshot(filepath, remote_df, changes=changes)
             parts, manifest, error = _split_database_csv(filepath)
             if error:
                 return False, error
@@ -708,7 +712,7 @@ def _sync_database_to_github(filepath):
     except Exception as exc:
         return False, f"同步資料庫分段時發生錯誤：{exc}"
 
-def sync_to_github_core(filepath, prefer_local=False):
+def sync_to_github_core(filepath, prefer_local=False, changes=None):
     filename = os.path.basename(filepath)
 
     # 憑證含有 Token，GitHub Secret Push Protection 會以 409 拒絕；
@@ -725,7 +729,7 @@ def sync_to_github_core(filepath, prefer_local=False):
         return False, "缺少 GitHub Token 或 Repository"
 
     if filename == os.path.basename(D_FILE):
-        return _sync_database_to_github(filepath)
+        return _sync_database_to_github(filepath, changes=changes)
 
     get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
     headers = {
@@ -783,13 +787,13 @@ def sync_all_data_to_github():
         results.append((os.path.basename(filepath), *sync_to_github(filepath)))
     return results
 
-def restore_data_from_github_once():
+def restore_data_from_github_once(force=False):
     """每個本機快照還原一次；部署或其他工作階段換回舊檔時必須重讀雲端。"""
     state_key = f"_github_reconciled_v2:{os.path.abspath(D_FILE)}"
     with GITHUB_SYNC_LOCK:
         previous = st.session_state.get(state_key)
         current = database_fingerprint(D_FILE)
-        if previous is not None and previous == current:
+        if not force and previous is not None and previous == current:
             return
         token, repo, branch, _ = get_github_config()
         if not token or not repo:
@@ -832,11 +836,12 @@ def _save_local_and_cloud(df, filepath, label):
     """資料庫使用隔離快照送存；以 GitHub 回讀確認結果，不以可變本機檔判定。"""
     with GITHUB_SYNC_LOCK:
         if os.path.abspath(filepath) == os.path.abspath(D_FILE):
+            changes = database_changes(df)
             # GitHub 寫入會觸發部署；不得讓 checkout 換掉正在送存的簽核快照。
             with tempfile.TemporaryDirectory(prefix="timelab-request-save-") as staging:
                 upload_path = os.path.join(staging, os.path.basename(filepath))
                 df.reset_index(drop=True).to_csv(upload_path, index=False, encoding="utf-8-sig")
-                success, message = sync_to_github_core(upload_path, prefer_local=True)
+                success, message = sync_to_github_core(upload_path, prefer_local=True, changes=changes)
             if not success:
                 st.error(f"⚠️ {label}尚未寫入 GitHub，畫面不會刷新：{message}")
                 st.stop()
@@ -848,7 +853,10 @@ def _save_local_and_cloud(df, filepath, label):
             cloud_df, error = _read_database_chunks(filepath, headers, repo, branch)
             if error:
                 raise ValueError(f"GitHub 已接受上傳，但尚無法回讀確認：{error}")
-            verify_database_snapshot(df, cloud_df)
+            if changes is None:
+                verify_database_snapshot(df, cloud_df)
+            else:
+                verify_database_changes(cloud_df, changes)
             signature = write_database_snapshot(cloud_df, filepath)
             state_key = f"_github_reconciled_v2:{os.path.abspath(D_FILE)}"
             st.session_state[state_key] = signature
@@ -956,7 +964,7 @@ def load_data():
             df.loc[df["狀態"].astype(str).str.contains("需要財務長", na=False), "狀態"] = "待複審"
             df.loc[df["狀態"].astype(str).str.contains("需要執行長", na=False), "狀態"] = "待簽核"
 
-        return df[cols]
+        return capture_database_baseline(df[cols])
     except:
         return pd.DataFrame(columns=cols)
 
@@ -966,6 +974,45 @@ def save_data(df):
     except Exception as e:
         st.error(f"⚠️ 檔案寫入失敗！請重試。錯誤：{e}")
         st.stop()
+
+def approve_requests(request_ids, sign_type):
+    """簽核只能前進一個階段；雲端確認成功後才發送對應通知。"""
+    if sign_type not in {"EXE", "CFO"}:
+        raise ValueError("不明的簽核階段")
+    if not is_active or curr_name == "Anita":
+        return 0
+    with GITHUB_SYNC_LOCK:
+        # 不能用開啟視窗當時的狀態／權限進行簽核。
+        restore_data_from_github_once(force=True)
+        fresh_db = load_data()
+        committed = []
+        for request_id in dict.fromkeys(request_ids):
+            matches = fresh_db.index[fresh_db["單號"] == request_id]
+            if len(matches) != 1:
+                continue
+            idx = matches[0]
+            row = fresh_db.loc[idx]
+            if sign_type == "EXE":
+                if row["專案負責人"] != curr_name or row["狀態"] not in {"待簽核", "待初審"}:
+                    continue
+                fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
+            else:
+                if curr_name != CFO_NAME or row["狀態"] != "待複審":
+                    continue
+                fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
+            committed.append((request_id, safe_str(row.get("專案名稱"))))
+        if not committed:
+            return 0
+        save_data(fresh_db)
+        if sign_type == "EXE":
+            sys_name = st.session_state.get("sys_choice", "請款單系統")
+            for request_id, project in committed:
+                send_line_message(
+                    f"🔔【待複審提醒】\n系統：{sys_name}\n單號：{request_id}\n專案名稱：{project}\n"
+                    f"狀態：待複審\n執行長已核准，請財務長 ({CFO_NAME}) 進行複審！"
+                )
+        return len(committed)
+
 
 def load_staff():
     df = read_csv_robust(S_FILE)
@@ -1416,14 +1463,11 @@ if st.session_state.get('req_review_id'):
         
         if c_btn2.button("✅ 確認核准", disabled=not can_sign):
             st.session_state.req_edit_id = None 
-            fresh_db = load_data(); idx = fresh_db[fresh_db["單號"]==r["單號"]].index[0]
-            if sign_type == "EXE":
-                fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
-                sys_name = st.session_state.get('sys_choice', '請款單系統')
-                send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{r['單號']}\n專案名稱：{r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
+            count = approve_requests([r["單號"]], sign_type)
+            if count:
+                st.success("初審已通過，狀態：待複審" if sign_type == "EXE" else "複審已通過，狀態：已核准")
             else:
-                fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
-            save_data(fresh_db); st.success("已核准！"); time.sleep(0.5)
+                st.info("單據狀態或權限已變更，未重複簽核。")
             st.session_state.req_review_id = None; st.rerun()
             
         if can_sign:
@@ -1491,20 +1535,12 @@ else:
                             and is_active and curr_name != "Anita"
                         )
                         if st.button("✅ 確認核准", key=f"mobile_sign_ok_{sign_type}_{mobile_id}_{mobile_i}", disabled=not mobile_can_sign, use_container_width=True):
-                            fresh_db = load_data()
-                            match_idx = fresh_db[fresh_db["單號"] == mobile_id].index
-                            if len(match_idx):
-                                idx = match_idx[0]
-                                if sign_type == "EXE":
-                                    fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
-                                    sys_name = st.session_state.get('sys_choice', '請款單系統')
-                                    send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{mobile_id}\n專案名稱：{mobile_r['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
-                                else:
-                                    fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
-                                save_data(fresh_db)
-                                st.success("已核准！")
-                                time.sleep(0.5)
-                                st.rerun()
+                            count = approve_requests([mobile_id], sign_type)
+                            if count:
+                                st.success("初審已通過，狀態：待複審" if sign_type == "EXE" else "複審已通過，狀態：已核准")
+                            else:
+                                st.info("單據狀態或權限已變更，未重複簽核。")
+                            st.rerun()
 
                         if mobile_can_sign:
                             with st.popover("❌ 駁回單據", use_container_width=True):
@@ -1563,21 +1599,13 @@ else:
             
             if batch_c1.button(f"✅ 確認核准 (已選 {len(selected_ids)} 筆)", disabled=is_btn_disabled, key=f"bat_ok_{sign_type}"):
                 st.session_state.req_edit_id = None 
-                fresh_db = load_data()
-                success_count = 0
-                for sel_id in selected_ids:
-                    r_match = df_list[df_list["單號"] == sel_id].iloc[0]
-                    if (r_match["專案負責人"] == curr_name if sign_type == "EXE" else curr_name == CFO_NAME) and is_active and curr_name != "Anita":
-                        idx = fresh_db[fresh_db["單號"]==sel_id].index[0]
-                        if sign_type == "EXE":
-                            fresh_db.loc[idx, ["狀態", "初審人", "初審時間"]] = ["待複審", curr_name, get_taiwan_time()]
-                            sys_name = st.session_state.get('sys_choice', '請款單系統')
-                            send_line_message(f"🔔【待簽核提醒】\n系統：{sys_name}\n單號：{sel_id}\n專案名稱：{r_match['專案名稱']}\n執行長已核准，有一筆表單需要財務長 ({CFO_NAME}) 進行簽核！")
-                        else:
-                            fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
-                        success_count += 1
+                success_count = approve_requests(selected_ids, sign_type)
                 if success_count > 0:
-                    save_data(fresh_db); st.success(f"成功核准 {success_count} 筆單據！"); time.sleep(1); st.rerun()
+                    target_status = "待複審" if sign_type == "EXE" else "已核准"
+                    st.success(f"成功核准 {success_count} 筆，狀態已同步為：{target_status}")
+                else:
+                    st.info("單據狀態或權限已變更，未重複簽核。")
+                st.rerun()
 
             if is_btn_disabled:
                 batch_c2.button(f"❌ 駁回單據 (已選 {len(selected_ids)} 筆)", disabled=True, key=f"fake_rej_{sign_type}")
@@ -1837,7 +1865,10 @@ else:
                     else:
                         tid = f"{datetime.date.today().strftime('%Y%m%d')}-{len(f_db[f_db['單號'].str.startswith(datetime.date.today().strftime('%Y%m%d'))])+1:02d}"
                         nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "代申請人":proxy_app, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed_desc, "總金額":total_amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已存檔未提交", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
-                        f_db = pd.concat([f_db, pd.DataFrame([nr])], ignore_index=True); msg_prefix = "存檔成功"
+                        baseline = f_db.attrs.copy()
+                        f_db = pd.concat([f_db, pd.DataFrame([nr])], ignore_index=True)
+                        f_db.attrs = baseline
+                        msg_prefix = "存檔成功"
                     
                     save_data(f_db)
 
