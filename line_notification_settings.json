@@ -1,4 +1,5 @@
 {
   "version": 1,
-  "enabled": false
+  "enabled": true,
+  "token_sha256": "1c4e3f13d7137d7b93646d1f64ad88fa22326599f0d5ae47fc9555725e53ed2b"
 }
