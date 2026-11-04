@@ -52,7 +52,7 @@ class PageHarness:
         self.remote = {}
         self.env = {
             "st": st, "pd": pd, "os": os, "io": io, "json": json,
-            "base64": base64, "datetime": datetime,
+            "base64": base64, "datetime": datetime, "tempfile": tempfile,
             "time": types.SimpleNamespace(sleep=lambda seconds: None),
             "D_FILE": str(self.path), "G_FILE": str(Path(folder) / (prefix + "github_credentials.txt")),
             "L_FILE": str(Path(folder) / (prefix + "line_credentials.txt")),
@@ -74,8 +74,14 @@ class PageHarness:
         nodes = [n for n in self.tree.body if isinstance(n, ast.FunctionDef) and n.name in wanted]
         exec(compile(ast.Module(body=nodes, type_ignores=[]), str(page), "exec"), self.env)
         try:
-            from request_persistence import database_fingerprint
-            self.env["database_fingerprint"] = database_fingerprint
+            from request_persistence import (
+                database_fingerprint, verify_database_snapshot, write_database_snapshot,
+            )
+            self.env.update(
+                database_fingerprint=database_fingerprint,
+                verify_database_snapshot=verify_database_snapshot,
+                write_database_snapshot=write_database_snapshot,
+            )
         except ImportError:
             pass
         self.env["_fetch_github_file"] = self.fetch
@@ -228,7 +234,7 @@ class SaveReloadTests(unittest.TestCase):
             self.assertEqual(len(h.errors), 1)
         self.both_pages(scenario)
 
-    def test_readback_mismatch_never_shows_save_success(self):
+    def test_local_reset_after_upload_restores_verified_cloud_receipt(self):
         def scenario(h):
             def put_then_reset(*args):
                 result = h.put(*args)
@@ -236,9 +242,10 @@ class SaveReloadTests(unittest.TestCase):
                     h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
                 return result
             h.env["_put_github_bytes"] = put_then_reset
-            with self.assertRaises(PageStop):
-                h.save_amount()
-            self.assertEqual(h.messages, [])
+            h.save_amount()
+            self.assertEqual(h.errors, [])
+            self.assertEqual(h.row()["總金額"], 170730)
+            self.assertEqual(h.row()["狀態"], "已存檔未提交")
             self.assertEqual(h.notifications, [])
         self.both_pages(scenario)
 

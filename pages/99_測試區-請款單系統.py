@@ -7,7 +7,10 @@ import time
 import requests  
 import json
 import io
-from request_persistence import DATABASE_IO_LOCK, database_fingerprint
+import tempfile
+from request_persistence import (
+    DATABASE_IO_LOCK, database_fingerprint, verify_database_snapshot, write_database_snapshot,
+)
 from ai_assistant import render_ai_operations_assistant
 from mobile_camera import mobile_camera_input
 
@@ -441,13 +444,16 @@ def _fetch_github_file(get_url, headers, branch):
         encoded = "".join(str(payload.get("content", "")).split())
         if encoded:
             return base64.b64decode(encoded), payload.get("sha"), ""
-        download_url = payload.get("download_url")
-        if download_url:
-            download = requests.get(download_url, headers=headers, timeout=60)
+        # 以不可變 blob SHA 回讀測試區 CSV，避免分支 raw URL 的舊快取。
+        sha = payload.get("sha")
+        if sha:
+            blob_url = f"{get_url.split('/contents/', 1)[0]}/git/blobs/{sha}"
+            blob_headers = dict(headers, Accept="application/vnd.github.raw+json")
+            download = requests.get(blob_url, headers=blob_headers, timeout=90)
             if download.status_code == 200:
-                return download.content, payload.get("sha"), ""
+                return download.content, sha, ""
             return None, None, f"下載 GitHub 大型檔案失敗（錯誤碼：{download.status_code}）：{download.text}"
-        return None, None, "GitHub 遠端檔案沒有可讀取的內容連結，已停止上傳"
+        return None, None, "GitHub 遠端檔案缺少可驗證的版本，已停止上傳"
     if response.status_code == 404:
         return b"", None, ""
     try:
@@ -728,21 +734,35 @@ def restore_data_from_github_once():
             st.stop()
 
 def _save_local_and_cloud(df, filepath, label):
-    """測試區先保存本機，再確認 GitHub 成功；失敗時停止後續畫面刷新。"""
+    """測試區以隔離快照送存，並用測試區 GitHub 回讀確認結果。"""
     with GITHUB_SYNC_LOCK:
+        if os.path.abspath(filepath) == os.path.abspath(D_FILE):
+            with tempfile.TemporaryDirectory(prefix="timelab-demo-request-save-") as staging:
+                upload_path = os.path.join(staging, os.path.basename(filepath))
+                df.reset_index(drop=True).to_csv(upload_path, index=False, encoding="utf-8-sig")
+                success, message = sync_to_github_core(upload_path, prefer_local=True)
+            if not success:
+                st.error(f"⚠️ 測試區{label}尚未寫入 GitHub，畫面不會刷新：{message}")
+                st.stop()
+            token, repo, branch, _ = get_test_github_config()
+            headers = {
+                "Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json",
+                "Cache-Control": "no-cache",
+            }
+            cloud_df, error = _read_database_chunks(filepath, headers, repo, branch)
+            if error:
+                raise ValueError(f"測試區 GitHub 已接受上傳，但尚無法回讀確認：{error}")
+            verify_database_snapshot(df, cloud_df)
+            signature = write_database_snapshot(cloud_df, filepath)
+            state_key = f"_github_reconciled_v2:{os.path.abspath(D_FILE)}"
+            st.session_state[state_key] = signature
+            return
+
         df.reset_index(drop=True).to_csv(filepath, index=False, encoding="utf-8-sig")
         success, message = sync_to_github_core(filepath, prefer_local=True)
         if not success:
             st.error(f"⚠️ 測試區{label}尚未寫入 GitHub，畫面不會刷新：{message}")
             st.stop()
-        if os.path.abspath(filepath) == os.path.abspath(D_FILE):
-            saved = read_csv_robust(filepath)
-            expected = df.fillna("").astype(str).set_index("單號")
-            actual = saved.set_index("單號").reindex(index=expected.index, columns=expected.columns)
-            if not expected.equals(actual):
-                raise ValueError("測試區存檔後回讀內容與本次修改不一致，未顯示存檔成功，請重新整理重試")
-            state_key = f"_github_reconciled_v2:{os.path.abspath(D_FILE)}"
-            st.session_state[state_key] = database_fingerprint(D_FILE)
 
 # --- 3. 基礎工具 ---
 def get_taiwan_time(): 
