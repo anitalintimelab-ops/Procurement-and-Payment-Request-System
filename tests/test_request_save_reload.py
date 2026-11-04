@@ -70,7 +70,7 @@ class PageHarness:
             "_read_database_chunks", "_restore_database_chunks", "_merge_remote_database_snapshot",
             "_sync_database_to_github", "_split_database_csv", "sync_to_github_core",
             "restore_data_from_github_once", "_save_local_and_cloud", "read_csv_robust",
-            "load_data", "save_data", "clean_amount", "safe_str", "get_taiwan_time", "approve_requests",
+            "load_data", "_load_data_uncached", "save_data", "clean_amount", "safe_str", "get_taiwan_time", "approve_requests",
         }
         nodes = [n for n in self.tree.body if isinstance(n, ast.FunctionDef) and n.name in wanted]
         exec(compile(ast.Module(body=nodes, type_ignores=[]), str(page), "exec"), self.env)
@@ -89,6 +89,15 @@ class PageHarness:
             )
         except ImportError:
             pass
+        from request_performance import (
+            github_blob_digest, cached_github_blob, remember_github_blob,
+            cached_database_frame, LocalSnapshotChanged,
+        )
+        self.env.update(
+            github_blob_digest=github_blob_digest, cached_github_blob=cached_github_blob,
+            remember_github_blob=remember_github_blob, cached_database_frame=cached_database_frame,
+            LocalSnapshotChanged=LocalSnapshotChanged,
+        )
         self.env["_fetch_github_file"] = self.fetch
         self.env["_put_github_bytes"] = self.put
         self.seed = pd.DataFrame([

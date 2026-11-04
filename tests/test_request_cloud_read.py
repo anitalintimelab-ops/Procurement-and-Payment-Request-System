@@ -3,6 +3,7 @@ import ast
 import base64
 import types
 import unittest
+from request_performance import cached_github_blob, remember_github_blob, clear_performance_caches
 
 from test_request_save_reload import PAGES
 
@@ -18,10 +19,12 @@ class Response:
 
 class CloudReadTests(unittest.TestCase):
     def load_fetch(self, page, get):
+        clear_performance_caches()  # Independent fake servers must not share fixture blob IDs.
         tree = ast.parse(page.read_text(encoding="utf-8-sig"))
         node = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
                     and n.name == "_fetch_github_file")
-        namespace = {"requests": types.SimpleNamespace(get=get), "base64": base64}
+        namespace = {"requests": types.SimpleNamespace(get=get), "base64": base64,
+                     "cached_github_blob": cached_github_blob, "remember_github_blob": remember_github_blob}
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(page), "exec"), namespace)
         return namespace["_fetch_github_file"]
 

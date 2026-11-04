@@ -14,6 +14,10 @@ from request_persistence import (
 )
 from ai_assistant import render_ai_operations_assistant
 from mobile_camera import mobile_camera_input
+from request_performance import (
+    github_blob_digest, cached_github_blob, remember_github_blob,
+    cached_database_frame, LocalSnapshotChanged,
+)
 from line_notifications import (
     get_line_settings, save_line_settings, send_line_notification,
     deployment_line_credentials, publish_line_state,
@@ -525,10 +529,14 @@ def _fetch_github_file(get_url, headers, branch):
         # https://docs.github.com/en/rest/git/blobs#get-a-blob
         sha = payload.get("sha")
         if sha:
+            cached = cached_github_blob(get_url, headers, sha)
+            if cached is not None:
+                return cached, sha, ""
             blob_url = f"{get_url.split('/contents/', 1)[0]}/git/blobs/{sha}"
             blob_headers = dict(headers, Accept="application/vnd.github.raw+json")
             download = requests.get(blob_url, headers=blob_headers, timeout=90)
             if download.status_code == 200:
+                remember_github_blob(get_url, headers, sha, download.content)
                 return download.content, sha, ""
             return None, None, f"下載 GitHub 大型檔案失敗（錯誤碼：{download.status_code}）：{download.text}"
         return None, None, "GitHub 遠端檔案缺少可驗證的版本，已停止上傳"
@@ -598,10 +606,14 @@ def _github_file_sha(get_url, headers, branch):
 
 def _put_github_bytes(repo, branch, filename, content, headers, message):
     get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
+    content_sha = github_blob_digest(content)
     for attempt in range(3):
         sha, error = _github_file_sha(get_url, headers, branch)
         if error:
             return False, error
+        if sha == content_sha:
+            remember_github_blob(get_url, headers, sha, content)
+            return True, ""
         data = {
             "message": message,
             "content": base64.b64encode(content).decode("ascii"),
@@ -611,6 +623,7 @@ def _put_github_bytes(repo, branch, filename, content, headers, message):
             data["sha"] = sha
         response = requests.put(get_url, headers=headers, json=data, timeout=90)
         if response.status_code in [200, 201]:
+            remember_github_blob(get_url, headers, content_sha, content)
             return True, ""
         if response.status_code != 409 or attempt == 2:
             try:
@@ -798,13 +811,13 @@ def restore_data_from_github_once(force=False):
         previous = st.session_state.get(state_key)
         current = database_fingerprint(D_FILE)
         if not force and previous is not None and previous == current:
-            return
+            return current
         token, repo, branch, _ = get_github_config()
         if not token or not repo:
             if previous is not None:
                 st.error("⚠️ 本機資料版本已改變，缺少 GitHub 設定，無法確認最新金額與簽核狀態。")
                 st.stop()
-            return
+            return current
         headers = {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
@@ -831,6 +844,7 @@ def restore_data_from_github_once(force=False):
             if previous is not None and not database_restored:
                 raise ValueError("找不到雲端資料庫，已停止顯示可能過期的金額及狀態")
             st.session_state[state_key] = database_fingerprint(D_FILE)
+            return st.session_state[state_key]
         except Exception as exc:
             # 不把失敗標記成已還原，也不能靜默顯示部署帶回的舊版資料。
             st.error(f"⚠️ 無法確認最新雲端資料，請重新整理後重試：{exc}")
@@ -932,8 +946,7 @@ def read_csv_robust(filepath):
         except: continue
     return pd.DataFrame()
 
-def load_data():
-    restore_data_from_github_once()
+def _load_data_uncached():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
     if df is None or df.empty: return pd.DataFrame(columns=cols)
@@ -952,6 +965,19 @@ def load_data():
         return capture_database_baseline(df[cols])
     except:
         return pd.DataFrame(columns=cols)
+
+def load_data():
+    # Keep content/version checks. Only skip parsing and baseline hashing when
+    # the complete on-disk SHA-256 is identical to the verified snapshot.
+    for attempt in range(2):
+        fingerprint = restore_data_from_github_once(force=bool(attempt))
+        try:
+            return cached_database_frame(D_FILE, fingerprint, _load_data_uncached)
+        except LocalSnapshotChanged:
+            continue
+    st.error("資料版本正在更新，請重新整理後重試。")
+    st.stop()
+
 
 def save_data(df):
     try:
