@@ -71,6 +71,22 @@ def validate_approval_states(df):
             errors.append(f"{request_id}:待複審缺少初審證據")
     return errors
 
+def validate_approval_batch(df, request_ids, expected_status):
+    """Verify every request in one approval batch has the same persisted status."""
+    errors = []
+    if df is None or df.empty or "單號" not in df.columns or "狀態" not in df.columns:
+        return [f"批次資料缺少單號或狀態欄位：{expected_status}"]
+    ids = { _text(request_id) for request_id in request_ids if _text(request_id) }
+    for request_id in sorted(ids):
+        matches = df[df["單號"].astype(str).str.strip() == request_id]
+        if len(matches) != 1:
+            errors.append(f"{request_id}: 找不到唯一資料列")
+            continue
+        actual = _text(matches.iloc[0].get("狀態", ""))
+        if actual != expected_status:
+            errors.append(f"{request_id}: 預期 {expected_status}，實際 {actual}")
+    return errors
+
 def _activity_timestamp(frame):
     columns = [c for c in ["提交時間", "初審時間", "複審時間", "刪除時間"] if c in frame.columns]
     if not columns:

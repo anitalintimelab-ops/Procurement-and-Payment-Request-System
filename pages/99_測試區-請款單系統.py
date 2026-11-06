@@ -20,7 +20,7 @@ from request_performance import (
 )
 from approval_state import (
     normalize_approval_statuses, merge_database_snapshots,
-    repair_approval_statuses_in_file,
+    repair_approval_statuses_in_file, validate_approval_batch,
 )
 from line_notifications import (
     get_line_settings, save_line_settings, send_line_notification,
@@ -914,6 +914,12 @@ def approve_requests(request_ids, sign_type):
         if not committed:
             return 0
         save_data(fresh_db)
+        expected_status = "待複審" if sign_type == "EXE" else "已核准"
+        verified_db = load_data()
+        consistency_errors = validate_approval_batch(verified_db, [request_id for request_id, _ in committed], expected_status)
+        if consistency_errors:
+            st.error("⚠️ 批次簽核一致性檢查失敗，已停止發送提醒：" + "; ".join(consistency_errors[:5]))
+            st.stop()
         if sign_type == "EXE":
             sys_name = st.session_state.get("sys_choice", "測試區-請款單系統")
             for request_id, project in committed:
