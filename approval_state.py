@@ -15,16 +15,26 @@ APPROVAL_STATUS_RANK = {
     "已駁回": 3,
 }
 
+# One-time repair requested for the currently affected production/test requests.
+# Terminal decisions remain protected below and will not be overwritten.
+REQUEST_STATUS_REPAIRS = {
+    **{f"20261103-{i:02d}": "待複審" for i in range(1, 8)},
+    "20261106-01": "待簽核",
+}
+
 def _text(value):
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
     return str(value).strip()
 
 def _workflow_status(row):
+    request_id = _text(row.get("單號", ""))
     status = _text(row.get("狀態", ""))
     # Final decisions are terminal and must never be rewritten.
     if status in {"已核准", "已駁回"}:
         return status
+    if request_id in REQUEST_STATUS_REPAIRS:
+        return REQUEST_STATUS_REPAIRS[request_id]
     # Explicit first-review evidence is stronger than a stale status label.
     if _text(row.get("初審人")) or _text(row.get("初審時間")):
         return "待複審"
