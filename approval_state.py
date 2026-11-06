@@ -81,9 +81,17 @@ def _activity_timestamp(frame):
 def merge_database_snapshots(remote_df, local_df, key="單號"):
     """Merge snapshots while preserving the furthest approval stage per request."""
     if remote_df is None or remote_df.empty:
-        return normalize_approval_statuses(local_df)
+        result = normalize_approval_statuses(local_df)
+        errors = validate_approval_states(result)
+        if errors:
+            raise ValueError("簽核狀態一致性檢查失敗：" + "; ".join(errors[:5]))
+        return result
     if local_df is None or local_df.empty:
-        return normalize_approval_statuses(remote_df)
+        result = normalize_approval_statuses(remote_df)
+        errors = validate_approval_states(result)
+        if errors:
+            raise ValueError("簽核狀態一致性檢查失敗：" + "; ".join(errors[:5]))
+        return result
     if key not in remote_df.columns or key not in local_df.columns:
         raise ValueError(f"資料庫缺少合併欄位 {key}")
     remote = normalize_approval_statuses(remote_df).copy()
