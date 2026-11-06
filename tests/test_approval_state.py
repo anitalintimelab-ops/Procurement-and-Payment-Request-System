@@ -47,6 +47,15 @@ class ApprovalStateTests(unittest.TestCase):
         merged = merge_database_snapshots(remote_stale, local_signed)
         self.assertEqual(merged.loc[0, "狀態"], "待複審")
 
+    def test_requested_ids_are_repaired(self):
+        frame = pd.DataFrame([
+            row("20261103-01", "待簽核"),
+            row("20261106-01", "待複審"),
+        ])
+        repaired = normalize_approval_statuses(frame)
+        self.assertEqual(repaired.loc[0, "狀態"], "待複審")
+        self.assertEqual(repaired.loc[1, "狀態"], "待簽核")
+
     def test_repair_persists_status_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "database.csv"
