@@ -8,6 +8,7 @@ from approval_state import (
     merge_database_snapshots,
     normalize_approval_statuses,
     repair_approval_statuses_in_file,
+    validate_approval_batch,
 )
 
 
@@ -57,6 +58,14 @@ class ApprovalStateTests(unittest.TestCase):
         repaired = normalize_approval_statuses(frame)
         self.assertEqual(repaired.loc[0, "狀態"], "待複審")
         self.assertEqual(repaired.loc[1, "狀態"], "待複審")
+
+    def test_batch_statuses_must_match_expected_stage(self):
+        frame = pd.DataFrame([
+            row("A", "待複審", "Andy", "2026-11-06 11:00"),
+            row("B", "待複審", "Andy", "2026-11-06 11:01"),
+        ])
+        self.assertEqual(validate_approval_batch(frame, ["A", "B"], "待複審"), [])
+        self.assertTrue(validate_approval_batch(frame, ["A", "B"], "已核准"))
 
     def test_repair_persists_status_once(self):
         with tempfile.TemporaryDirectory() as tmp:
