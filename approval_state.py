@@ -20,7 +20,7 @@ APPROVAL_STATUS_RANK = {
 # Terminal decisions remain protected below and will not be overwritten.
 REQUEST_STATUS_REPAIRS = {
     **{f"20261103-{i:02d}": "待複審" for i in range(1, 8)},
-    "20261106-01": "待簽核",
+    "20261106-01": "待複審",
 }
 
 def _text(value):
