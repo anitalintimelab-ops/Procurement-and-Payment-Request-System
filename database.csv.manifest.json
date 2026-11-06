@@ -46,7 +46,11 @@
     },
     {
       "name": "database.csv.part-001.csv",
-      "rows": 7
+      "rows": 2
+    },
+    {
+      "name": "database.csv.part-002.csv",
+      "rows": 5
     }
   ]
 }
