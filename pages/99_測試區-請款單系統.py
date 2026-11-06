@@ -18,6 +18,10 @@ from request_performance import (
     github_blob_digest, cached_github_blob, remember_github_blob,
     cached_database_frame, LocalSnapshotChanged,
 )
+from approval_state import (
+    normalize_approval_statuses, merge_database_snapshots,
+    repair_approval_statuses_in_file,
+)
 from line_notifications import (
     get_line_settings, save_line_settings, send_line_notification,
     deployment_line_credentials, publish_line_state,
@@ -596,24 +600,12 @@ def _restore_database_chunks(filepath, headers, repo, branch):
     return True, ""
 
 def _merge_remote_database_snapshot(filepath, remote_df, changes=None):
-    """同步前合併遠端快照，讓本次本機簽核結果優先且保留其他使用者新增資料。"""
+    """同步前合併遠端快照；狀態只能前進，不能被舊本機快照倒退。"""
     if changes is not None:
         apply_database_changes(remote_df, changes).to_csv(filepath, index=False, encoding="utf-8-sig")
         return
-    key = CSV_SYNC_KEYS.get(os.path.basename(filepath))
     local_df = read_csv_robust(filepath) if os.path.exists(filepath) else None
-    if not key or local_df is None or local_df.empty:
-        return
-    if key not in remote_df.columns or key not in local_df.columns:
-        raise ValueError(f"{os.path.basename(filepath)} 缺少合併欄位 {key}，已停止覆蓋")
-    merged = pd.concat([
-        remote_df.assign(_sync_source=0),
-        local_df.assign(_sync_source=1),
-    ], ignore_index=True, sort=False).fillna("")
-    merged[key] = merged[key].astype(str).str.strip()
-    merged = merged[merged[key] != ""]
-    merged = merged.drop_duplicates(subset=[key], keep="last")
-    merged = merged.drop(columns=["_sync_source"])
+    merged = merge_database_snapshots(remote_df, local_df)
     merged.to_csv(filepath, index=False, encoding="utf-8-sig")
 
 def _sync_database_to_github(filepath, changes=None):
@@ -705,9 +697,13 @@ def sync_to_github(filepath):
     return success, msg
 
 def sync_all_data_to_github():
+    repaired = repair_approval_statuses_in_file(D_FILE)
     results = []
     for filepath in (D_FILE, S_FILE, P_FILE, V_FILE):
         results.append((os.path.basename(filepath), *sync_to_github(filepath)))
+    if repaired and results:
+        name, ok, message = results[0]
+        results[0] = (name, ok, f"{message}；已修正 {repaired} 筆已完成初審的資料為待複審")
     return results
 
 def restore_data_from_github_once(force=False):
@@ -863,8 +859,7 @@ def _load_data_uncached():
             
         # 廣泛性修復：若不小心將 LINE 通知文字貼到狀態欄
         if "狀態" in df.columns:
-            df.loc[df["狀態"].astype(str).str.contains("需要財務長", na=False), "狀態"] = "待複審"
-            df.loc[df["狀態"].astype(str).str.contains("需要執行長", na=False), "狀態"] = "待簽核"
+            df = normalize_approval_statuses(df)
 
         return capture_database_baseline(df[cols])
     except:
