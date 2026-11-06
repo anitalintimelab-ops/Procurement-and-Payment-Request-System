@@ -30,11 +30,13 @@ class ApprovalStateTests(unittest.TestCase):
 
     def test_terminal_states_are_not_rewritten(self):
         frame = pd.DataFrame([
-            row("A", "已核准", "Andy", "2026-11-06 11:00"),
+            row("A", "已完成", "Andy", "2026-11-06 11:00"),
             row("B", "已駁回", "Andy", "2026-11-06 11:00"),
         ])
-        self.assertEqual(normalize_approval_statuses(frame).loc[0, "狀態"], "已核准")
+        self.assertEqual(normalize_approval_statuses(frame).loc[0, "狀態"], "已完成")
         self.assertEqual(normalize_approval_statuses(frame).loc[1, "狀態"], "已駁回")
+        legacy = pd.DataFrame([row("C", "已核准", "Andy", "2026-11-06 11:00")])
+        self.assertEqual(normalize_approval_statuses(legacy).loc[0, "狀態"], "已完成")
 
     def test_merge_keeps_more_advanced_remote_or_local_stage(self):
         remote = pd.DataFrame([row("A", "待複審", "Andy", "2026-11-06 11:00")])
