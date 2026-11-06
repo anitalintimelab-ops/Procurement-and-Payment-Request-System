@@ -1,7 +1,7 @@
 {
   "format": "timelab-database-chunks-v1",
   "source": "database.csv",
-  "row_count": 16,
+  "row_count": 17,
   "columns": [
     "單號",
     "日期",
@@ -46,7 +46,7 @@
     },
     {
       "name": "database.csv.part-001.csv",
-      "rows": 6
+      "rows": 7
     }
   ]
 }
