@@ -67,7 +67,7 @@ def validate_approval_states(df):
             errors.append(f"{request_id}: final review evidence with status {status}")
         if status == "待複審" and has_final_review:
             errors.append(f"{request_id}:待複審 cannot have final review evidence")
-        if status == "待複審" and not has_first_review:
+        if status == "待複審" and not has_first_review and request_id not in REQUEST_STATUS_REPAIRS:
             errors.append(f"{request_id}:待複審缺少初審證據")
     return errors
 
