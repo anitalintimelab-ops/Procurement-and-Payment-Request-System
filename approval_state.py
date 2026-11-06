@@ -12,6 +12,7 @@ APPROVAL_STATUS_RANK = {
     "待簽核": 1,
     "待複審": 2,
     "已核准": 3,
+    "已完成": 3,
     "已駁回": 3,
 }
 
@@ -31,8 +32,8 @@ def _workflow_status(row):
     request_id = _text(row.get("單號", ""))
     status = _text(row.get("狀態", ""))
     # Final decisions are terminal and must never be rewritten.
-    if status in {"已核准", "已駁回"}:
-        return status
+    if status in {"已核准", "已完成", "已駁回"}:
+        return "已完成" if status == "已核准" else status
     if request_id in REQUEST_STATUS_REPAIRS:
         return REQUEST_STATUS_REPAIRS[request_id]
     # Explicit first-review evidence is stronger than a stale status label.
@@ -52,6 +53,24 @@ def normalize_approval_statuses(df):
     result["狀態"] = result.apply(_workflow_status, axis=1)
     return result
 
+def validate_approval_states(df):
+    """Return invariant violations after normalization; used as a sync guard."""
+    errors = []
+    if df is None or df.empty:
+        return errors
+    for _, row in df.iterrows():
+        request_id = _text(row.get("單號", ""))
+        status = _text(row.get("狀態", ""))
+        has_first_review = bool(_text(row.get("初審人")) or _text(row.get("初審時間")))
+        has_final_review = bool(_text(row.get("複審人")) or _text(row.get("複審時間")))
+        if has_final_review and status not in {"已完成", "已駁回"}:
+            errors.append(f"{request_id}: final review evidence with status {status}")
+        if status == "待複審" and has_final_review:
+            errors.append(f"{request_id}:待複審 cannot have final review evidence")
+        if status == "待複審" and not has_first_review and request_id not in REQUEST_STATUS_REPAIRS:
+            errors.append(f"{request_id}:待複審缺少初審證據")
+    return errors
+
 def _activity_timestamp(frame):
     columns = [c for c in ["提交時間", "初審時間", "複審時間", "刪除時間"] if c in frame.columns]
     if not columns:
@@ -62,9 +81,17 @@ def _activity_timestamp(frame):
 def merge_database_snapshots(remote_df, local_df, key="單號"):
     """Merge snapshots while preserving the furthest approval stage per request."""
     if remote_df is None or remote_df.empty:
-        return normalize_approval_statuses(local_df)
+        result = normalize_approval_statuses(local_df)
+        errors = validate_approval_states(result)
+        if errors:
+            raise ValueError("簽核狀態一致性檢查失敗：" + "; ".join(errors[:5]))
+        return result
     if local_df is None or local_df.empty:
-        return normalize_approval_statuses(remote_df)
+        result = normalize_approval_statuses(remote_df)
+        errors = validate_approval_states(result)
+        if errors:
+            raise ValueError("簽核狀態一致性檢查失敗：" + "; ".join(errors[:5]))
+        return result
     if key not in remote_df.columns or key not in local_df.columns:
         raise ValueError(f"資料庫缺少合併欄位 {key}")
     remote = normalize_approval_statuses(remote_df).copy()
@@ -85,7 +112,11 @@ def merge_database_snapshots(remote_df, local_df, key="單號"):
         na_position="first",
     )
     merged = merged.drop_duplicates(subset=[key], keep="last")
-    return merged.drop(columns=["_sync_source", "_workflow_rank", "_activity_timestamp"])
+    result = merged.drop(columns=["_sync_source", "_workflow_rank", "_activity_timestamp"])
+    errors = validate_approval_states(result)
+    if errors:
+        raise ValueError("簽核狀態一致性檢查失敗：" + "; ".join(errors[:5]))
+    return result
 
 def repair_approval_statuses_in_file(filepath):
     """Persist the one-time repair when the admin presses full sync."""
@@ -103,6 +134,9 @@ def repair_approval_statuses_in_file(filepath):
     before = frame["狀態"].astype(str).tolist()
     repaired = normalize_approval_statuses(frame)
     changed = int(sum(a != b for a, b in zip(before, repaired["狀態"].astype(str).tolist())))
+    errors = validate_approval_states(repaired)
+    if errors:
+        raise ValueError("簽核狀態自我檢查失敗：" + "; ".join(errors[:5]))
     if changed:
         repaired.to_csv(filepath, index=False, encoding="utf-8-sig")
     return changed

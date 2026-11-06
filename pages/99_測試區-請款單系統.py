@@ -909,7 +909,7 @@ def approve_requests(request_ids, sign_type):
             else:
                 if curr_name != CFO_NAME or row["狀態"] != "待複審":
                     continue
-                fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已核准", curr_name, get_taiwan_time()]
+                fresh_db.loc[idx, ["狀態", "複審人", "複審時間"]] = ["已完成", curr_name, get_taiwan_time()]
             committed.append((request_id, safe_str(row.get("專案名稱"))))
         if not committed:
             return 0
@@ -919,7 +919,7 @@ def approve_requests(request_ids, sign_type):
             for request_id, project in committed:
                 send_line_message(
                     f"🔔【[測試區]待複審提醒】\n系統：{sys_name}\n單號：{request_id}\n專案名稱：{project}\n"
-                    f"狀態：待複審\n執行長已核准，請財務長 ({CFO_NAME}) 進行複審！"
+                    f"狀態：待複審\n執行長已完成，請財務長 ({CFO_NAME}) 進行複審！"
                 )
         return len(committed)
 
@@ -1012,14 +1012,14 @@ def render_html(row):
 
     fallback_date = get_fallback_date(row)
 
-    if stt in ["待簽核", "待初審", "待複審", "已核准", "已駁回"]:
+    if stt in ["待簽核", "待初審", "待複審", "已完成", "已駁回"]:
         if not sub_time: sub_time = f"{fallback_date} 12:00"
         elif len(sub_time) <= 10: sub_time = f"{sub_time} 12:00"
         s_submit = f"{display_app} {sub_time}".strip()
     else:
         s_submit = "" 
 
-    if stt in ["待複審", "已核准"]:
+    if stt in ["待複審", "已完成"]:
         if not fst_appr: fst_appr = clean_name(row.get("專案負責人"))
         if not fst_time: fst_time = f"{fallback_date} 13:00"
         elif len(fst_time) <= 10: fst_time = f"{fst_time} 13:00"
@@ -1027,7 +1027,7 @@ def render_html(row):
     else:
         s_first = ""
 
-    if stt == "已核准":
+    if stt == "已完成":
         if not sec_appr: sec_appr = CFO_NAME
         if not sec_time: sec_time = f"{fallback_date} 14:00"
         elif len(sec_time) <= 10: sec_time = f"{sec_time} 14:00"
@@ -1397,7 +1397,7 @@ if st.session_state.get('req_review_id'):
             st.session_state.req_edit_id = None 
             count = approve_requests([r["單號"]], sign_type)
             if count:
-                st.success("初審已通過，狀態：待複審" if sign_type == "EXE" else "複審已通過，狀態：已核准")
+                st.success("初審已通過，狀態：待複審" if sign_type == "EXE" else "複審已通過，狀態：已完成")
             else:
                 st.info("單據狀態或權限已變更，未重複簽核。")
             st.session_state.req_review_id = None; st.rerun()
@@ -1479,7 +1479,7 @@ else:
                 st.session_state.req_edit_id = None 
                 success_count = approve_requests(selected_ids, sign_type)
                 if success_count > 0:
-                    target_status = "待複審" if sign_type == "EXE" else "已核准"
+                    target_status = "待複審" if sign_type == "EXE" else "已完成"
                     st.success(f"成功核准 {success_count} 筆，狀態已同步為：{target_status}")
                 else:
                     st.info("單據狀態或權限已變更，未重複簽核。")
@@ -1785,7 +1785,7 @@ else:
             
             stt_raw = safe_str(r.get("狀態")).strip()
             stt_display = "已存檔未提交" if stt_raw in ["已儲存", "草稿"] else stt_raw
-            color = "blue" if stt_display == "已存檔未提交" else "orange" if "待" in stt_display else "green" if stt_display == "已核准" else "red" if stt_display == "已駁回" else "gray"
+            color = "blue" if stt_display == "已存檔未提交" else "orange" if "待" in stt_display else "green" if stt_display == "已完成" else "red" if stt_display == "已駁回" else "gray"
             stt_col.markdown(f":{color}[**{stt_display}**]")
             
             with btn_col:
@@ -1842,14 +1842,14 @@ else:
     elif menu == "2. 專案執行長簽核":
         st.subheader("👨‍💼 專案執行長簽核管理")
         f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
-        t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
+        t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已完成/已駁回)"])
         with t1:
             pending = req_db[req_db["狀態"].isin(["待簽核", "待初審"])]
             if not is_admin: pending = pending[pending["專案負責人"] == curr_name]
             pending = pending.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(pending, "EXE")
         with t2:
-            history_exe = req_db[req_db["狀態"].isin(["已核准", "已駁回", "待複審"])]
+            history_exe = req_db[req_db["狀態"].isin(["已完成", "已駁回", "待複審"])]
             if not is_admin: history_exe = history_exe[(history_exe["初審人"] == curr_name) | (history_exe["專案負責人"] == curr_name) | (history_exe["申請人"] == curr_name) | (history_exe["代申請人"] == curr_name)]
             history_exe = history_exe.sort_values(by="單號", ascending=False).reset_index(drop=True)
             render_signing_table(history_exe, "EXE", is_history=True)
@@ -1857,7 +1857,7 @@ else:
     elif menu == "3. 財務長簽核":
         st.subheader("💰 財務長簽核管理")
         f_db = load_data(); req_db = f_db[f_db["類型"]=="請款單"]
-        t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已核准/已駁回)"])
+        t1, t2 = st.tabs(["⏳ 待簽核清單", "📜 歷史紀錄 (已完成/已駁回)"])
         
         is_cfo_role = (curr_name == CFO_NAME) or is_admin
         
@@ -1877,7 +1877,7 @@ else:
                 else:
                     st.info("目前無待簽核單據")
         with t2:
-            history_cfo = req_db[req_db["狀態"].isin(["已核准", "已駁回"])]
+            history_cfo = req_db[req_db["狀態"].isin(["已完成", "已駁回"])]
             if not is_cfo_role: 
                 history_cfo = history_cfo[(history_cfo["申請人"] == curr_name) | (history_cfo["代申請人"] == curr_name) | (history_cfo["專案負責人"] == curr_name) | (history_cfo["初審人"] == curr_name)]
             
@@ -1916,7 +1916,7 @@ else:
 
         f_db = load_data()
         req_db = f_db[f_db["類型"] == "請款單"]
-        report_df = req_db[req_db["狀態"].isin(["待初審", "待複審", "已核准"])].copy()
+        report_df = req_db[req_db["狀態"].isin(["待初審", "待複審", "已完成"])].copy()
 
         if report_df.empty:
             st.warning("目前沒有符合條件的請款單。")
@@ -2186,7 +2186,7 @@ else:
 
     elif menu == "8. 表單資料庫":
         st.subheader("🧹 8. 測試區表單資料庫清理 (僅限管理員)")
-        st.info("💡 這裡顯示測試區所有表單資料。刪除時只允許刪除狀態為「已核准」的單據，不會誤刪進行中的案件。")
+        st.info("💡 這裡顯示測試區所有表單資料。刪除時只允許刪除狀態為「已完成」的單據，不會誤刪進行中的案件。")
 
         f_db = load_data()
         if f_db.empty:
@@ -2203,13 +2203,13 @@ else:
             )
 
             if st.button("🔥 執行永久刪除已勾選的測試區單據", key="test_delete_db_btn"):
-                selected_to_del = edited_clean[(edited_clean["勾選刪除"] == True) & (edited_clean["狀態"] == "已核准")]["單號"].tolist()
-                invalid_selected = edited_clean[(edited_clean["勾選刪除"] == True) & (edited_clean["狀態"] != "已核准")]["單號"].tolist()
+                selected_to_del = edited_clean[(edited_clean["勾選刪除"] == True) & (edited_clean["狀態"] == "已完成")]["單號"].tolist()
+                invalid_selected = edited_clean[(edited_clean["勾選刪除"] == True) & (edited_clean["狀態"] != "已完成")]["單號"].tolist()
                 if invalid_selected:
-                    st.warning(f"⚠️ 以下單號因狀態非「已核准」已略過：{', '.join(invalid_selected)}")
+                    st.warning(f"⚠️ 以下單號因狀態非「已完成」已略過：{', '.join(invalid_selected)}")
                 if selected_to_del:
                     save_data(f_db[~f_db["單號"].isin(selected_to_del)])
-                    st.success(f"✅ 已刪除 {len(selected_to_del)} 筆測試區已核准單據！")
+                    st.success(f"✅ 已刪除 {len(selected_to_del)} 筆測試區已完成單據！")
                     time.sleep(1.5)
                     st.rerun()
                 elif not invalid_selected:
