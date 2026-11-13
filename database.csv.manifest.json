@@ -1,7 +1,7 @@
 {
   "format": "timelab-database-chunks-v1",
   "source": "database.csv",
-  "row_count": 17,
+  "row_count": 11,
   "columns": [
     "單號",
     "日期",
@@ -42,11 +42,19 @@
   "parts": [
     {
       "name": "database.csv.part-000.csv",
-      "rows": 10
+      "rows": 5
     },
     {
       "name": "database.csv.part-001.csv",
-      "rows": 7
+      "rows": 6
     }
+  ],
+  "purged_request_ids": [
+    "20260714-01",
+    "20260831-01",
+    "20261008-01",
+    "20261008-02",
+    "20261008-03",
+    "20261008-04"
   ]
 }
