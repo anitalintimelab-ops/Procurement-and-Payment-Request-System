@@ -12,9 +12,9 @@ from test_request_save_reload import PageHarness, PAGES, PageRerun, PageStop
 
 def approve(h, mode="single", stage="EXE"):
     h.env.update(
-        r=dict(h.row(), 單號="20261103-07"), curr_name="Charles", CFO_NAME="Charles",
-        can_sign=True, is_active=True, sign_type=stage, selected_ids=["20261103-07"],
-        mobile_id="20261103-07", mobile_i=0, mobile_can_sign=True, is_btn_disabled=False,
+        r=dict(h.row(), 單號="20260115-07"), curr_name="Charles", CFO_NAME="Charles",
+        can_sign=True, is_active=True, sign_type=stage, selected_ids=["20260115-07"],
+        mobile_id="20260115-07", mobile_i=0, mobile_can_sign=True, is_btn_disabled=False,
         c_btn2=types.SimpleNamespace(button=lambda *a, **kw: True),
         batch_c1=types.SimpleNamespace(button=lambda *a, **kw: True),
     )
@@ -34,7 +34,7 @@ def approve(h, mode="single", stage="EXE"):
 def cloud_row(h):
     frame, error = h.env["_read_database_chunks"](str(h.path), {}, "fixture/repo", "main")
     assert not error, error
-    return frame.set_index("單號").loc["20261103-07"]
+    return frame.set_index("單號").loc["20260115-07"]
 
 
 class ApprovalTests(unittest.TestCase):
@@ -61,7 +61,7 @@ class ApprovalTests(unittest.TestCase):
 
     def test_failed_save_does_not_send_approved_notification(self):
         def scenario(h):
-            h.env["_put_github_bytes"] = lambda *a: (False, "simulated upload failure")
+            h.github.post = lambda *a, **kw: h.github.response(403)
             with self.assertRaises(PageStop):
                 approve(h)
             self.assertEqual(h.notifications, [])
@@ -71,14 +71,13 @@ class ApprovalTests(unittest.TestCase):
 
     def test_cloud_receipt_mismatch_does_not_send_approved_notification(self):
         def scenario(h):
-            def corrupt_receipt(*args):
-                args = list(args)
-                if ".part-" in args[2]:
-                    frame = pd.read_csv(io.BytesIO(args[3]), dtype=str).fillna("")
-                    frame.loc[frame["單號"].eq("20261103-07"), "狀態"] = "待簽核"
-                    args[3] = frame.to_csv(index=False).encode("utf-8-sig")
-                return h.put(*args)
-            h.env["_put_github_bytes"] = corrupt_receipt
+            def corrupt_receipt():
+                for name, content in list(h.remote.items()):
+                    if ".part-" in name:
+                        frame = pd.read_csv(io.BytesIO(content), dtype=str).fillna("")
+                        frame.loc[frame["單號"].eq("20260115-07"), "狀態"] = "待簽核"
+                        h.remote[name] = frame.to_csv(index=False).encode("utf-8-sig")
+            h.github.after_publish = corrupt_receipt
             with self.assertRaises(PageStop):
                 approve(h)
             self.assertEqual(h.notifications, [])
@@ -112,13 +111,13 @@ class ApprovalTests(unittest.TestCase):
         def scenario(h):
             old_form = h.env["load_data"]()
             approve(h)
-            old_form.loc[old_form["單號"].eq("20261103-02"), "駁回原因"] = "另張單據的修改"
+            old_form.loc[old_form["單號"].eq("20260115-02"), "駁回原因"] = "另張單據的修改"
             h.env["save_data"](old_form)
             self.assertEqual(cloud_row(h)["狀態"], "待複審")
             self.assertEqual(h.row()["狀態"], "待複審")
             another_old_form = h.env["load_data"]()
             approve(h, stage="CFO")
-            another_old_form.loc[another_old_form["單號"].eq("20261103-02"), "請款說明"] = "另張單據的說明"
+            another_old_form.loc[another_old_form["單號"].eq("20260115-02"), "請款說明"] = "另張單據的說明"
             h.env["save_data"](another_old_form)
             self.assertEqual(cloud_row(h)["狀態"], "已核准")
             self.assertEqual(h.row()["狀態"], "已核准")
@@ -128,7 +127,7 @@ class ApprovalTests(unittest.TestCase):
         def scenario(h):
             old_form = h.env["load_data"]()
             approve(h)
-            old_form.loc[old_form["單號"].eq("20261103-07"), "狀態"] = "已駁回"
+            old_form.loc[old_form["單號"].eq("20260115-07"), "狀態"] = "已駁回"
             with self.assertRaises(PageStop):
                 h.env["save_data"](old_form)
             self.assertEqual(cloud_row(h)["狀態"], "待複審")
@@ -142,7 +141,7 @@ class ApprovalTests(unittest.TestCase):
                 if ".part-" not in name:
                     continue
                 frame = pd.read_csv(io.BytesIO(content), dtype=str).fillna("")
-                frame.loc[frame["單號"].eq("20261103-07"), "狀態"] = "已核准"
+                frame.loc[frame["單號"].eq("20260115-07"), "狀態"] = "已核准"
                 h.remote[name] = frame.to_csv(index=False).encode("utf-8-sig")
             approve(h)
             self.assertEqual(cloud_row(h)["狀態"], "已核准")
@@ -153,11 +152,11 @@ class ApprovalTests(unittest.TestCase):
     def test_wrong_approver_inactive_user_and_out_of_order_cfo_cannot_approve(self):
         def scenario(h):
             h.env.update(curr_name="Charles", CFO_NAME="Charles", is_active=True)
-            self.assertEqual(h.env["approve_requests"](["20261103-07"], "CFO"), 0)
+            self.assertEqual(h.env["approve_requests"](["20260115-07"], "CFO"), 0)
             h.env["curr_name"] = "Andy"
-            self.assertEqual(h.env["approve_requests"](["20261103-07"], "EXE"), 0)
+            self.assertEqual(h.env["approve_requests"](["20260115-07"], "EXE"), 0)
             h.env.update(curr_name="Charles", is_active=False)
-            self.assertEqual(h.env["approve_requests"](["20261103-07"], "EXE"), 0)
+            self.assertEqual(h.env["approve_requests"](["20260115-07"], "EXE"), 0)
             self.assertEqual(cloud_row(h)["狀態"], "待簽核")
             self.assertEqual(h.notifications, [])
         self.each_page(scenario)

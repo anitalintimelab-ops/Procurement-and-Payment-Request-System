@@ -10,16 +10,20 @@ import io
 import tempfile
 from request_persistence import (
     DATABASE_IO_LOCK, database_fingerprint, verify_database_snapshot, write_database_snapshot,
-    capture_database_baseline, database_changes, apply_database_changes, verify_database_changes,
+    capture_database_baseline, database_changes, verify_database_changes,
 )
 from ai_assistant import render_ai_operations_assistant
+from request_database_sync import (
+    CLEANUP_STATES, PURGED_IDS, next_request_id, read_database_chunks, request_ids,
+    snapshot_head, sync_database, verify_purge,
+)
 from mobile_camera import mobile_camera_input
 from request_performance import (
     github_blob_digest, cached_github_blob, remember_github_blob,
     cached_database_frame, LocalSnapshotChanged,
 )
 from approval_state import (
-    normalize_approval_statuses, merge_database_snapshots,
+    normalize_approval_statuses,
     repair_approval_statuses_in_file, validate_approval_batch,
 )
 from line_notifications import (
@@ -487,13 +491,11 @@ def _split_database_csv(filepath):
         return None, None, f"本機找不到 {os.path.basename(filepath)}"
     df = read_csv_robust(filepath)
     key = CSV_SYNC_KEYS.get(os.path.basename(filepath))
-    if df is None or df.empty or not key or key not in df.columns:
+    if df is None or not key or key not in df.columns:
         return None, None, f"{os.path.basename(filepath)} 缺少可用的 {key or '單號'} 欄位"
     df = df.copy().fillna("")
     df[key] = df[key].astype(str).str.strip()
     df = df[df[key] != ""].reset_index(drop=True)
-    if df.empty:
-        return None, None, f"{os.path.basename(filepath)} 沒有可同步的資料列"
 
     header = df.head(0).to_csv(index=False, header=True).encode("utf-8-sig")
     parts = []
@@ -511,7 +513,7 @@ def _split_database_csv(filepath):
             row_count = 0
         buffer.write(row_bytes)
         row_count += 1
-    if row_count:
+    if row_count or not parts:
         parts.append((f"{os.path.basename(filepath)}.part-{len(parts):03d}.csv", buffer.getvalue(), row_count))
 
     manifest = {
@@ -566,49 +568,19 @@ def _put_github_bytes(repo, branch, filename, content, headers, message):
     return False, f"上傳 {filename} 發生版本衝突，已重試仍未成功"
 
 def _read_database_chunks(filepath, headers, repo, branch):
-    """讀取測試區分段資料庫；沒有 manifest 時回傳 None，交由舊版 fallback 處理。"""
-    manifest_name = f"{os.path.basename(filepath)}.manifest.json"
-    manifest_url = f"https://api.github.com/repos/{repo}/contents/{manifest_name}"
-    manifest_bytes, _, error = _fetch_github_file(manifest_url, headers, branch)
-    if error or not manifest_bytes:
-        return None, error
-    try:
-        manifest = json.loads(manifest_bytes.decode("utf-8"))
-        part_frames = []
-        for part in manifest.get("parts", []):
-            name = part.get("name", "")
-            if not name:
-                raise ValueError("manifest 缺少分段檔名")
-            part_url = f"https://api.github.com/repos/{repo}/contents/{name}"
-            part_bytes, _, part_error = _fetch_github_file(part_url, headers, branch)
-            if part_error or not part_bytes:
-                raise ValueError(part_error or f"找不到分段 {name}")
-            part_frames.append(pd.read_csv(io.BytesIO(part_bytes), dtype=str, encoding="utf-8-sig").fillna(""))
-        if not part_frames:
-            raise ValueError("manifest 沒有資料分段")
-        merged = pd.concat(part_frames, ignore_index=True, sort=False)
-        return merged, ""
-    except Exception as exc:
-        return None, f"讀取分段資料庫失敗：{exc}"
+    return read_database_chunks(filepath, _fetch_github_file, headers, repo, branch)
 
-def _restore_database_chunks(filepath, headers, repo, branch):
+def _restore_database_chunks(filepath, headers, repo, ref):
     """優先從分段資料庫還原；沒有 manifest 時交由舊版 fallback 處理。"""
-    remote_df, error = _read_database_chunks(filepath, headers, repo, branch)
+    remote_df, error = _read_database_chunks(filepath, headers, repo, ref)
     if remote_df is None:
         return False, error
-    remote_df.to_csv(filepath, index=False, encoding="utf-8-sig")
+    signature = write_database_snapshot(remote_df, filepath)
+    st.session_state[f"_purged_ids:{filepath}"] = remote_df.attrs.get(PURGED_IDS, ())
+    st.session_state[f"_github_reconciled_v2:{os.path.abspath(filepath)}"] = signature
     return True, ""
 
-def _merge_remote_database_snapshot(filepath, remote_df, changes=None):
-    """同步前合併遠端快照；狀態只能前進，不能被舊本機快照倒退。"""
-    if changes is not None:
-        apply_database_changes(remote_df, changes).to_csv(filepath, index=False, encoding="utf-8-sig")
-        return
-    local_df = read_csv_robust(filepath) if os.path.exists(filepath) else None
-    merged = merge_database_snapshots(remote_df, local_df)
-    merged.to_csv(filepath, index=False, encoding="utf-8-sig")
-
-def _sync_database_to_github(filepath, changes=None):
+def _sync_database_to_github(filepath, changes=None, purge=None):
     """測試區資料庫不再以單一大型 demo_database.csv 上傳，改用分段檔與 manifest。"""
     token, repo, branch, _ = get_test_github_config()
     if not token or not repo:
@@ -616,35 +588,16 @@ def _sync_database_to_github(filepath, changes=None):
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json", "Cache-Control": "no-cache"}
     try:
         with GITHUB_SYNC_LOCK:
-            remote_df, remote_error = _read_database_chunks(filepath, headers, repo, branch)
-            if remote_error:
-                return False, remote_error
-            if remote_df is not None:
-                _merge_remote_database_snapshot(filepath, remote_df, changes=changes)
-            parts, manifest, error = _split_database_csv(filepath)
-            if error:
-                return False, error
-            for name, content, _ in parts:
-                ok, upload_error = _put_github_bytes(
-                    repo, branch, name, content, headers,
-                    f"Auto sync {name} from TimeLab System (DEMO)",
-                )
-                if not ok:
-                    return False, upload_error
-            manifest_name = f"{os.path.basename(filepath)}.manifest.json"
-            ok, upload_error = _put_github_bytes(
-                repo, branch, manifest_name,
-                json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
-                headers,
-                f"Update {manifest_name} from TimeLab System (DEMO)",
+            message = sync_database(
+                filepath, http=requests, fetch=_fetch_github_file, read_chunks=_read_database_chunks,
+                read_local=read_csv_robust, split=_split_database_csv,
+                repo=repo, branch=branch, headers=headers, changes=changes, purge=purge,
             )
-            if not ok:
-                return False, upload_error
-        return True, f"同步成功（測試區資料庫已安全分成 {len(parts)} 個檔案，共 {manifest['row_count']} 筆）"
+        return True, message
     except Exception as exc:
         return False, f"同步測試區資料庫分段時發生錯誤：{exc}"
 
-def sync_to_github_core(filepath, prefer_local=False, changes=None):
+def sync_to_github_core(filepath, prefer_local=False, changes=None, purge=None):
     if os.path.basename(filepath) in {"demo_github_credentials.txt", "demo_line_credentials.txt"}:
         return True, "敏感憑證檔案不予上傳"
 
@@ -654,7 +607,7 @@ def sync_to_github_core(filepath, prefer_local=False, changes=None):
 
     filename = os.path.basename(filepath)
     if filename == os.path.basename(D_FILE):
-        return _sync_database_to_github(filepath, changes=changes)
+        return _sync_database_to_github(filepath, changes=changes, purge=purge)
 
     get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json", "Cache-Control": "no-cache"}
@@ -697,10 +650,13 @@ def sync_to_github(filepath):
     return success, msg
 
 def sync_all_data_to_github():
-    repaired = repair_approval_statuses_in_file(D_FILE)
-    results = []
-    for filepath in (D_FILE, S_FILE, P_FILE, V_FILE):
-        results.append((os.path.basename(filepath), *sync_to_github(filepath)))
+    with GITHUB_SYNC_LOCK:
+        repaired = repair_approval_statuses_in_file(D_FILE)
+        results = []
+        for filepath in (D_FILE, S_FILE, P_FILE, V_FILE):
+            results.append((os.path.basename(filepath), *sync_to_github(filepath)))
+        if results[0][1]:
+            restore_data_from_github_once(force=True)
     if repaired and results:
         name, ok, message = results[0]
         results[0] = (name, ok, f"{message}；已修正 {repaired} 筆已核准初審的資料為待複審")
@@ -726,7 +682,9 @@ def restore_data_from_github_once(force=False):
             "Cache-Control": "no-cache",
         }
         try:
-            database_restored, error = _restore_database_chunks(D_FILE, headers, repo, branch)
+            parent, _ = snapshot_head(requests, repo, branch, headers)
+            chunk_restored, error = _restore_database_chunks(D_FILE, headers, repo, parent)
+            database_restored = chunk_restored
             if error:
                 raise ValueError(error)
             for filepath in (D_FILE, S_FILE, P_FILE, V_FILE):
@@ -736,7 +694,7 @@ def restore_data_from_github_once(force=False):
                     continue
                 filename = os.path.basename(filepath)
                 get_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
-                remote_bytes, _, error = _fetch_github_file(get_url, headers, branch)
+                remote_bytes, _, error = _fetch_github_file(get_url, headers, parent if filepath == D_FILE else branch)
                 if filepath == D_FILE and error:
                     raise ValueError(error)
                 if remote_bytes and not error:
@@ -745,21 +703,23 @@ def restore_data_from_github_once(force=False):
                         database_restored = True
             if previous is not None and not database_restored:
                 raise ValueError("找不到測試區雲端資料庫，已停止顯示可能過期的金額及狀態")
-            st.session_state[state_key] = database_fingerprint(D_FILE)
+            if not chunk_restored:
+                st.session_state[state_key] = database_fingerprint(D_FILE)
             return st.session_state[state_key]
         except Exception as exc:
             st.error(f"⚠️ 無法確認最新測試區雲端資料，請重新整理後重試：{exc}")
             st.stop()
 
-def _save_local_and_cloud(df, filepath, label):
+def _save_local_and_cloud(df, filepath, label, purge=None):
     """測試區以隔離快照送存，並用測試區 GitHub 回讀確認結果。"""
     with GITHUB_SYNC_LOCK:
         if os.path.abspath(filepath) == os.path.abspath(D_FILE):
-            changes = database_changes(df)
+            changes = database_changes(df) if purge is None else None
             with tempfile.TemporaryDirectory(prefix="timelab-demo-request-save-") as staging:
                 upload_path = os.path.join(staging, os.path.basename(filepath))
                 df.reset_index(drop=True).to_csv(upload_path, index=False, encoding="utf-8-sig")
-                success, message = sync_to_github_core(upload_path, prefer_local=True, changes=changes)
+                options = {"purge": purge} if purge is not None else {}
+                success, message = sync_to_github_core(upload_path, prefer_local=True, changes=changes, **options)
             if not success:
                 st.error(f"⚠️ 測試區{label}尚未寫入 GitHub，畫面不會刷新：{message}")
                 st.stop()
@@ -768,16 +728,20 @@ def _save_local_and_cloud(df, filepath, label):
                 "Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json",
                 "Cache-Control": "no-cache",
             }
-            cloud_df, error = _read_database_chunks(filepath, headers, repo, branch)
+            parent, _ = snapshot_head(requests, repo, branch, headers)
+            cloud_df, error = _read_database_chunks(filepath, headers, repo, parent)
             if error:
                 raise ValueError(f"測試區 GitHub 已接受上傳，但尚無法回讀確認：{error}")
-            if changes is None:
+            if purge is not None:
+                verify_purge(cloud_df, purge)
+            elif changes is None:
                 verify_database_snapshot(df, cloud_df)
             else:
                 verify_database_changes(cloud_df, changes)
             signature = write_database_snapshot(cloud_df, filepath)
             state_key = f"_github_reconciled_v2:{os.path.abspath(D_FILE)}"
             st.session_state[state_key] = signature
+            st.session_state[f"_purged_ids:{D_FILE}"] = cloud_df.attrs.get(PURGED_IDS, ())
             return
 
         df.reset_index(drop=True).to_csv(filepath, index=False, encoding="utf-8-sig")
@@ -848,7 +812,7 @@ def read_csv_robust(filepath):
 def _load_data_uncached():
     cols = ["單號", "日期", "類型", "申請人", "代申請人", "專案負責人", "專案名稱", "專案編號", "請款說明", "總金額", "幣別", "付款方式", "請款廠商", "匯款帳戶", "帳戶影像Base64", "狀態", "影像Base64", "提交時間", "申請人信箱", "初審人", "初審時間", "複審人", "複審時間", "刪除人", "刪除時間", "刪除原因", "駁回原因", "匯款狀態", "匯款日期", "支付條件", "支付期數", "請款狀態", "已請款金額", "尚未請款金額", "最後採購金額"]
     df = read_csv_robust(D_FILE)
-    if df is None or df.empty: return pd.DataFrame(columns=cols)
+    if df is None or df.empty: return capture_database_baseline(pd.DataFrame(columns=cols))
     try:
         df.columns = [c.strip() for c in df.columns]
         if "專案執行人" in df.columns: df = df.rename(columns={"專案執行人": "專案負責人"})
@@ -1742,7 +1706,7 @@ else:
                         f_db.loc[idx, ["申請人", "代申請人", "專案名稱", "專案編號", "專案負責人", "總金額", "請款說明", "請款廠商", "匯款帳戶", "付款方式", "影像Base64", "帳戶影像Base64", "幣別", "狀態"]] = [app_val, proxy_app, pn, pi, exe, total_amt, packed_desc, vdr, acc, pay, b_ims, b_acc, curr, "已存檔未提交"]
                         tid = st.session_state.req_edit_id; msg_prefix = "修改完畢並存檔"
                     else:
-                        tid = f"{datetime.date.today().strftime('%Y%m%d')}-{len(f_db[f_db['單號'].str.startswith(datetime.date.today().strftime('%Y%m%d'))])+1:02d}"
+                        tid = next_request_id(f_db, st.session_state.get(f"_purged_ids:{D_FILE}", ()), datetime.date.today())
                         nr = {"單號":tid, "日期":str(datetime.date.today()), "類型":"請款單", "申請人":app_val, "代申請人":proxy_app, "專案負責人":exe, "專案名稱":pn, "專案編號":pi, "請款說明":packed_desc, "總金額":total_amt, "幣別":curr, "請款廠商":vdr, "匯款帳戶":acc, "付款方式":pay, "狀態":"已存檔未提交", "影像Base64":b_ims, "帳戶影像Base64":b_acc}
                         baseline = f_db.attrs.copy()
                         f_db = pd.concat([f_db, pd.DataFrame([nr])], ignore_index=True)
@@ -2191,11 +2155,16 @@ else:
                 st.rerun()
 
     elif menu == "8. 表單資料庫":
+        if not is_admin and curr_name != CFO_NAME:
+            st.error("沒有清理表單資料庫的權限。")
+            st.stop()
         st.subheader("🧹 8. 測試區表單資料庫清理 (僅限管理員)")
-        st.info("💡 這裡只顯示可永久清理的「已核准、已駁回、已刪除」單據；永久刪除後將不再出現。")
+        st.info("只可清理「已核准、已駁回、已刪除」的單據。勾選後需按下方按鈕；請先下載備份，清理會移除目前資料庫中的單據與內嵌附件。")
+        cleanup_notice = st.session_state.pop(f"_cleanup_notice:{D_FILE}", None)
+        if cleanup_notice:
+            st.success(cleanup_notice)
         f_db = load_data()
-        cleanup_states = {"已核准", "已駁回", "已刪除"}
-        cleanup_db = f_db[f_db["狀態"].isin(cleanup_states)].copy() if not f_db.empty else f_db
+        cleanup_db = f_db[f_db["狀態"].isin(CLEANUP_STATES)].copy()
         if cleanup_db.empty:
             st.success("目前沒有可永久清理的單據。")
         else:
@@ -2205,14 +2174,18 @@ else:
                 hide_index=True,
                 use_container_width=True,
                 disabled=["單號", "專案名稱", "請款廠商", "總金額", "狀態", "申請人", "提交時間"],
-                key="test_db_clean_editor"
+                key=f"db_clean_editor:{D_FILE}:{st.session_state.get(f'_github_reconciled_v2:{os.path.abspath(D_FILE)}')}"
             )
             if st.button("🔥 執行永久刪除已勾選的單據", key="test_delete_db_btn"):
-                selected_to_del = edited_clean.loc[edited_clean["勾選刪除"] == True, "單號"].tolist()
-                if selected_to_del:
-                    save_data(f_db[~f_db["單號"].isin(selected_to_del)])
-                    st.success(f"✅ 已永久刪除 {len(selected_to_del)} 筆單據，資料庫已同步瘦身。")
-                    time.sleep(1.5)
+                selected = edited_clean.loc[edited_clean["勾選刪除"]]
+                if not selected.empty:
+                    purge = dict(zip(request_ids(selected), selected["狀態"]))
+                    try:
+                        _save_local_and_cloud(f_db, D_FILE, "表單清理", purge=purge)
+                    except Exception as exc:
+                        st.error(f"尚未確認清理成功：{exc}")
+                        st.stop()
+                    st.session_state[f"_cleanup_notice:{D_FILE}"] = f"✅ 已確認 {len(purge)} 筆單據從目前資料庫移除。"
                     st.rerun()
                 else:
                     st.error("請先勾選要永久刪除的單據！")

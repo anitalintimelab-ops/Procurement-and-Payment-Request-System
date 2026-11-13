@@ -66,7 +66,8 @@ def apply_database_changes(remote, changes):
         if not change["new"] and key not in merged.index:
             raise ValueError(f"單號 {key} 已不存在，請重新整理後重試")
         if key not in merged.index:
-            merged.loc[key] = ""
+            # Reindex also works for a header-only CSV after clearing the last row.
+            merged = merged.reindex([*merged.index, key], fill_value="")
         for column, field in change["fields"].items():
             current = merged.at[key, column] if column in merged.columns else ""
             if not change["new"] and _field_digest(column, current) not in {

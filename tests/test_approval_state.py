@@ -48,7 +48,7 @@ class ApprovalStateTests(unittest.TestCase):
         remote_stale = pd.DataFrame([row("B", "待簽核")])
         local_signed = pd.DataFrame([row("B", "待簽核", "Andy", "2026-11-06 12:00")])
         merged = merge_database_snapshots(remote_stale, local_signed)
-        self.assertEqual(merged.loc[0, "狀態"], "待複審")
+        self.assertEqual(merged.iloc[0]["狀態"], "待複審")
 
     def test_requested_ids_are_repaired(self):
         frame = pd.DataFrame([

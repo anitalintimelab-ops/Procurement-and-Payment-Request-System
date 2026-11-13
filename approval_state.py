@@ -14,6 +14,7 @@ APPROVAL_STATUS_RANK = {
     "已核准": 3,
     "已完成": 3,
     "已駁回": 3,
+    "已刪除": 4,
 }
 
 # One-time repair requested for the currently affected production/test requests.
@@ -32,7 +33,7 @@ def _workflow_status(row):
     request_id = _text(row.get("單號", ""))
     status = _text(row.get("狀態", ""))
     # Final decisions are terminal and must never be rewritten.
-    if status in {"已核准", "已完成", "已駁回"}:
+    if status in {"已核准", "已完成", "已駁回", "已刪除"}:
         return "已核准" if status in {"已核准", "已完成"} else status
     if request_id in REQUEST_STATUS_REPAIRS:
         return REQUEST_STATUS_REPAIRS[request_id]
@@ -63,7 +64,7 @@ def validate_approval_states(df):
         status = _text(row.get("狀態", ""))
         has_first_review = bool(_text(row.get("初審人")) or _text(row.get("初審時間")))
         has_final_review = bool(_text(row.get("複審人")) or _text(row.get("複審時間")))
-        if has_final_review and status not in {"已核准", "已駁回"}:
+        if has_final_review and status not in {"已核准", "已駁回", "已刪除"}:
             errors.append(f"{request_id}: final review evidence with status {status}")
         if status == "待複審" and has_final_review:
             errors.append(f"{request_id}:待複審 cannot have final review evidence")
