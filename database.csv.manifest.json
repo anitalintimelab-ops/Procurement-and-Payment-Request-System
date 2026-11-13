@@ -1,7 +1,7 @@
 {
   "format": "timelab-database-chunks-v1",
   "source": "database.csv",
-  "row_count": 11,
+  "row_count": 10,
   "columns": [
     "單號",
     "日期",
@@ -42,7 +42,7 @@
   "parts": [
     {
       "name": "database.csv.part-000.csv",
-      "rows": 5
+      "rows": 4
     },
     {
       "name": "database.csv.part-001.csv",
@@ -55,6 +55,7 @@
     "20261008-01",
     "20261008-02",
     "20261008-03",
-    "20261008-04"
+    "20261008-04",
+    "20261102-01"
   ]
 }
