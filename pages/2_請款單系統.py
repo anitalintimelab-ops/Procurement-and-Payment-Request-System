@@ -669,6 +669,7 @@ def _sync_database_to_github(filepath, changes=None, purge=None):
                 filepath, http=requests, fetch=_fetch_github_file, read_chunks=_read_database_chunks,
                 read_local=read_csv_robust, split=_split_database_csv,
                 repo=repo, branch=branch, headers=headers, changes=changes, purge=purge,
+                chunk_bytes=DATABASE_CHUNK_BYTES,
             )
         return True, message
     except Exception as exc:
@@ -811,11 +812,14 @@ def _save_local_and_cloud(df, filepath, label, purge=None):
         if os.path.abspath(filepath) == os.path.abspath(D_FILE):
             changes = database_changes(df) if purge is None else None
             # GitHub 寫入會觸發部署；不得讓 checkout 換掉正在送存的簽核快照。
-            with tempfile.TemporaryDirectory(prefix="timelab-request-save-") as staging:
-                upload_path = os.path.join(staging, os.path.basename(filepath))
-                df.reset_index(drop=True).to_csv(upload_path, index=False, encoding="utf-8-sig")
-                options = {"purge": purge} if purge is not None else {}
-                success, message = sync_to_github_core(upload_path, prefer_local=True, changes=changes, **options)
+            if purge is not None:
+                # Cleanup uses only the pinned cloud snapshot, not this local CSV.
+                success, message = sync_to_github_core(filepath, purge=purge)
+            else:
+                with tempfile.TemporaryDirectory(prefix="timelab-request-save-") as staging:
+                    upload_path = os.path.join(staging, os.path.basename(filepath))
+                    df.reset_index(drop=True).to_csv(upload_path, index=False, encoding="utf-8-sig")
+                    success, message = sync_to_github_core(upload_path, prefer_local=True, changes=changes)
             if not success:
                 st.error(f"⚠️ {label}尚未寫入 GitHub，畫面不會刷新：{message}")
                 st.stop()

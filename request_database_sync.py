@@ -1,5 +1,6 @@
 """Versioned cloud snapshots for the production and demo payment databases."""
 import base64
+import csv
 import io
 from itertools import chain
 import json
@@ -11,7 +12,7 @@ from urllib.parse import quote
 import pandas as pd
 
 from approval_state import merge_database_snapshots, normalize_approval_statuses
-from request_performance import github_blob_digest
+from request_performance import github_blob_digest, remember_github_blob
 from request_persistence import apply_database_changes
 
 
@@ -79,12 +80,16 @@ def prepare_snapshot(remote, local, changes=None, purge=None):
     if purge is not None:
         if remote is None or not purge:
             raise ValueError("未確認雲端清理對象")
-        states = normalize_approval_statuses(remote).set_index(request_ids(remote))["狀態"]
+        ids = request_ids(remote)
+        if not ids.is_unique or ids.eq("").any():
+            raise ValueError("雲端單號重複或空白，本批未清理")
+        selected = normalize_approval_statuses(remote.loc[ids.isin(purge)])
+        states = selected.set_index(request_ids(selected))["狀態"]
         for key, expected in purge.items():
             if key not in states.index or states.at[key] != expected or expected not in CLEANUP_STATES:
                 raise ValueError(f"單號 {key} 已不存在或狀態已變更，本批未清理，請重新整理")
         purged.update(purge)
-        result = remote.loc[~request_ids(remote).isin(purge)].copy()
+        result = remote.loc[~ids.isin(purge)].copy()
     elif changes is not None:
         if purged.intersection(changes):
             raise ValueError("本次存檔包含已永久清理的單號，請重新整理")
@@ -96,6 +101,49 @@ def prepare_snapshot(remote, local, changes=None, purge=None):
     if result is None or request_ids(result).isin(purged).any():
         raise ValueError("清理紀錄與待上傳資料不一致")
     return result, sorted(purged)
+
+
+def split_cleanup_snapshot(frame, filename, chunk_bytes):
+    """Build the same CSV chunks directly from the verified cloud rows."""
+    row_buffer = io.StringIO(newline="")
+    writer = csv.writer(row_buffer, lineterminator=os.linesep)
+    cr_writer = csv.writer(row_buffer, lineterminator="\r\n")
+
+    def encode_row(row, encoding="utf-8"):
+        row_buffer.seek(0)
+        row_buffer.truncate(0)
+        if os.linesep == "\n" and any(isinstance(value, str) and "\r" in value for value in row):
+            # Quote embedded CR even on Linux, without changing the record ending.
+            cr_writer.writerow(row)
+            text = row_buffer.getvalue()[:-2] + "\n"
+        else:
+            writer.writerow(row)
+            text = row_buffer.getvalue()
+        return text.encode(encoding)
+
+    header = encode_row(frame.columns, "utf-8-sig")
+    key_index = frame.columns.get_loc("單號")
+    parts, buffer, rows = [], io.BytesIO(header), 0
+    buffer.seek(0, io.SEEK_END)
+    for row in frame.itertuples(index=False, name=None):
+        data = encode_row(row)
+        if len(header) + len(data) > chunk_bytes:
+            raise ValueError(f"單號 {row[key_index]} 單列超過 GitHub 分段上限，未上傳")
+        if rows and buffer.tell() + len(data) > chunk_bytes:
+            parts.append((f"{filename}.part-{len(parts):03d}.csv", buffer.getvalue(), rows))
+            buffer = io.BytesIO()
+            buffer.write(header)
+            rows = 0
+        buffer.write(data)
+        rows += 1
+    parts.append((f"{filename}.part-{len(parts):03d}.csv", buffer.getvalue(), rows))
+    return parts, {
+        "format": "timelab-database-chunks-v1",
+        "source": filename,
+        "row_count": len(frame),
+        "columns": [str(column) for column in frame.columns],
+        "parts": [{"name": name, "rows": count} for name, _, count in parts],
+    }
 
 
 def _checked(response, status, operation):
@@ -110,7 +158,8 @@ def snapshot_head(http, repo, branch, headers):
     return payload["sha"], payload["commit"]["tree"]["sha"]
 
 
-def publish_snapshot(http, repo, branch, headers, parent, base_tree, files, previous, message):
+def publish_snapshot(http, repo, branch, headers, parent, base_tree, files, previous, message,
+                     *, cache_uploaded=False):
     """Publish parts and their manifest together, without forcing a stale branch."""
     root = f"https://api.github.com/repos/{repo}/git/"
     tree = []
@@ -136,10 +185,18 @@ def publish_snapshot(http, repo, branch, headers, parent, base_tree, files, prev
     }), 201, "提交資料庫版本")
     _checked(http.patch(root + "refs/heads/" + quote(branch, safe="/"), headers=headers, timeout=20,
                         json={"sha": commit["sha"], "force": False}), 200, "更新分支，請重新整理後重試")
+    if cache_uploaded:
+        for entry in tree:
+            path, sha = entry["path"], entry["sha"]
+            if sha and ".part-" in path:
+                # Readback must still get fresh authorized Contents metadata for
+                # this exact path and SHA before it can reuse these bytes.
+                remember_github_blob(f"https://api.github.com/repos/{repo}/contents/{path}",
+                                     headers, sha, files[path])
 
 
 def sync_database(filepath, *, http, fetch, read_chunks, read_local, split,
-                  repo, branch, headers, changes=None, purge=None):
+                  repo, branch, headers, changes=None, purge=None, chunk_bytes=None):
     parent, tree = snapshot_head(http, repo, branch, headers)
     remote, error = read_chunks(filepath, headers, repo, parent)
     if error:
@@ -156,18 +213,21 @@ def sync_database(filepath, *, http, fetch, read_chunks, read_local, split,
     if local is not None and "單號" not in local.columns:
         raise ValueError("本機資料庫缺少單號，未同步")
     candidate, purged = prepare_snapshot(remote, local, changes=changes, purge=purge)
-    with tempfile.TemporaryDirectory(prefix="timelab-cloud-snapshot-") as staging:
-        path = os.path.join(staging, filename)
-        candidate.to_csv(path, index=False, encoding="utf-8-sig")
-        parts, manifest, error = split(path)
-    if error:
-        raise ValueError(error)
+    if purge is not None:
+        parts, manifest = split_cleanup_snapshot(candidate, filename, chunk_bytes)
+    else:
+        with tempfile.TemporaryDirectory(prefix="timelab-cloud-snapshot-") as staging:
+            path = os.path.join(staging, filename)
+            candidate.to_csv(path, index=False, encoding="utf-8-sig")
+            parts, manifest, error = split(path)
+        if error:
+            raise ValueError(error)
     if purged:
         manifest[PURGED_IDS] = purged
     files = {name: content for name, content, _ in parts}
     files[filename + ".manifest.json"] = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
     publish_snapshot(http, repo, branch, headers, parent, tree, files, previous,
-                     f"Update {filename} snapshot from TimeLab System")
+                     f"Update {filename} snapshot from TimeLab System", cache_uploaded=purge is not None)
     return f"同步成功（共 {manifest['row_count']} 筆）"
 
 
