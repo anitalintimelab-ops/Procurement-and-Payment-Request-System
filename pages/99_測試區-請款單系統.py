@@ -2205,7 +2205,7 @@ else:
                 hide_index=True,
                 use_container_width=True,
                 disabled=["單號", "專案名稱", "請款廠商", "總金額", "狀態", "申請人", "提交時間"],
-                key="db_clean_editor"test_db_clean_editor
+                key="test_db_clean_editor"
             )
             if st.button("🔥 執行永久刪除已勾選的單據", key="test_delete_db_btn"):
                 selected_to_del = edited_clean.loc[edited_clean["勾選刪除"] == True, "單號"].tolist()
