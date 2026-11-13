@@ -16,6 +16,14 @@ import types
 import unittest
 
 import pandas as pd
+from approval_state import (
+    normalize_approval_statuses, repair_approval_statuses_in_file, validate_approval_batch,
+)
+from request_database_sync import (
+    CLEANUP_STATES, PURGED_IDS, next_request_id, read_database_chunks, request_ids,
+    snapshot_head, sync_database, verify_purge,
+)
+from request_performance import github_blob_digest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,11 +43,62 @@ class State(dict):
     __setattr__ = dict.__setitem__
 
 
+class FakeGitHub:
+    """A new branch version only becomes visible after a fast-forward update."""
+    def __init__(self, files):
+        self.files = files
+        self.head = "base"
+        self.blobs = {}
+        self.pending = {}
+        self.before_publish = lambda: None
+        self.after_publish = lambda: None
+        self.published = 0
+
+    @staticmethod
+    def response(status, **payload):
+        return types.SimpleNamespace(status_code=status, json=lambda: payload)
+
+    def get(self, url, **kwargs):
+        assert "/commits/" in url, url
+        return self.response(200, sha=self.head, commit={"tree": {"sha": self.head + "-tree"}})
+
+    def post(self, url, *, json, **kwargs):
+        if url.endswith("/blobs"):
+            data = base64.b64decode(json["content"])
+            sha = github_blob_digest(data)
+            self.blobs[sha] = data
+            return self.response(201, sha=sha)
+        if url.endswith("/trees"):
+            assert json["base_tree"] == self.head + "-tree"
+            self.pending = self.files.copy()
+            for item in json["tree"]:
+                if item["sha"] is None:
+                    del self.pending[item["path"]]
+                else:
+                    self.pending[item["path"]] = self.blobs[item["sha"]]
+            return self.response(201, sha="pending-tree")
+        assert url.endswith("/commits")
+        self.parent, = json["parents"]
+        return self.response(201, sha=f"snapshot-{self.published + 1}")
+
+    def patch(self, url, *, json, **kwargs):
+        assert "/refs/heads/" in url and json["force"] is False
+        self.before_publish()
+        if self.parent != self.head:
+            return self.response(422)
+        self.files.clear()
+        self.files.update(self.pending)
+        self.head = json["sha"]
+        self.published += 1
+        self.after_publish()
+        return self.response(200)
+
+
 class PageHarness:
     def __init__(self, page, folder):
         self.tree = ast.parse(page.read_text(encoding="utf-8-sig"))
         self.messages, self.errors, self.notifications = [], [], []
-        self.state = State(req_edit_id="20261103-07", req_uploader_key=0)
+        self.state = State(req_edit_id="20260115-07", req_uploader_key=0)
         st = types.SimpleNamespace(
             session_state=self.state, error=self.errors.append,
             stop=lambda: self._raise(PageStop), rerun=lambda: self._raise(PageRerun),
@@ -50,6 +109,7 @@ class PageHarness:
         prefix = "demo_" if demo else ""
         self.path = Path(folder) / (prefix + "database.csv")
         self.remote = {}
+        self.github = FakeGitHub(self.remote)
         self.env = {
             "st": st, "pd": pd, "os": os, "io": io, "json": json,
             "base64": base64, "datetime": datetime, "tempfile": tempfile,
@@ -65,10 +125,19 @@ class PageHarness:
             "get_test_github_config": lambda: ("fake-token", "test/demo", "main", "fixture"),
             "send_line_message": self.notifications.append,
             "is_active": True,
+            "requests": self.github,
+            "normalize_approval_statuses": normalize_approval_statuses,
+            "validate_approval_batch": validate_approval_batch,
+            "repair_approval_statuses_in_file": repair_approval_statuses_in_file,
+            "CLEANUP_STATES": CLEANUP_STATES, "PURGED_IDS": PURGED_IDS,
+            "next_request_id": next_request_id, "request_ids": request_ids,
+            "snapshot_head": snapshot_head, "sync_database": sync_database,
+            "read_database_chunks": read_database_chunks, "verify_purge": verify_purge,
         }
         wanted = {
-            "_read_database_chunks", "_restore_database_chunks", "_merge_remote_database_snapshot",
+            "_read_database_chunks", "_restore_database_chunks", "_merge_remote_csv",
             "_sync_database_to_github", "_split_database_csv", "sync_to_github_core",
+            "sync_all_data_to_github",
             "restore_data_from_github_once", "_save_local_and_cloud", "read_csv_robust",
             "load_data", "_load_data_uncached", "save_data", "clean_amount", "safe_str", "get_taiwan_time", "approve_requests",
         }
@@ -99,11 +168,10 @@ class PageHarness:
             LocalSnapshotChanged=LocalSnapshotChanged,
         )
         self.env["_fetch_github_file"] = self.fetch
-        self.env["_put_github_bytes"] = self.put
         self.seed = pd.DataFrame([
-            {"單號": "20261103-07", "類型": "請款單", "專案名稱": "測試專案", "專案負責人": "Charles",
+            {"單號": "20260115-07", "類型": "請款單", "專案名稱": "測試專案", "專案負責人": "Charles",
              "申請人": "Charles", "總金額": "341460", "狀態": "待簽核", "提交時間": "2026-11-03 11:02"},
-            {"單號": "20261103-02", "類型": "請款單", "總金額": "599970", "狀態": "待複審"},
+            {"單號": "20260115-02", "類型": "請款單", "總金額": "599970", "狀態": "待複審"},
         ]).fillna("")
         self.seed.to_csv(self.path, index=False, encoding="utf-8-sig")
         self.publish()
@@ -114,11 +182,8 @@ class PageHarness:
 
     def fetch(self, url, headers, branch):
         name = url.split("/contents/")[-1]
-        return self.remote.get(name, b""), "fake-sha", ""
-
-    def put(self, repo, branch, name, content, headers, message):
-        self.remote[name] = content
-        return True, ""
+        data = self.remote.get(name, b"")
+        return data, github_blob_digest(data) if data else None, ""
 
     def publish(self):
         parts, manifest, error = self.env["_split_database_csv"](str(self.path))
@@ -128,10 +193,10 @@ class PageHarness:
 
     def row(self):
         df = self.env["load_data"]()
-        return df.set_index("單號").loc["20261103-07"]
+        return df.set_index("單號").loc["20260115-07"]
 
     def save_amount(self, gross=170730, deduct_fee=False):
-        self.state.req_edit_id = "20261103-07"
+        self.state.req_edit_id = "20260115-07"
         self.row()  # Initialize the real loader, as the UI does before rendering.
         self.env.update(
             btn_save=True, btn_preview=False, btn_print=False, btn_submit=False,
@@ -152,7 +217,7 @@ class PageHarness:
     def submit(self):
         self.env.update(b1=types.SimpleNamespace(button=lambda *a, **kw: True), i=0,
                         can_edit=True, r=self.row())
-        self.env["r"] = dict(self.env["r"], 單號="20261103-07")
+        self.env["r"] = dict(self.env["r"], 單號="20260115-07")
         handler = next(n for n in ast.walk(self.tree) if isinstance(n, ast.If)
                        and ast.unparse(n.test).startswith("b1.button('提交'"))
         try:
@@ -162,7 +227,7 @@ class PageHarness:
 
     def review(self, approve):
         self.env.update(
-            r=dict(self.row(), 單號="20261103-07"), curr_name="Charles", CFO_NAME="Charles",
+            r=dict(self.row(), 單號="20260115-07"), curr_name="Charles", CFO_NAME="Charles",
             c_btn2=types.SimpleNamespace(button=lambda *a, **kw: True), can_sign=True,
             sign_type="EXE", reason="測試退回",
         )
@@ -240,7 +305,7 @@ class SaveReloadTests(unittest.TestCase):
 
     def test_failed_upload_never_shows_save_success(self):
         def scenario(h):
-            h.env["_put_github_bytes"] = lambda *a: (False, "upload failed test")
+            h.github.post = lambda *a, **kw: h.github.response(403)
             with self.assertRaises(PageStop):
                 h.save_amount()
             self.assertEqual(h.messages, [])
@@ -250,12 +315,7 @@ class SaveReloadTests(unittest.TestCase):
 
     def test_local_reset_after_upload_restores_verified_cloud_receipt(self):
         def scenario(h):
-            def put_then_reset(*args):
-                result = h.put(*args)
-                if args[2].endswith(".manifest.json"):
-                    h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
-                return result
-            h.env["_put_github_bytes"] = put_then_reset
+            h.github.after_publish = lambda: h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
             h.save_amount()
             self.assertEqual(h.errors, [])
             self.assertEqual(h.row()["總金額"], 170730)
@@ -265,10 +325,10 @@ class SaveReloadTests(unittest.TestCase):
 
     def test_other_rows_and_old_review_details_are_preserved(self):
         def scenario(h):
-            old = h.env["load_data"]().set_index("單號").loc["20261103-02"].copy()
+            old = h.env["load_data"]().set_index("單號").loc["20260115-02"].copy()
             old_submission = h.row()["提交時間"]
             h.save_amount()
-            current = h.env["load_data"]().set_index("單號").loc["20261103-02"]
+            current = h.env["load_data"]().set_index("單號").loc["20260115-02"]
             pd.testing.assert_series_equal(old, current)
             self.assertEqual(h.row()["提交時間"], old_submission)
         self.both_pages(scenario)

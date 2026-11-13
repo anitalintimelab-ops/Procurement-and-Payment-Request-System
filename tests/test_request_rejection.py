@@ -10,7 +10,7 @@ from test_request_save_reload import PageHarness, PAGES, PageRerun, PageStop
 
 
 def reject(h, mode="batch", sign_type="EXE", selected=None):
-    selected = selected or ["20261103-07"]
+    selected = selected or ["20260115-07"]
     df = h.env["load_data"]()
     h.env.update(
         df_list=df, selected_ids=selected, curr_name="Charles", CFO_NAME="Charles",
@@ -41,12 +41,7 @@ class RejectionTests(unittest.TestCase):
 
     def test_local_reset_after_upload_does_not_block_rejection(self):
         def scenario(h):
-            def upload_and_replace_checkout(*args):
-                result = h.put(*args)
-                if args[2].endswith(".manifest.json"):
-                    h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
-                return result
-            h.env["_put_github_bytes"] = upload_and_replace_checkout
+            h.github.after_publish = lambda: h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
             reject(h)
             self.assertEqual(h.errors, [])
             self.assertTrue(h.messages)
@@ -90,9 +85,9 @@ class RejectionTests(unittest.TestCase):
 
     def test_unselected_rows_are_unchanged(self):
         def scenario(h):
-            before = h.env["load_data"]().set_index("單號").loc["20261103-02"].copy()
+            before = h.env["load_data"]().set_index("單號").loc["20260115-02"].copy()
             reject(h)
-            after = h.env["load_data"]().set_index("單號").loc["20261103-02"]
+            after = h.env["load_data"]().set_index("單號").loc["20260115-02"]
             pd.testing.assert_series_equal(before, after)
         self.each_page(scenario)
 
@@ -110,14 +105,13 @@ class RejectionTests(unittest.TestCase):
 
     def test_actual_cloud_mismatch_still_blocks_success(self):
         def scenario(h):
-            def corrupt_remote_status(*args):
-                args = list(args)
-                if ".part-" in args[2]:
-                    frame = pd.read_csv(io.BytesIO(args[3]), dtype=str).fillna("")
-                    frame.loc[frame["單號"].eq("20261103-07"), "狀態"] = "待簽核"
-                    args[3] = frame.to_csv(index=False).encode("utf-8-sig")
-                return h.put(*args)
-            h.env["_put_github_bytes"] = corrupt_remote_status
+            def corrupt_remote_status():
+                for name, content in list(h.remote.items()):
+                    if ".part-" in name:
+                        frame = pd.read_csv(io.BytesIO(content), dtype=str).fillna("")
+                        frame.loc[frame["單號"].eq("20260115-07"), "狀態"] = "待簽核"
+                        h.remote[name] = frame.to_csv(index=False).encode("utf-8-sig")
+            h.github.after_publish = corrupt_remote_status
             with self.assertRaises(PageStop):
                 reject(h)
             self.assertEqual(h.messages, [])
@@ -126,16 +120,9 @@ class RejectionTests(unittest.TestCase):
 
     def test_cloud_read_failure_is_not_success(self):
         def scenario(h):
-            uploaded = False
-            def put(*args):
-                nonlocal uploaded
-                result = h.put(*args)
-                if args[2].endswith(".manifest.json"):
-                    uploaded = True
-                return result
             def fetch(*args):
-                return (None, None, "receipt offline") if uploaded else h.fetch(*args)
-            h.env.update(_put_github_bytes=put, _fetch_github_file=fetch)
+                return (None, None, "receipt offline") if h.github.published else h.fetch(*args)
+            h.env["_fetch_github_file"] = fetch
             with self.assertRaises(PageStop):
                 reject(h)
             self.assertEqual(h.messages, [])
