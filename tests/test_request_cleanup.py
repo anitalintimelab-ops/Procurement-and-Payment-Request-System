@@ -4,10 +4,11 @@ import datetime
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
-from request_database_sync import PURGED_IDS, next_request_id
+from request_database_sync import PURGED_IDS, next_request_id, split_cleanup_snapshot
 from test_request_save_reload import PAGES, PageHarness, PageRerun, PageStop
 
 
@@ -60,7 +61,9 @@ class CleanupTests(unittest.TestCase):
             old_part_count = len([k for k in h.remote if ".part-" in k])
             self.assertGreater(old_part_count, 1)
             before = self.cloud(h).set_index("單號")
-            self.cleanup(h, self.selected)
+            with patch("request_database_sync.tempfile.TemporaryDirectory",
+                       side_effect=AssertionError("cleanup should not stage the whole database")):
+                self.cleanup(h, self.selected)
             self.assertEqual(h.errors, [])
             self.assertEqual(h.github.published, 1)
             frame = self.cloud(h)
@@ -153,4 +156,14 @@ class CleanupTests(unittest.TestCase):
                 self.cleanup(h, self.selected)
             self.assertNotIn(f"_cleanup_notice:{h.path}", h.state)
             self.assertTrue(any("尚未確認清理成功" in error for error in h.errors))
+        self.both_pages(scenario)
+
+    def test_direct_split_preserves_bytes_and_chunk_boundaries(self):
+        def scenario(h):
+            h.seed.loc[0, "專案名稱"] = '測試, "引號"\n下一列'
+            h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
+            parts, manifest, error = h.env["_split_database_csv"](str(h.path))
+            self.assertFalse(error)
+            cloud_rows = h.env["read_csv_robust"](str(h.path))
+            self.assertEqual(split_cleanup_snapshot(cloud_rows, h.path.name, 1500), (parts, manifest))
         self.both_pages(scenario)

@@ -1,5 +1,6 @@
 """Performance optimizations may not weaken content checks or edit isolation."""
 import ast
+import base64
 import os
 from pathlib import Path
 import tempfile
@@ -154,6 +155,44 @@ class PerformanceTests(unittest.TestCase):
                 data, _, error = self.http_functions(page, http)["_fetch_github_file"](url, headers, "main")
                 self.assertIsNone(data)
                 self.assertIn("403", error)
+
+    def test_cleanup_reuses_uploaded_part_only_after_cloud_metadata_check(self):
+        for page in PAGES:
+            for authorized in (True, False):
+                with self.subTest(page=page.name, authorized=authorized), tempfile.TemporaryDirectory() as folder:
+                    clear_performance_caches()
+                    h = PageHarness(page, folder)
+                    h.seed.loc[0, "狀態"] = "已核准"
+                    h.seed.to_csv(h.path, index=False, encoding="utf-8-sig")
+                    h.publish()
+                    frame = h.env["load_data"]()
+                    readback = []
+                    def get(url, **kwargs):
+                        if "/git/blobs/" in url:
+                            if h.github.published:
+                                readback.append("blob")
+                            sha = url.rsplit("/", 1)[-1]
+                            return Reply(content=next(data for data in h.remote.values()
+                                                      if github_blob_digest(data) == sha))
+                        data, sha, _ = h.fetch(url.split("?")[0], {}, "")
+                        if ".part-" in url:
+                            if h.github.published:
+                                readback.append("metadata")
+                                if not authorized:
+                                    return Reply(status=403, payload={"message": "denied"})
+                            return Reply(payload={"sha": sha, "content": ""})
+                        return Reply(payload={"sha": sha, "content": base64.b64encode(data).decode()})
+                    h.env["_fetch_github_file"] = self.http_functions(
+                        page, types.SimpleNamespace(get=get))["_fetch_github_file"]
+                    args = (frame, str(h.path), "清理", {"20260115-07": "已核准"})
+                    if authorized:
+                        h.env["_save_local_and_cloud"](*args)
+                        self.assertNotIn("20260115-07", h.env["load_data"]()["單號"].tolist())
+                    else:
+                        with self.assertRaisesRegex(ValueError, "403"):
+                            h.env["_save_local_and_cloud"](*args)
+                        self.assertIn("20260115-07", pd.read_csv(h.path)["單號"].tolist())
+                    self.assertEqual(readback, ["metadata"])
 
     def test_blob_cache_isolated_by_credentials_and_repository(self):
         url = "https://api.github.com/repos/fake/prod/contents/data.csv"
