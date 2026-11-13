@@ -2192,34 +2192,30 @@ else:
 
     elif menu == "8. 表單資料庫":
         st.subheader("🧹 8. 測試區表單資料庫清理 (僅限管理員)")
-        st.info("💡 這裡顯示測試區所有表單資料。刪除時只允許刪除狀態為「已核准」的單據，不會誤刪進行中的案件。")
-
+        st.info("💡 這裡只顯示可永久清理的「已核准、已駁回、已刪除」單據；永久刪除後將不再出現。")
         f_db = load_data()
-        if f_db.empty:
-            st.warning("目前測試區資料庫沒有資料。")
+        cleanup_states = {"已核准", "已駁回", "已刪除"}
+        cleanup_db = f_db[f_db["狀態"].isin(cleanup_states)].copy() if not f_db.empty else f_db
+        if cleanup_db.empty:
+            st.success("目前沒有可永久清理的單據。")
         else:
-            display_df = f_db.copy()
-            display_df.insert(0, "勾選刪除", False)
+            cleanup_db.insert(0, "勾選刪除", False)
             edited_clean = st.data_editor(
-                display_df[["勾選刪除", "單號", "專案名稱", "請款廠商", "總金額", "狀態", "申請人", "提交時間"]],
+                cleanup_db[["勾選刪除", "單號", "專案名稱", "請款廠商", "總金額", "狀態", "申請人", "提交時間"]],
                 hide_index=True,
                 use_container_width=True,
                 disabled=["單號", "專案名稱", "請款廠商", "總金額", "狀態", "申請人", "提交時間"],
                 key="test_db_clean_editor"
             )
-
-            if st.button("🔥 執行永久刪除已勾選的測試區單據", key="test_delete_db_btn"):
-                selected_to_del = edited_clean[(edited_clean["勾選刪除"] == True) & (edited_clean["狀態"] == "已核准")]["單號"].tolist()
-                invalid_selected = edited_clean[(edited_clean["勾選刪除"] == True) & (edited_clean["狀態"] != "已核准")]["單號"].tolist()
-                if invalid_selected:
-                    st.warning(f"⚠️ 以下單號因狀態非「已核准」已略過：{', '.join(invalid_selected)}")
+            if st.button("🔥 執行永久刪除已勾選的單據", key="test_delete_db_btn"):
+                selected_to_del = edited_clean.loc[edited_clean["勾選刪除"] == True, "單號"].tolist()
                 if selected_to_del:
                     save_data(f_db[~f_db["單號"].isin(selected_to_del)])
-                    st.success(f"✅ 已刪除 {len(selected_to_del)} 筆測試區已核准單據！")
+                    st.success(f"✅ 已永久刪除 {len(selected_to_del)} 筆單據，資料庫已同步瘦身。")
                     time.sleep(1.5)
                     st.rerun()
-                elif not invalid_selected:
-                    st.error("請先勾選要刪除的單據！")
+                else:
+                    st.error("請先勾選要永久刪除的單據！")
 
     if st.session_state.get('req_print_id'):
         r_df = load_data()
